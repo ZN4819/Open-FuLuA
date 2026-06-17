@@ -1,0 +1,631 @@
+# 附录A编写工具实施计划
+
+## 1. 总体实施策略
+
+实施采用分阶段交付。先搭建可运行的本地 Web 应用，再逐步加入结构化编辑、图片管理、DOCX 生成、字段引用、预览校验和回归测试。
+
+推荐开发顺序：
+
+1. 项目骨架与本地运行环境。
+2. 模板 profile 与样本文档结构分析器。
+3. A-1 至 A-8 结构化编辑。
+4. 图片管理和引用 token。
+5. DOCX 生成器。
+6. 校验与异步预览。
+7. 回归测试与打包说明。
+
+阶段交付要求：
+
+- 每个阶段完成后，必须将代码提交并推送到远程仓库 [ZN4819/FuLuA](https://github.com/ZN4819/FuLuA)。
+- 阶段提交前应运行该阶段相关测试或完成手动验收。
+- 如果测试无法运行，应在阶段总结中说明原因和风险。
+- 提交信息建议包含里程碑编号，例如 `M1: 完成项目骨架`。
+- 推送后确认远程仓库中能看到对应提交。
+
+## 2. 目录结构
+
+建议项目结构：
+
+```text
+F:\Codex\FLA
+├─ 附录A编写.docx
+├─ 附录A编写工具开发方案.md
+├─ 附录A编写工具实施计划.md
+├─ AGENTS.md
+├─ frontend/
+├─ backend/
+├─ templates/
+│  └─ appendix_a/
+│     ├─ template_profile.json
+│     └─ README.md
+├─ storage/
+│  ├─ projects/
+│  ├─ uploads/
+│  ├─ exports/
+│  └─ previews/
+└─ tests/
+```
+
+`storage/` 用于运行时文件，后续可加入 `.gitignore`。原始 `附录A编写.docx` 不移动、不覆盖。
+
+## 3. 阶段一：项目骨架
+
+### 3.1 后端初始化
+
+任务：
+
+- 创建 `backend/`。
+- 初始化 FastAPI 应用。
+- 配置 SQLite。
+- 定义基础配置文件。
+- 增加健康检查接口。
+
+建议文件：
+
+```text
+backend/app/main.py
+backend/app/config.py
+backend/app/database.py
+backend/app/models.py
+backend/app/schemas.py
+backend/app/api/
+backend/app/services/
+backend/requirements.txt
+```
+
+基础接口：
+
+```text
+GET /api/health
+POST /api/projects
+GET /api/projects/{project_id}
+PUT /api/projects/{project_id}
+```
+
+验收标准：
+
+- 后端可启动。
+- 健康检查返回正常。
+- 可以创建项目并保存到 SQLite。
+
+### 3.2 前端初始化
+
+任务：
+
+- 创建 `frontend/`。
+- 初始化 `React + TypeScript + Vite`。
+- 配置 API client。
+- 建立基本布局。
+
+建议页面结构：
+
+```text
+frontend/src/App.tsx
+frontend/src/api/client.ts
+frontend/src/pages/ProjectPage.tsx
+frontend/src/components/Layout.tsx
+frontend/src/components/SectionNav.tsx
+```
+
+验收标准：
+
+- 前端可启动。
+- 能显示项目页面。
+- 能调用后端健康检查。
+- 能创建并打开项目。
+
+## 4. 阶段二：模板 Profile
+
+### 4.1 创建 profile
+
+任务：
+
+- 创建 `templates/appendix_a/template_profile.json`。
+- 固化页面设置、章节、表格 schema、列宽、字体、下拉选项、图片规则。
+
+必须包含：
+
+- A4 横向页面设置。
+- A-1 至 A-8 章节定义。
+- 技术测评表 schema。
+- 管理测评表 schema。
+- 技术指标下拉选项。
+- 管理符合情况下拉选项。
+- 图号和表号前缀。
+- 图片最大宽度和 DPI 阈值。
+
+验收标准：
+
+- 后端可读取 profile。
+- 单元测试确认 8 个章节和 2 类表格 schema 存在。
+
+### 4.2 样本文档分析器
+
+任务：
+
+- 实现一个只读分析脚本，用于回归检查样本文档结构。
+- 分析对象包括表格、字段、书签、图片、内容控件、分节、页面设置。
+
+建议文件：
+
+```text
+backend/app/services/docx_analyzer.py
+tests/test_sample_docx_analysis.py
+```
+
+样本文档基准指标：
+
+- 8 个分节。
+- 8 张核心表。
+- 307 个下拉内容控件。
+- 292 个 REF 字段。
+- 179 个 SEQ 字段。
+- 196 个图片对象。
+
+验收标准：
+
+- 测试可以读取原始样本文档。
+- 分析结果与基准指标一致或在可解释范围内。
+
+## 5. 阶段三：结构化数据模型
+
+### 5.1 数据库模型
+
+实现实体：
+
+- `Project`
+- `AppendixSection`
+- `AssessmentRow`
+- `MetricResult`
+- `EvidenceImage`
+- `CrossReference`
+- `RenderJob`
+- `ValidationIssue`
+
+任务：
+
+- 建表。
+- 提供 CRUD service。
+- 项目创建时自动初始化 A-1 至 A-8 章节。
+
+验收标准：
+
+- 新建项目后自动生成 8 个章节。
+- 每个章节包含默认标题和表题。
+- 数据可保存、读取、更新。
+
+### 5.2 章节 API
+
+实现接口：
+
+```text
+GET /api/projects/{project_id}/sections/{code}
+PUT /api/projects/{project_id}/sections/{code}
+```
+
+请求和响应应包含：
+
+- 章节信息。
+- 测评行列表。
+- 每行评分或符合情况。
+- 该章节图片列表。
+- 引用关系列表。
+
+验收标准：
+
+- 前端可读取某一章节。
+- 前端修改表格内容后可保存。
+
+## 6. 阶段四：前端结构化编辑
+
+### 6.1 章节导航
+
+任务：
+
+- 左侧展示 A-1 至 A-8。
+- 显示章节标题。
+- 显示校验状态摘要。
+
+验收标准：
+
+- 点击章节可切换。
+- 未保存内容不丢失。
+
+### 6.2 测评表编辑器
+
+组件建议：
+
+```text
+AssessmentTable.tsx
+TechnicalAssessmentTable.tsx
+ManagementAssessmentTable.tsx
+AssessmentRowEditor.tsx
+MetricSelect.tsx
+ScoreInput.tsx
+```
+
+技术测评行字段：
+
+- 测评单元
+- 测评对象
+- 结果记录
+- D
+- A
+- K
+- 对象评分
+- 单元得分
+
+管理测评行字段：
+
+- 测评单元
+- 测评对象
+- 结果记录
+- 符合情况
+- 单元得分
+
+验收标准：
+
+- A-1 至 A-4 显示技术测评表。
+- A-5 至 A-8 显示管理测评表。
+- 下拉选项与 profile 一致。
+- 文本和评分保存后可恢复。
+
+### 6.3 引用 token 编辑
+
+任务：
+
+- 结果记录文本支持插入图片引用。
+- 内部保存 `[[FIG:imageId]]`。
+- UI 显示为当前计算出的 `图A-x-y`。
+
+验收标准：
+
+- 插入引用后保存。
+- 图片排序变化后显示编号自动变化。
+- 删除图片后引用检查显示断链问题。
+
+## 7. 阶段五：图片管理
+
+### 7.1 上传与元数据
+
+接口：
+
+```text
+POST /api/projects/{project_id}/evidence
+PUT /api/evidence/{image_id}
+DELETE /api/evidence/{image_id}
+```
+
+上传后读取：
+
+- 文件名。
+- MIME 类型。
+- 像素宽高。
+- DPI。
+- 建议显示宽高。
+
+验收标准：
+
+- 可上传 PNG/JPEG。
+- 可显示缩略图。
+- 可保存题注和 alt 文本。
+
+### 7.2 排序与编号
+
+任务：
+
+- 同一章节内图片可拖拽排序。
+- 排序决定图号。
+- 图号预览规则为 `图A-章节号-序号`。
+
+验收标准：
+
+- A-3 第 4 张图片显示为 `图A-3-4`。
+- 排序后正文引用同步更新显示。
+
+### 7.3 图片质量校验
+
+规则：
+
+- 宽度超过 9.69 in 时自动缩放并提示。
+- DPI 低于 120 时提示警告。
+- 缺少 alt 文本时提示。
+
+验收标准：
+
+- 上传低 DPI 图片时能看到警告。
+- 导出时不会生成超出页面可用宽度的图片。
+
+## 8. 阶段六：DOCX 生成器
+
+### 8.1 生成器结构
+
+建议文件：
+
+```text
+backend/app/services/docx_generator/
+├─ generator.py
+├─ profile.py
+├─ tables.py
+├─ fields.py
+├─ images.py
+├─ content_controls.py
+├─ styles.py
+└─ validator.py
+```
+
+职责划分：
+
+- `profile.py`：读取模板 profile。
+- `tables.py`：生成两类测评表。
+- `fields.py`：生成 `SEQ`、`REF`、书签和字段显示文本。
+- `images.py`：插入图片和题注。
+- `content_controls.py`：生成下拉内容控件。
+- `styles.py`：应用字体、边框、底纹、段落格式。
+- `generator.py`：编排完整导出流程。
+
+### 8.2 可编辑版导出
+
+要求：
+
+- 生成真实 Word 下拉内容控件。
+- 每个控件有稳定 tag。
+- 保留字段和书签。
+- 保留可编辑表格。
+
+验收标准：
+
+- Word 打开后可修改下拉。
+- 重新解析 DOCX 能读取控件 tag。
+
+### 8.3 最终版导出
+
+要求：
+
+- 下拉控件扁平化为普通文本。
+- 字段显示文本固定。
+- 文档更适合提交和归档。
+
+验收标准：
+
+- Word 打开后不需要用户更新字段即可看到图号和引用。
+- 文档结构校验无错误。
+
+### 8.4 表格生成验收
+
+必须检查：
+
+- 8 张表均存在。
+- 每张表列数与 schema 一致。
+- `tblGrid` 与单元格宽度一致。
+- 无固定行高。
+- 合并单元格正确。
+- 表头底纹和边框存在。
+
+## 9. 阶段七：校验服务
+
+接口：
+
+```text
+POST /api/projects/{project_id}/validate
+```
+
+校验内容：
+
+- 必填字段缺失。
+- 非法下拉值。
+- 评分为空或格式错误。
+- 引用 token 断链。
+- 未使用图片。
+- 图片低 DPI。
+- 图片缺 alt。
+- 导出 DOCX 字段目标缺失。
+
+返回格式建议：
+
+```json
+{
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "LOW_IMAGE_DPI",
+      "message": "图片 DPI 低于 120",
+      "targetType": "image",
+      "targetId": "..."
+    }
+  ]
+}
+```
+
+验收标准：
+
+- 前端能展示错误、警告、提示。
+- 错误可定位到章节、测评行或图片。
+
+## 10. 阶段八：异步预览
+
+### 10.1 任务接口
+
+```text
+POST /api/projects/{project_id}/render-jobs
+GET /api/render-jobs/{job_id}
+```
+
+任务状态：
+
+- `queued`
+- `running`
+- `succeeded`
+- `failed`
+- `timeout`
+
+### 10.2 Word 导出策略
+
+Windows 环境：
+
+- 使用 Microsoft Word 自动化打开临时 DOCX。
+- 导出 PDF。
+- 读取页数。
+- 保存日志。
+- 设置超时时间，避免大文档卡死。
+
+LibreOffice 环境：
+
+- 使用 headless 模式导出 PDF。
+- 如导出失败，返回错误日志。
+
+验收标准：
+
+- 小型测试文档可成功生成 PDF 预览。
+- 大文档超时时不影响 DOCX 导出。
+- 前端清楚显示预览失败原因。
+
+## 11. 阶段九：测试与回归
+
+### 11.1 单元测试
+
+测试项：
+
+- profile 读取。
+- 章节初始化。
+- 图号计算。
+- 引用 token 解析。
+- 表格 schema 生成。
+- 下拉控件 XML 生成。
+- 图片宽度和 DPI 校验。
+- REF 目标校验。
+
+### 11.2 集成测试
+
+测试流程：
+
+1. 创建项目。
+2. 填写 A-1 技术测评行。
+3. 填写 A-5 管理测评行。
+4. 上传两张图片。
+5. 插入图片引用。
+6. 导出 editable DOCX。
+7. 导出 final DOCX。
+8. 重新解析 DOCX。
+9. 确认表格、字段、书签、图片和控件正确。
+
+### 11.3 样本文档回归
+
+对原始样本文档只读分析：
+
+- 分节数量。
+- 核心表数量。
+- 下拉控件数量。
+- REF 和 SEQ 数量。
+- 图片对象数量。
+- 表格固定布局特征。
+
+验收标准：
+
+- 回归测试稳定。
+- 生成文档结构与 profile 预期一致。
+
+## 12. 里程碑
+
+### M1：可运行骨架
+
+交付：
+
+- 前后端可启动。
+- 项目可创建和保存。
+- A-1 至 A-8 可导航。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+完成记录（2026-06-17）：
+
+- 已创建后端 FastAPI 应用骨架。
+- 已实现 SQLite 数据库初始化。
+- 已实现项目创建、读取、更新接口。
+- 新项目会自动初始化 A-1 至 A-8 章节。
+- 已创建前端 React/Vite 应用骨架。
+- 已实现项目创建页和 A-1 至 A-8 章节导航。
+- 已新增 README.md，记录本地运行方式和阶段提交要求。
+
+### M2：结构化编辑
+
+交付：
+
+- 两类测评表编辑器。
+- 下拉和评分录入。
+- 自动保存。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+### M3：图片与引用
+
+交付：
+
+- 图片上传、排序、题注。
+- 引用 token 插入。
+- 图号预览。
+- 引用检查。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+### M4：DOCX 导出
+
+交付：
+
+- 可编辑版 DOCX。
+- 最终版 DOCX。
+- 表格、字段、图片、书签和控件完整。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+### M5：预览与校验
+
+交付：
+
+- 校验服务。
+- 异步预览任务。
+- 预览失败日志。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+### M6：测试与打包
+
+交付：
+
+- 单元测试和集成测试。
+- 样本文档回归测试。
+- 本地运行说明。
+- 完成阶段提交并推送到 `ZN4819/FuLuA`。
+
+## 13. 开发验收清单
+
+功能验收：
+
+- 用户能从零创建一个附录A项目。
+- 用户能填写 A-1 至 A-8。
+- 用户能上传证据图片并插入引用。
+- 系统能自动生成图号和表号。
+- 系统能导出 editable/final 两类 DOCX。
+- 系统能报告引用、图片和字段问题。
+
+文档验收：
+
+- DOCX 为横向 A4。
+- 8 张核心表存在。
+- 技术表和管理表列结构正确。
+- 图片不超出页面可用宽度。
+- 图题和正文引用一致。
+- REF 字段目标完整。
+- 下拉选项符合规则。
+
+质量验收：
+
+- 后端测试通过。
+- 前端主要流程可手动验证。
+- 原始样本文档未被修改。
+
+## 14. 后续扩展方向
+
+可在第一版稳定后扩展：
+
+- 导入现有项目 DOCX 并映射为结构化数据。
+- 多模板 profile 管理。
+- 批量图片 OCR 或图片自动命名。
+- 评分公式自动计算。
+- 与报告正文联动生成交叉引用。
+- 多用户协作和审批流程。

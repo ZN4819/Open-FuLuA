@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Local runtime data
+storage/*
+!storage/.gitkeep
+backend/data/
+
+# Source sample document stays local/read-only unless explicitly requested
+附录A编写.docx
+
+# Generated previews and exports
+*.pdf
+*.png.tmp
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
