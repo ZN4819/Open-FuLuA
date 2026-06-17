@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createProject,
+  exportProjectDocx,
   getSectionDetail,
   getTemplateProfile,
   updateSectionDetail,
@@ -44,6 +45,7 @@ export function ProjectPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingSection, setIsLoadingSection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
   const [saveMessage, setSaveMessage] = useState<string>();
 
   const activeSection = useMemo(
@@ -144,6 +146,27 @@ export function ProjectPage() {
     });
   }
 
+  async function handleExport(mode: "editable" | "final") {
+    if (!project) {
+      return;
+    }
+    if (dirtySections.size > 0) {
+      setError("当前还有未保存的章节，请先保存后再导出。");
+      return;
+    }
+
+    setIsExporting(mode);
+    setError(undefined);
+    try {
+      const fileName = await exportProjectDocx(project.id, mode);
+      setSaveMessage(`已生成 ${fileName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导出 DOCX 失败");
+    } finally {
+      setIsExporting(null);
+    }
+  }
+
   return (
     <Layout
       title="附录A编写工具"
@@ -180,8 +203,20 @@ export function ProjectPage() {
         </section>
       ) : (
         <section className="panel wide-panel">
-          <p className="eyebrow">当前项目</p>
-          <h2>{project.name}</h2>
+          <div className="project-header">
+            <div>
+              <p className="eyebrow">当前项目</p>
+              <h2>{project.name}</h2>
+            </div>
+            <div className="export-actions">
+              <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
+                {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
+              </button>
+              <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null}>
+                {isExporting === "final" ? "生成中..." : "导出最终版"}
+              </button>
+            </div>
+          </div>
           {activeSection ? (
             <div className="section-summary">
               <span className="section-code">{activeSection.code}</span>

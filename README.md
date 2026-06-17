@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 5：图片管理和真实图片引用 token。
+当前已完成阶段 6：DOCX 生成器。
 
 已包含：
 
@@ -31,6 +31,13 @@
 - 按章节顺序生成 `图A-x-y` 图号预览。
 - 结果记录可插入真实图片 ID 的 `[[FIG:imageId]]` 引用 token。
 - 低 DPI、缺少 alt 文本等图片质量提示。
+- 可导出可编辑版 DOCX。
+- 可导出最终版 DOCX。
+- 导出 DOCX 包含 8 个横向 A4 分节和 8 张核心测评表。
+- 可编辑版 DOCX 为 D/A/K 和符合情况生成 Word 下拉内容控件。
+- 最终版 DOCX 将下拉控件扁平化为普通文本。
+- 导出时生成表号、图号、`SEQ` 字段、`REF` 字段和书签。
+- 导出后会重新解析 DOCX，检查分节、表格和 REF 目标完整性。
 
 ## 模板 Profile
 
@@ -110,6 +117,15 @@ PUT    http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}/evidence-
 
 上传图片会存入 `storage/uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。
 
+DOCX 导出接口：
+
+```text
+POST http://127.0.0.1:8000/api/projects/{project_id}/exports/docx?mode=editable
+POST http://127.0.0.1:8000/api/projects/{project_id}/exports/docx?mode=final
+```
+
+导出文件会生成到 `storage/exports/`，接口会直接返回可下载的 DOCX。
+
 ## 前端运行
 
 ```powershell
@@ -163,7 +179,14 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 - 章节详情 API 契约。
 - 图片尺寸、DPI、alt 文本提示和图号生成。
 - 图片排序保存。
+- DOCX 生成器结构测试：8 分节、8 表、下拉内容控件、SEQ/REF 字段、书签、图片和表格 `tblGrid`。
+- 可编辑版与最终版导出差异测试。
 - 前端结构化编辑器通过 TypeScript 构建检查。
+
+视觉渲染说明：
+
+- DOCX 视觉渲染需要本机安装 Microsoft Word 或 LibreOffice。
+- 当前自动化测试会先做结构级回归；安装 LibreOffice 后可继续接入 PDF/PNG 预览验证。
 
 构建前端：
 

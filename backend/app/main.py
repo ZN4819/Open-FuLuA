@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .api.evidence import router as evidence_router
+from .api.exports import router as exports_router
 from .api.projects import router as projects_router
 from .api.sections import router as sections_router
 from .api.templates import router as templates_router
@@ -39,5 +40,6 @@ def health() -> HealthResponse:
 app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)
 app.include_router(evidence_router, prefix=settings.api_prefix)
+app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(templates_router, prefix=settings.api_prefix)
 app.mount(f"{settings.api_prefix}/files", StaticFiles(directory=settings.storage_path), name="files")

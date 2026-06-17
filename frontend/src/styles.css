@@ -129,6 +129,35 @@ input {
   max-width: 1400px;
 }
 
+.project-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.export-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #2a6f89;
+  border: 1px solid #2a6f89;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.export-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .project-form {
   display: grid;
   gap: 10px;
@@ -486,5 +515,14 @@ input {
   .editor-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .project-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .export-actions {
+    justify-content: flex-start;
   }
 }

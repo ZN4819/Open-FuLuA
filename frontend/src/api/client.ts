@@ -241,3 +241,39 @@ export function reorderEvidenceImages(
     body: JSON.stringify({ image_ids: imageIds })
   });
 }
+
+export async function exportProjectDocx(projectId: number, mode: "editable" | "final"): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/exports/docx?mode=${mode}`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `导出失败：${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const fileName = _fileNameFromDisposition(response.headers.get("content-disposition")) ??
+    `appendix_a_project_${projectId}_${mode}.docx`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return fileName;
+}
+
+function _fileNameFromDisposition(disposition: string | null): string | null {
+  if (!disposition) {
+    return null;
+  }
+  const utf8Match = disposition.match(/filename\*=utf-8''([^;]+)/i);
+  if (utf8Match) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+  const asciiMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return asciiMatch?.[1] ?? null;
+}

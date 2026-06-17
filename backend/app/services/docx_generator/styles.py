@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+from typing import Any
+
+from docx.enum.section import WD_ORIENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.section import Section
+from docx.shared import Cm, Inches, Pt
+from docx.table import _Cell, Table
+from docx.text.paragraph import Paragraph
+from docx.text.run import Run
+
+
+def configure_section(section: Section, profile: dict[str, Any]) -> None:
+    page = profile["page"]
+    margins = page["margin_cm"]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width = Inches(float(page["width_in"]))
+    section.page_height = Inches(float(page["height_in"]))
+    section.top_margin = Cm(float(margins["top"]))
+    section.right_margin = Cm(float(margins["right"]))
+    section.bottom_margin = Cm(float(margins["bottom"]))
+    section.left_margin = Cm(float(margins["left"]))
+    section.header_distance = Cm(float(margins["header"]))
+    section.footer_distance = Cm(float(margins["footer"]))
+
+
+def apply_run_font(run: Run, profile: dict[str, Any], role: str = "body", bold: bool | None = None) -> None:
+    token = profile["typography"][role]
+    font = run.font
+    font.name = token.get("ascii_font", "Times New Roman")
+    font.size = Pt(float(token["size_pt"]))
+    if bold is not None:
+        font.bold = bold
+    elif "bold" in token:
+        font.bold = bool(token["bold"])
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), token.get("east_asia_font", "宋体"))
+
+
+def set_paragraph_format(paragraph: Paragraph, profile: dict[str, Any], role: str = "body") -> None:
+    token = profile["typography"][role]
+    alignment = token.get("alignment")
+    if alignment == "center":
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    elif alignment == "right":
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    else:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    paragraph_format = paragraph.paragraph_format
+    paragraph_format.space_after = Pt(float(token.get("spacing_after_twips", 0)) / 20)
+    if token.get("line_twips"):
+        paragraph_format.line_spacing = float(token["line_twips"]) / 240
+
+
+def set_paragraph_text(
+    paragraph: Paragraph,
+    text: str,
+    profile: dict[str, Any],
+    role: str = "body",
+    bold: bool | None = None,
+) -> None:
+    paragraph.clear()
+    set_paragraph_format(paragraph, profile, role)
+    lines = (text or "").splitlines() or [""]
+    for index, line in enumerate(lines):
+        if index:
+            paragraph.add_run().add_break()
+        run = paragraph.add_run(line)
+        apply_run_font(run, profile, role, bold)
+
+
+def set_cell_text(
+    cell: _Cell,
+    text: str,
+    profile: dict[str, Any],
+    role: str = "body",
+    alignment: str = "left",
+    bold: bool | None = None,
+) -> None:
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    set_paragraph_text(paragraph, text, profile, role, bold)
+    if alignment == "center":
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    elif alignment == "right":
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    else:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    set_cell_margins(cell)
+
+
+def set_cell_margins(cell: _Cell, margin_twips: int = 80) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_mar = tc_pr.first_child_found_in("w:tcMar")
+    if tc_mar is None:
+        tc_mar = OxmlElement("w:tcMar")
+        tc_pr.append(tc_mar)
+    for side in ("top", "left", "bottom", "right"):
+        node = tc_mar.find(qn(f"w:{side}"))
+        if node is None:
+            node = OxmlElement(f"w:{side}")
+            tc_mar.append(node)
+        node.set(qn("w:w"), str(margin_twips))
+        node.set(qn("w:type"), "dxa")
+
+
+def set_cell_width(cell: _Cell, width_dxa: int) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_w = tc_pr.first_child_found_in("w:tcW")
+    if tc_w is None:
+        tc_w = OxmlElement("w:tcW")
+        tc_pr.append(tc_w)
+    tc_w.set(qn("w:w"), str(width_dxa))
+    tc_w.set(qn("w:type"), "dxa")
+
+
+def shade_cell(cell: _Cell, fill: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = tc_pr.first_child_found_in("w:shd")
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        tc_pr.append(shd)
+    shd.set(qn("w:fill"), fill)
+
+
+def configure_table_geometry(table: Table, column_widths_in: list[float], profile: dict[str, Any]) -> None:
+    table.autofit = False
+    total_width = sum(_inches_to_dxa(width) for width in column_widths_in)
+    tbl = table._tbl
+    tbl_pr = tbl.tblPr
+
+    tbl_w = tbl_pr.first_child_found_in("w:tblW")
+    if tbl_w is None:
+        tbl_w = OxmlElement("w:tblW")
+        tbl_pr.append(tbl_w)
+    tbl_w.set(qn("w:w"), str(total_width))
+    tbl_w.set(qn("w:type"), "dxa")
+
+    tbl_layout = tbl_pr.first_child_found_in("w:tblLayout")
+    if tbl_layout is None:
+        tbl_layout = OxmlElement("w:tblLayout")
+        tbl_pr.append(tbl_layout)
+    tbl_layout.set(qn("w:type"), "fixed")
+
+    set_table_borders(table, profile["colors"]["border"])
+
+    for old_grid in tbl.findall(qn("w:tblGrid")):
+        tbl.remove(old_grid)
+    tbl_grid = OxmlElement("w:tblGrid")
+    for width in column_widths_in:
+        grid_col = OxmlElement("w:gridCol")
+        grid_col.set(qn("w:w"), str(_inches_to_dxa(width)))
+        tbl_grid.append(grid_col)
+    tbl.insert(1, tbl_grid)
+
+    for row in table.rows:
+        for index, cell in enumerate(row.cells):
+            if index < len(column_widths_in):
+                width_dxa = _inches_to_dxa(column_widths_in[index])
+                cell.width = Inches(column_widths_in[index])
+                set_cell_width(cell, width_dxa)
+
+
+def set_table_borders(table: Table, color: str) -> None:
+    tbl_pr = table._tbl.tblPr
+    borders = tbl_pr.first_child_found_in("w:tblBorders")
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        tbl_pr.append(borders)
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        node = borders.find(qn(f"w:{side}"))
+        if node is None:
+            node = OxmlElement(f"w:{side}")
+            borders.append(node)
+        node.set(qn("w:val"), "single")
+        node.set(qn("w:sz"), "4")
+        node.set(qn("w:space"), "0")
+        node.set(qn("w:color"), color)
+
+
+def _inches_to_dxa(width: float) -> int:
+    return int(round(float(width) * 1440))

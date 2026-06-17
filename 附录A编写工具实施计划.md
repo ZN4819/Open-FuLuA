@@ -434,6 +434,14 @@ backend/app/services/docx_generator/
 - `styles.py`：应用字体、边框、底纹、段落格式。
 - `generator.py`：编排完整导出流程。
 
+完成记录（2026-06-17）：
+
+- 已新增 `backend/app/services/docx_generator/` 生成器包。
+- 已拆分实现 `generator.py`、`tables.py`、`fields.py`、`images.py`、`content_controls.py` 和 `styles.py`。
+- 已新增 `POST /api/projects/{project_id}/exports/docx?mode=editable|final` 导出接口。
+- 前端项目页已新增“导出可编辑版”和“导出最终版”按钮。
+- 生成文件保存到 `storage/exports/`，原始样本文档不参与写入。
+
 ### 8.2 可编辑版导出
 
 要求：
@@ -448,6 +456,13 @@ backend/app/services/docx_generator/
 - Word 打开后可修改下拉。
 - 重新解析 DOCX 能读取控件 tag。
 
+完成记录（2026-06-17）：
+
+- 可编辑版 DOCX 已为技术测评 D/A/K 生成真实 Word 下拉内容控件。
+- 可编辑版 DOCX 已为管理测评符合情况生成真实 Word 下拉内容控件。
+- 每个控件包含稳定 tag，例如 `A1.row1.D`、`A5.row1.compliance`。
+- 重新解析生成 DOCX 可统计到下拉内容控件。
+
 ### 8.3 最终版导出
 
 要求：
@@ -461,6 +476,13 @@ backend/app/services/docx_generator/
 - Word 打开后不需要用户更新字段即可看到图号和引用。
 - 文档结构校验无错误。
 
+完成记录（2026-06-17）：
+
+- 最终版 DOCX 已将下拉控件扁平化为普通文本。
+- 表号、图号和正文引用已写入字段缓存文本，打开后可直接看到当前编号。
+- 导出后自动使用 DOCX 分析器检查 8 分节、8 表和 REF 目标完整性。
+- 当前机器未安装 LibreOffice/soffice，视觉渲染 PNG QA 未完成；已完成结构级导出回归。
+
 ### 8.4 表格生成验收
 
 必须检查：
@@ -471,6 +493,14 @@ backend/app/services/docx_generator/
 - 无固定行高。
 - 合并单元格正确。
 - 表头底纹和边框存在。
+
+完成记录（2026-06-17）：
+
+- 生成器已按 profile 列宽写入 `tblGrid` 和单元格 `tcW`。
+- 生成器未设置固定行高，允许长文本自动换行和行高增长。
+- 同一测评单元连续行会合并首列单元格。
+- 表头已应用底纹，表格已应用边框。
+- 已新增 `tests/test_docx_generator.py`，覆盖 editable/final 两类导出和表格 `tblGrid` 检查。
 
 ## 9. 阶段七：校验服务
 
