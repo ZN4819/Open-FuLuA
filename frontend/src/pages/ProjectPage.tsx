@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createRenderJob,
   createProject,
+  deleteProject,
   exportProjectDocx,
   getProject,
   getRenderJob,
@@ -58,6 +59,7 @@ export function ProjectPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [openingProjectId, setOpeningProjectId] = useState<number | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null);
   const [isLoadingSection, setIsLoadingSection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
@@ -154,6 +156,25 @@ export function ProjectPage() {
       setError(err instanceof Error ? err.message : "打开项目失败");
     } finally {
       setOpeningProjectId(null);
+    }
+  }
+
+  async function handleDeleteProject(projectToDelete: Project) {
+    const confirmed = window.confirm(`确定删除“${projectToDelete.name}”吗？删除后无法从项目列表恢复。`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingProjectId(projectToDelete.id);
+    setError(undefined);
+    try {
+      await deleteProject(projectToDelete.id);
+      setProjects((current) => current.filter((item) => item.id !== projectToDelete.id));
+      setSaveMessage(`已删除 ${projectToDelete.name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除项目失败");
+    } finally {
+      setDeletingProjectId(null);
     }
   }
 
@@ -352,13 +373,23 @@ export function ProjectPage() {
                       <strong>{savedProject.name}</strong>
                       <span>最近更新：{formatDate(savedProject.updated_at)}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenProject(savedProject.id)}
-                      disabled={openingProjectId === savedProject.id}
-                    >
-                      {openingProjectId === savedProject.id ? "打开中..." : "打开"}
-                    </button>
+                    <div className="project-list-actions">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenProject(savedProject.id)}
+                        disabled={openingProjectId === savedProject.id || deletingProjectId === savedProject.id}
+                      >
+                        {openingProjectId === savedProject.id ? "打开中..." : "打开"}
+                      </button>
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={() => handleDeleteProject(savedProject)}
+                        disabled={deletingProjectId === savedProject.id || openingProjectId === savedProject.id}
+                      >
+                        {deletingProjectId === savedProject.id ? "删除中..." : "删除"}
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>

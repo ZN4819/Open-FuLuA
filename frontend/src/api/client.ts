@@ -209,6 +209,12 @@ export function updateProject(projectId: number, name: string): Promise<Project>
   });
 }
 
+export function deleteProject(projectId: number): Promise<Project> {
+  return request<Project>(`/api/projects/${projectId}`, {
+    method: "DELETE"
+  });
+}
+
 export function getSectionDetail(projectId: number, code: string): Promise<SectionDetail> {
   return request<SectionDetail>(`/api/projects/${projectId}/sections/${code}`);
 }

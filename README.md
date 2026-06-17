@@ -12,7 +12,7 @@
 - SQLite 本地数据库初始化。
 - 项目创建、读取、更新接口。
 - 新项目自动初始化 A-1 至 A-8 章节。
-- 首页可列出并打开已有项目，浏览器刷新后可继续进入之前创建的项目。
+- 首页可列出、打开和删除已有项目，浏览器刷新后可继续进入之前创建的项目。
 - 前端 React/Vite 应用骨架。
 - 项目创建页面和章节导航。
 - 附录A模板 profile。
@@ -141,6 +141,7 @@ GET http://127.0.0.1:8000/api/projects
 POST http://127.0.0.1:8000/api/projects
 GET http://127.0.0.1:8000/api/projects/{project_id}
 PUT http://127.0.0.1:8000/api/projects/{project_id}
+DELETE http://127.0.0.1:8000/api/projects/{project_id}
 GET http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
 PUT http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
 ```
@@ -234,7 +235,7 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 - 结果记录模板库结构、章节覆盖和旧图号清理。
 - 样本文档结构回归。
 - 新项目 8 个章节初始化。
-- 已有项目列表与重新打开。
+- 已有项目列表、重新打开和删除。
 - 测评行、评分结果和交叉引用保存读取。
 - 章节详情 API 契约。
 - 图片尺寸、DPI、alt 文本提示和图号生成。

@@ -206,7 +206,7 @@ input {
 }
 
 .project-list-header button,
-.project-list-item button {
+.project-list-actions button {
   min-height: 34px;
   padding: 0 12px;
   color: #ffffff;
@@ -217,7 +217,7 @@ input {
 }
 
 .project-list-header button:disabled,
-.project-list-item button:disabled {
+.project-list-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -246,6 +246,19 @@ input {
 .project-list-item span {
   font-size: 13px;
   color: #60717a;
+}
+
+.project-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.project-list-actions .danger-button {
+  color: #9b2e25;
+  background: #fff7f6;
+  border-color: #e5b9b4;
 }
 
 .error {
@@ -734,6 +747,10 @@ input {
   .project-list-item {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .project-list-actions {
+    justify-content: flex-start;
   }
 
   .export-actions {

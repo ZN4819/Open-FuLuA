@@ -10,7 +10,9 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app import database  # noqa: E402
 from app.api.projects import list_projects as list_project_schemas  # noqa: E402
+from app.api.projects import delete_project as delete_project_schema  # noqa: E402
 from app.api.sections import build_section_detail  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.schemas import SectionUpdate  # noqa: E402
 
 
@@ -19,9 +21,12 @@ class StructuredDataTest(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         os.environ["FULUA_DATABASE_PATH"] = str(Path(self.temp_dir.name) / "test.db")
+        self.original_storage_path = settings.storage_path
+        object.__setattr__(settings, "storage_path", Path(self.temp_dir.name) / "storage")
         database.init_db()
 
     def tearDown(self) -> None:
+        object.__setattr__(settings, "storage_path", self.original_storage_path)
         os.environ.pop("FULUA_DATABASE_PATH", None)
 
     def test_new_project_has_eight_sections(self) -> None:
@@ -42,6 +47,24 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in projects], [second["id"], first["id"]])
         self.assertEqual([project.id for project in api_projects], [second["id"], first["id"]])
         self.assertEqual(len(api_projects[0].sections), 8)
+
+    def test_project_can_be_deleted_with_related_runtime_files(self) -> None:
+        project = database.create_project("待删除项目")
+        upload_dir = settings.storage_path / "uploads" / str(project["id"])
+        export_dir = settings.storage_path / "exports" / str(project["id"])
+        preview_dir = settings.storage_path / "previews" / str(project["id"])
+        for path in (upload_dir, export_dir, preview_dir):
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "sample.txt").write_text("runtime", encoding="utf-8")
+
+        deleted = delete_project_schema(project["id"])
+
+        self.assertEqual(deleted.id, project["id"])
+        self.assertIsNone(database.get_project_by_id(project["id"]))
+        self.assertEqual(database.list_sections(project["id"]), [])
+        self.assertFalse(upload_dir.exists())
+        self.assertFalse(export_dir.exists())
+        self.assertFalse(preview_dir.exists())
 
     def test_section_rows_and_metric_results_can_be_replaced(self) -> None:
         project = database.create_project("结构化数据测试")

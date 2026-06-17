@@ -240,6 +240,15 @@ def update_project(project_id: int, name: str) -> sqlite3.Row | None:
         return get_project_by_id(project_id, db)
 
 
+def delete_project(project_id: int) -> sqlite3.Row | None:
+    with connect() as db:
+        existing = get_project_by_id(project_id, db)
+        if existing is None:
+            return None
+        db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        return existing
+
+
 def list_sections(project_id: int) -> list[sqlite3.Row]:
     with connect() as db:
         return db.execute(

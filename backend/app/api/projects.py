@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from .. import database
 from ..schemas import ProjectCreate, ProjectRead, ProjectUpdate, SectionRead
+from ..services.projects import remove_project_runtime_files
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -53,3 +54,14 @@ def update_project(project_id: int, payload: ProjectUpdate) -> ProjectRead:
     if project is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     return project_to_schema(project)
+
+
+@router.delete("/{project_id}", response_model=ProjectRead)
+def delete_project(project_id: int) -> ProjectRead:
+    project = database.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    deleted = project_to_schema(project)
+    database.delete_project(project_id)
+    remove_project_runtime_files(project_id)
+    return deleted
