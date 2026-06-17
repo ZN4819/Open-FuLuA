@@ -239,15 +239,48 @@ a:hover {
 }
 
 .project-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-4);
   align-items: flex-start;
   justify-content: space-between;
 }
 
+.project-header-main {
+  min-width: 0;
+}
+
 .project-header h2 {
   font-size: 26px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.project-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 4px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .export-actions,
@@ -269,6 +302,7 @@ a:hover {
 }
 
 .export-actions button,
+.workspace-actions button,
 .project-form button,
 .project-list-header button,
 .project-list-actions button,
@@ -286,6 +320,7 @@ a:hover {
 }
 
 .export-actions button:not(:disabled):hover,
+.workspace-actions button:not(:disabled):hover,
 .project-form button:not(:disabled):hover,
 .project-list-header button:not(:disabled):hover,
 .project-list-actions button:not(:disabled):hover,
@@ -294,6 +329,18 @@ a:hover {
 .inline-action:not(:disabled):hover,
 .upload-panel button:not(:disabled):hover,
 .image-actions button:not(:disabled):hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.secondary-button {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-color: #a9cbd5;
+}
+
+.secondary-button:not(:disabled):hover {
+  color: var(--color-primary-text);
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
 }
@@ -505,7 +552,8 @@ a:hover {
 }
 
 .section-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-4);
   align-items: center;
   margin-top: var(--space-5);
@@ -515,10 +563,23 @@ a:hover {
   border-radius: var(--radius-md);
 }
 
+.section-summary-main {
+  min-width: 0;
+}
+
 .section-summary p {
   margin: var(--space-1) 0 0;
   color: var(--color-text-muted);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.section-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .section-code {
@@ -580,7 +641,8 @@ a:hover {
 .severity,
 .preview-summary span,
 .dirty-chip,
-.clean-chip {
+.clean-chip,
+.status-chip {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -695,6 +757,11 @@ a:hover {
 .clean-chip {
   color: var(--color-success);
   background: var(--color-success-soft);
+}
+
+.status-chip {
+  color: #43535b;
+  background: #eef2f4;
 }
 
 .empty-table {
@@ -959,6 +1026,14 @@ a:hover {
     grid-template-columns: 232px minmax(0, 1fr);
   }
 
+  .project-header {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-actions {
+    justify-content: flex-start;
+  }
+
   .content {
     padding: var(--space-5);
   }
@@ -1011,6 +1086,10 @@ a:hover {
   .project-header,
   .project-list-header {
     align-items: stretch;
+  }
+
+  .editor-toolbar,
+  .project-list-header {
     flex-direction: column;
   }
 
@@ -1021,11 +1100,26 @@ a:hover {
   .export-actions,
   .project-list-actions,
   .toolbar-actions,
-  .project-list-tools {
+  .project-list-tools,
+  .workspace-actions,
+  .section-summary-meta {
     justify-content: flex-start;
   }
 
   .section-summary {
     align-items: flex-start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .section-summary-meta {
+    grid-column: 1 / -1;
+  }
+
+  .action-group {
+    width: 100%;
+  }
+
+  .workspace-actions button {
+    flex: 1 1 auto;
   }
 }

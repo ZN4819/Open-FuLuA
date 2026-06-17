@@ -81,6 +81,8 @@ export function ProjectPage() {
     [activeCode, recordTemplates]
   );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
+  const dirtyCount = dirtySections.size;
+  const activeEvidenceCount = activeDetail?.evidence_images.length ?? 0;
 
   useEffect(() => {
     getTemplateProfile()
@@ -433,34 +435,51 @@ export function ProjectPage() {
       ) : (
         <section className="panel wide-panel">
           <div className="project-header">
-            <div>
+            <div className="project-header-main">
               <p className="eyebrow">当前项目</p>
               <h2>{project.name}</h2>
+              <div className="project-status-row">
+                <span className={dirtyCount > 0 ? "dirty-chip" : "clean-chip"}>
+                  {dirtyCount > 0 ? `${dirtyCount} 个章节未保存` : "全部已保存"}
+                </span>
+                {activeCode ? <span className="status-chip">正在编辑 {activeCode}</span> : null}
+              </div>
             </div>
-            <div className="export-actions">
-              <button type="button" onClick={handleValidate} disabled={isValidating}>
-                {isValidating ? "校验中..." : "校验项目"}
-              </button>
-              <button type="button" onClick={handleBackToProjects}>
-                返回项目列表
-              </button>
-              <button type="button" onClick={handleCreatePreview} disabled={isCreatingPreview}>
-                {isCreatingPreview ? "创建中..." : "生成预览"}
-              </button>
-              <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
-                {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
-              </button>
-              <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null}>
-                {isExporting === "final" ? "生成中..." : "导出最终版"}
-              </button>
+            <div className="workspace-actions" aria-label="项目操作">
+              <div className="action-group">
+                <button type="button" className="secondary-button" onClick={handleBackToProjects}>
+                  返回项目列表
+                </button>
+              </div>
+              <div className="action-group">
+                <button type="button" className="secondary-button" onClick={handleValidate} disabled={isValidating}>
+                  {isValidating ? "校验中..." : "校验项目"}
+                </button>
+                <button type="button" className="secondary-button" onClick={handleCreatePreview} disabled={isCreatingPreview}>
+                  {isCreatingPreview ? "创建中..." : "生成预览"}
+                </button>
+              </div>
+              <div className="action-group">
+                <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
+                  {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
+                </button>
+                <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null}>
+                  {isExporting === "final" ? "生成中..." : "导出最终版"}
+                </button>
+              </div>
             </div>
           </div>
           {activeSection ? (
             <div className="section-summary">
               <span className="section-code">{activeSection.code}</span>
-              <div>
+              <div className="section-summary-main">
                 <h3>{activeSection.title}</h3>
                 <p>{activeSection.table_title}</p>
+              </div>
+              <div className="section-summary-meta" aria-label="当前章节状态">
+                <span className={isDirty ? "dirty-chip" : "clean-chip"}>{isDirty ? "未保存" : "已保存"}</span>
+                <span className="status-chip">测评行 {activeRows.length}</span>
+                <span className="status-chip">证据 {activeEvidenceCount}</span>
               </div>
             </div>
           ) : null}
