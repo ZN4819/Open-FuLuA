@@ -12,10 +12,17 @@
 - 生成 DOCX 的 8 分节、8 表、内容控件、SEQ/REF 字段、书签、图片和表格 `tblGrid`。
 - 校验服务规则：必填字段、下拉值、评分格式、引用断链、图片质量、未引用图片和无错误路径。
 - 异步预览任务：任务状态更新、PDF 页数统计、输出链接和无渲染器失败记录。
+- 端到端工作流：创建项目、填写 A-1/A-5、图片引用、校验、DOCX 导出、重新解析和预览任务。
 
 运行方式：
 
 ```powershell
 $env:PYTHONPATH="F:\Codex\FLA\backend"
 .\backend\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+完整检查：
+
+```powershell
+.\scripts\run_checks.ps1
 ```

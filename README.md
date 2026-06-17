@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 8：异步预览任务。
+当前已完成阶段 9：测试、回归与本地打包说明。
 
 已包含：
 
@@ -49,6 +49,9 @@
 - 可使用 LibreOffice headless 或 Microsoft Word 自动化生成 PDF 预览。
 - 预览任务会记录 DOCX、PDF、页数、日志和失败原因。
 - 前端可展示预览任务状态、PDF 链接、DOCX 链接和日志链接。
+- 已补充端到端回归测试，覆盖创建项目、填写 A-1/A-5、插入图片引用、校验、导出和预览任务。
+- 已提供统一检查脚本 `scripts/run_checks.ps1`。
+- 已提供本地运行与打包说明 `docs/本地运行与打包说明.md`。
 
 ## 模板 Profile
 
@@ -223,4 +226,16 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 ```powershell
 cd frontend
 npm run build
+```
+
+一键运行完整检查：
+
+```powershell
+.\scripts\run_checks.ps1
+```
+
+本地运行、预览渲染器和交付清单见：
+
+```text
+docs/本地运行与打包说明.md
 ```
