@@ -10,6 +10,7 @@ from ..schemas import (
     SectionRead,
     SectionUpdate,
 )
+from .evidence import evidence_to_schema
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
 
@@ -44,27 +45,6 @@ def assessment_row_to_schema(row) -> AssessmentRowRead:
     )
 
 
-def evidence_image_to_schema(row) -> EvidenceImageRead:
-    return EvidenceImageRead(
-        id=row["id"],
-        project_id=row["project_id"],
-        section_code=row["section_code"],
-        file_path=row["file_path"],
-        original_name=row["original_name"],
-        caption=row["caption"],
-        alt_text=row["alt_text"],
-        sort_order=row["sort_order"],
-        pixel_width=row["pixel_width"],
-        pixel_height=row["pixel_height"],
-        dpi_x=row["dpi_x"],
-        dpi_y=row["dpi_y"],
-        display_width_in=row["display_width_in"],
-        display_height_in=row["display_height_in"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
-
-
 def cross_reference_to_schema(row) -> CrossReferenceRead:
     return CrossReferenceRead(
         id=row["id"],
@@ -82,8 +62,8 @@ def build_section_detail(project_id: int, code: str) -> SectionDetailRead:
 
     rows = [assessment_row_to_schema(row) for row in database.list_assessment_rows(section["id"])]
     evidence_images = [
-        evidence_image_to_schema(row)
-        for row in database.list_evidence_images(project_id, section["code"])
+        evidence_to_schema(row, index)
+        for index, row in enumerate(database.list_evidence_images(project_id, section["code"]), start=1)
     ]
     cross_references = [
         cross_reference_to_schema(row)

@@ -1,4 +1,4 @@
-import type { AssessmentRowInput, TemplateProfile } from "../api/client";
+import type { AssessmentRowInput, EvidenceImage, TemplateProfile } from "../api/client";
 
 type AssessmentTableProps = {
   sectionCode: string;
@@ -6,6 +6,7 @@ type AssessmentTableProps = {
   profile: TemplateProfile;
   isSaving: boolean;
   isDirty: boolean;
+  evidenceImages: EvidenceImage[];
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSave: () => void;
 };
@@ -49,6 +50,7 @@ export function AssessmentTable({
   profile,
   isSaving,
   isDirty,
+  evidenceImages,
   onRowsChange,
   onSave
 }: AssessmentTableProps) {
@@ -81,9 +83,14 @@ export function AssessmentTable({
     onRowsChange(normalizeRows(rows.filter((_, rowIndex) => rowIndex !== index)));
   }
 
-  function insertReferenceToken(index: number) {
-    const token = `[[FIG:pending-${Date.now()}]]`;
-    const displayText = `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? "图A-"}待关联`;
+  function insertReferenceToken(index: number, imageIdValue: string) {
+    const imageId = Number(imageIdValue);
+    const image = evidenceImages.find((item) => item.id === imageId);
+    if (!image) {
+      return;
+    }
+    const token = `[[FIG:${image.id}]]`;
+    const displayText = image.figure_label ?? `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? "图A-"}${image.sort_order}`;
     const row = rows[index];
     const recordText = row.record_text ? `${row.record_text}${token}` : token;
     updateRow(index, {
@@ -91,7 +98,7 @@ export function AssessmentTable({
       cross_references: [
         ...(row.cross_references ?? []),
         {
-          target_image_id: null,
+          target_image_id: image.id,
           token,
           display_text: displayText
         }
@@ -172,9 +179,18 @@ export function AssessmentTable({
                       onChange={(event) => updateRow(index, { record_text: event.target.value })}
                       rows={6}
                     />
-                    <button type="button" className="inline-action" onClick={() => insertReferenceToken(index)}>
-                      插入引用
-                    </button>
+                    <select
+                      className="reference-select"
+                      value=""
+                      onChange={(event) => insertReferenceToken(index, event.target.value)}
+                    >
+                      <option value="">插入图片引用</option>
+                      {evidenceImages.map((image) => (
+                        <option key={image.id} value={image.id}>
+                          {image.figure_label ?? `${sectionCode}-${image.sort_order}`} {image.caption || image.original_name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   {technical ? (
                     <>

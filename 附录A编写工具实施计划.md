@@ -358,6 +358,13 @@ DELETE /api/evidence/{image_id}
 - 可显示缩略图。
 - 可保存题注和 alt 文本。
 
+完成记录（2026-06-17）：
+
+- 已新增 `POST /api/projects/{project_id}/evidence`、`PUT /api/evidence/{image_id}`、`DELETE /api/evidence/{image_id}`。
+- 已使用 Pillow 读取图片像素、DPI 和建议显示尺寸。
+- 已将上传文件保存到 `storage/uploads/`，并通过 `/api/files/` 提供本地预览访问。
+- 前端已新增证据图片面板，支持 PNG/JPEG 上传、缩略图预览、题注编辑和 alt 文本编辑。
+
 ### 7.2 排序与编号
 
 任务：
@@ -371,6 +378,14 @@ DELETE /api/evidence/{image_id}
 - A-3 第 4 张图片显示为 `图A-3-4`。
 - 排序后正文引用同步更新显示。
 
+完成记录（2026-06-17）：
+
+- 已新增 `PUT /api/projects/{project_id}/sections/{section_code}/evidence-order`。
+- 同一章节图片支持拖拽排序，同时保留上移/下移按钮。
+- 后端按章节内顺序返回 `图A-x-y` 图号预览。
+- 结果记录插入引用时使用真实图片 ID 保存 `[[FIG:imageId]]`。
+- 已补充测试确认 `A-3` 第 4 张图片显示为 `图A-3-4`。
+
 ### 7.3 图片质量校验
 
 规则：
@@ -383,6 +398,13 @@ DELETE /api/evidence/{image_id}
 
 - 上传低 DPI 图片时能看到警告。
 - 导出时不会生成超出页面可用宽度的图片。
+
+完成记录（2026-06-17）：
+
+- 已按照模板 profile 的图片最大宽度计算建议显示尺寸，超宽图片会自动按比例收缩到可用宽度。
+- 已按照 DPI 阈值生成低清警告。
+- 已对缺少 alt 文本的图片生成提示。
+- 已新增图片元数据、DPI 和 alt 文本提示测试。
 
 ## 8. 阶段六：DOCX 生成器
 

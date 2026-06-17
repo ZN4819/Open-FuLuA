@@ -5,11 +5,13 @@ import {
   getTemplateProfile,
   updateSectionDetail,
   type AssessmentRowInput,
+  type EvidenceImage,
   type Project,
   type SectionDetail,
   type TemplateProfile
 } from "../api/client";
 import { AssessmentTable } from "../components/AssessmentTable";
+import { EvidencePanel } from "../components/EvidencePanel";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
 
@@ -126,6 +128,22 @@ export function ProjectPage() {
     }
   }
 
+  function handleImagesChange(code: string, images: EvidenceImage[]) {
+    setSectionDetails((current) => {
+      const detail = current[code];
+      if (!detail) {
+        return current;
+      }
+      return {
+        ...current,
+        [code]: {
+          ...detail,
+          evidence_images: images
+        }
+      };
+    });
+  }
+
   return (
     <Layout
       title="附录A编写工具"
@@ -186,8 +204,19 @@ export function ProjectPage() {
               profile={profile}
               isSaving={isSaving}
               isDirty={isDirty}
+              evidenceImages={activeDetail.evidence_images}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSave={handleSaveSection}
+            />
+          ) : null}
+
+          {project && activeCode && activeDetail ? (
+            <EvidencePanel
+              projectId={project.id}
+              sectionCode={activeCode}
+              images={activeDetail.evidence_images}
+              onImagesChange={(images) => handleImagesChange(activeCode, images)}
+              onError={setError}
             />
           ) : null}
         </section>

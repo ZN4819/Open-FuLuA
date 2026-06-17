@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 4：前端结构化编辑。
+当前已完成阶段 5：图片管理和真实图片引用 token。
 
 已包含：
 
@@ -24,6 +24,13 @@
 - A-5 至 A-8 管理测评表编辑器。
 - 结果记录引用 token 插入和保存。
 - 章节切换时保留未保存草稿，并在导航中显示未保存状态。
+- PNG/JPEG 证据图片上传、预览、删除。
+- 图片像素、DPI、建议显示宽高自动读取。
+- 图片题注和 alt 文本维护。
+- 同章节图片拖拽排序和上移/下移排序。
+- 按章节顺序生成 `图A-x-y` 图号预览。
+- 结果记录可插入真实图片 ID 的 `[[FIG:imageId]]` 引用 token。
+- 低 DPI、缺少 alt 文本等图片质量提示。
 
 ## 模板 Profile
 
@@ -92,6 +99,17 @@ PUT http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
 
 `PUT` 请求可一次性保存章节标题、表题、测评行、评分结果和引用 token。
 
+证据图片接口：
+
+```text
+POST   http://127.0.0.1:8000/api/projects/{project_id}/evidence
+PUT    http://127.0.0.1:8000/api/evidence/{image_id}
+DELETE http://127.0.0.1:8000/api/evidence/{image_id}
+PUT    http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}/evidence-order
+```
+
+上传图片会存入 `storage/uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。
+
 ## 前端运行
 
 ```powershell
@@ -143,6 +161,8 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 - 新项目 8 个章节初始化。
 - 测评行、评分结果和交叉引用保存读取。
 - 章节详情 API 契约。
+- 图片尺寸、DPI、alt 文本提示和图号生成。
+- 图片排序保存。
 - 前端结构化编辑器通过 TypeScript 构建检查。
 
 构建前端：

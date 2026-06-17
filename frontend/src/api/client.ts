@@ -62,6 +62,9 @@ export type EvidenceImage = {
   display_height_in?: number | null;
   created_at: string;
   updated_at: string;
+  file_url?: string | null;
+  figure_label?: string | null;
+  warnings: string[];
 };
 
 export type CrossReference = {
@@ -172,4 +175,69 @@ export function updateSectionDetail(
 
 export function getTemplateProfile(): Promise<TemplateProfile> {
   return request<TemplateProfile>("/api/template-profile");
+}
+
+export function resolveFileUrl(fileUrl?: string | null): string {
+  if (!fileUrl) {
+    return "";
+  }
+  if (fileUrl.startsWith("http")) {
+    return fileUrl;
+  }
+  return `${API_BASE_URL}${fileUrl}`;
+}
+
+export async function uploadEvidenceImage(
+  projectId: number,
+  payload: {
+    section_code: string;
+    file: File;
+    caption?: string;
+    alt_text?: string;
+  }
+): Promise<EvidenceImage> {
+  const form = new FormData();
+  form.append("section_code", payload.section_code);
+  form.append("caption", payload.caption ?? "");
+  form.append("alt_text", payload.alt_text ?? "");
+  form.append("file", payload.file);
+
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/evidence`, {
+    method: "POST",
+    body: form
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `上传失败：${response.status}`);
+  }
+
+  return response.json() as Promise<EvidenceImage>;
+}
+
+export function updateEvidenceImage(
+  imageId: number,
+  payload: Partial<Pick<EvidenceImage, "section_code" | "caption" | "alt_text" | "sort_order" | "display_width_in" | "display_height_in">>
+): Promise<EvidenceImage> {
+  return request<EvidenceImage>(`/api/evidence/${imageId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteEvidenceImage(imageId: number): Promise<EvidenceImage> {
+  return request<EvidenceImage>(`/api/evidence/${imageId}`, {
+    method: "DELETE"
+  });
+}
+
+export function reorderEvidenceImages(
+  projectId: number,
+  sectionCode: string,
+  imageIds: number[]
+): Promise<EvidenceImage[]> {
+  return request<EvidenceImage[]>(`/api/projects/${projectId}/sections/${sectionCode}/evidence-order`, {
+    method: "PUT",
+    body: JSON.stringify({ image_ids: imageIds })
+  });
 }

@@ -15,6 +15,7 @@ class Settings:
     app_name: str = "附录A编写工具"
     api_prefix: str = "/api"
     database_path: Path = default_database_path()
+    storage_path: Path = Path(__file__).resolve().parents[2] / "storage"
 
 
 settings = Settings()

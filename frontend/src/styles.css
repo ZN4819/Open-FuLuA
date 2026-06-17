@@ -348,9 +348,133 @@ input {
   margin-top: 8px;
 }
 
+.reference-select {
+  margin-top: 8px;
+}
+
+.evidence-panel {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid #d8e0e4;
+}
+
+.upload-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.upload-panel input {
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #b8c6cc;
+  border-radius: 6px;
+}
+
+.upload-panel button,
+.image-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #2a6f89;
+  border: 1px solid #2a6f89;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.upload-panel button:disabled,
+.image-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.evidence-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fbfcfd;
+  border: 1px solid #d8e0e4;
+  border-radius: 8px;
+  cursor: grab;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.evidence-card.dragging {
+  opacity: 0.58;
+  border-color: #2a6f89;
+  box-shadow: 0 0 0 2px rgba(42, 111, 137, 0.16);
+}
+
+.image-preview {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  overflow: hidden;
+  background: #eef3f5;
+  border-radius: 6px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.image-meta {
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+  color: #60717a;
+}
+
+.image-meta strong {
+  color: #172026;
+}
+
+.warning-list {
+  margin: 0;
+  padding: 8px 8px 8px 26px;
+  color: #7a4c00;
+  background: #fff7dd;
+  border-radius: 6px;
+}
+
+.evidence-card label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  color: #42545d;
+}
+
+.evidence-card textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #b8c6cc;
+  border-radius: 5px;
+  resize: vertical;
+}
+
+.image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 820px) {
   .workspace,
-  .placeholder-grid {
+  .placeholder-grid,
+  .upload-panel {
     grid-template-columns: 1fr;
   }
 

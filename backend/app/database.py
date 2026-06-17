@@ -299,6 +299,146 @@ def list_evidence_images(project_id: int, section_code: str, db: sqlite3.Connect
         return connection.execute(query, (project_id, section_code)).fetchall()
 
 
+def get_evidence_image(image_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = """
+        SELECT
+            id,
+            project_id,
+            section_code,
+            file_path,
+            original_name,
+            caption,
+            alt_text,
+            sort_order,
+            pixel_width,
+            pixel_height,
+            dpi_x,
+            dpi_y,
+            display_width_in,
+            display_height_in,
+            created_at,
+            updated_at
+        FROM evidence_images
+        WHERE id = ?
+    """
+    if db is not None:
+        return db.execute(query, (image_id,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (image_id,)).fetchone()
+
+
+def next_image_sort_order(project_id: int, section_code: str, db: sqlite3.Connection) -> int:
+    row = db.execute(
+        """
+        SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order
+        FROM evidence_images
+        WHERE project_id = ? AND section_code = ?
+        """,
+        (project_id, section_code),
+    ).fetchone()
+    return int(row["next_order"])
+
+
+def create_evidence_image(project_id: int, section_code: str, image: dict[str, Any]) -> sqlite3.Row:
+    timestamp = utc_now()
+    with connect() as db:
+        if get_section(project_id, section_code, db) is None:
+            raise ValueError("章节不存在")
+        sort_order = int(image.get("sort_order") or next_image_sort_order(project_id, section_code, db))
+        cursor = db.execute(
+            """
+            INSERT INTO evidence_images
+                (
+                    project_id,
+                    section_code,
+                    file_path,
+                    original_name,
+                    caption,
+                    alt_text,
+                    sort_order,
+                    pixel_width,
+                    pixel_height,
+                    dpi_x,
+                    dpi_y,
+                    display_width_in,
+                    display_height_in,
+                    created_at,
+                    updated_at
+                )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                section_code,
+                image["file_path"],
+                image.get("original_name", ""),
+                image.get("caption", ""),
+                image.get("alt_text", ""),
+                sort_order,
+                image.get("pixel_width"),
+                image.get("pixel_height"),
+                image.get("dpi_x"),
+                image.get("dpi_y"),
+                image.get("display_width_in"),
+                image.get("display_height_in"),
+                timestamp,
+                timestamp,
+            ),
+        )
+        return get_evidence_image(int(cursor.lastrowid), db)
+
+
+def update_evidence_image(image_id: int, fields: dict[str, Any]) -> sqlite3.Row | None:
+    allowed = {
+        "section_code",
+        "caption",
+        "alt_text",
+        "sort_order",
+        "display_width_in",
+        "display_height_in",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if not updates:
+        return get_evidence_image(image_id)
+
+    updates["updated_at"] = utc_now()
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = list(updates.values()) + [image_id]
+    with connect() as db:
+        existing = get_evidence_image(image_id, db)
+        if existing is None:
+            return None
+        db.execute(f"UPDATE evidence_images SET {assignments} WHERE id = ?", values)
+        return get_evidence_image(image_id, db)
+
+
+def delete_evidence_image(image_id: int) -> sqlite3.Row | None:
+    with connect() as db:
+        existing = get_evidence_image(image_id, db)
+        if existing is None:
+            return None
+        db.execute("DELETE FROM evidence_images WHERE id = ?", (image_id,))
+        return existing
+
+
+def reorder_evidence_images(project_id: int, section_code: str, image_ids: list[int]) -> list[sqlite3.Row]:
+    with connect() as db:
+        if get_section(project_id, section_code, db) is None:
+            raise ValueError("章节不存在")
+        existing_ids = {
+            int(row["id"])
+            for row in list_evidence_images(project_id, section_code, db)
+        }
+        if set(image_ids) != existing_ids:
+            raise ValueError("排序列表必须包含当前章节的全部图片。")
+        for index, image_id in enumerate(image_ids, start=1):
+            db.execute(
+                "UPDATE evidence_images SET sort_order = ?, updated_at = ? WHERE id = ?",
+                (index, utc_now(), image_id),
+            )
+        return list_evidence_images(project_id, section_code, db)
+
+
 def list_cross_references(section_id: int, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
     query = """
         SELECT

@@ -100,6 +100,22 @@ class EvidenceImageRead(BaseModel):
     display_height_in: float | None = None
     created_at: str
     updated_at: str
+    file_url: str | None = None
+    figure_label: str | None = None
+    warnings: list[str] = []
+
+
+class EvidenceImageUpdate(BaseModel):
+    section_code: str | None = Field(default=None, max_length=20)
+    caption: str | None = None
+    alt_text: str | None = None
+    sort_order: int | None = None
+    display_width_in: float | None = None
+    display_height_in: float | None = None
+
+
+class EvidenceOrderUpdate(BaseModel):
+    image_ids: list[int]
 
 
 class SectionDetailRead(BaseModel):
