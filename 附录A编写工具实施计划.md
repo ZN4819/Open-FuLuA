@@ -78,6 +78,7 @@ backend/requirements.txt
 
 ```text
 GET /api/health
+GET /api/projects
 POST /api/projects
 GET /api/projects/{project_id}
 PUT /api/projects/{project_id}
@@ -214,6 +215,7 @@ tests/test_sample_docx_analysis.py
 - 已新增 `assessment_rows`、`metric_results`、`evidence_images`、`cross_references`、`render_jobs`、`validation_issues` 数据表。
 - 已让数据库连接支持 `FULUA_DATABASE_PATH` 环境变量，便于测试使用临时 SQLite。
 - 已实现测评行、评分结果和交叉引用的替换式保存。
+- 已补充项目列表读取能力，前端可在刷新浏览器后从已有项目列表重新打开项目。
 - 已新增结构化数据模型测试，确认新项目 8 个章节初始化、测评行和评分结果可保存读取。
 
 ### 5.2 章节 API

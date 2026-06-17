@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app import database  # noqa: E402
+from app.api.projects import list_projects as list_project_schemas  # noqa: E402
 from app.api.sections import build_section_detail  # noqa: E402
 from app.schemas import SectionUpdate  # noqa: E402
 
@@ -30,6 +31,17 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(len(sections), 8)
         self.assertEqual(sections[0]["code"], "A-1")
         self.assertEqual(sections[-1]["code"], "A-8")
+
+    def test_existing_projects_can_be_listed_for_reopening(self) -> None:
+        first = database.create_project("第一个项目")
+        second = database.create_project("第二个项目")
+
+        projects = database.list_projects()
+        api_projects = list_project_schemas()
+
+        self.assertEqual([row["id"] for row in projects], [second["id"], first["id"]])
+        self.assertEqual([project.id for project in api_projects], [second["id"], first["id"]])
+        self.assertEqual(len(api_projects[0].sections), 8)
 
     def test_section_rows_and_metric_results_can_be_replaced(self) -> None:
         project = database.create_project("结构化数据测试")

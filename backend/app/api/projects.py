@@ -34,6 +34,11 @@ def create_project(payload: ProjectCreate) -> ProjectRead:
     return project_to_schema(project)
 
 
+@router.get("", response_model=list[ProjectRead])
+def list_projects() -> list[ProjectRead]:
+    return [project_to_schema(project) for project in database.list_projects()]
+
+
 @router.get("/{project_id}", response_model=ProjectRead)
 def get_project(project_id: int) -> ProjectRead:
     project = database.get_project_by_id(project_id)

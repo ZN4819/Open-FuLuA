@@ -217,6 +217,17 @@ def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> 
         return connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
 
 
+def list_projects() -> list[sqlite3.Row]:
+    with connect() as connection:
+        return connection.execute(
+            """
+            SELECT id, name, created_at, updated_at
+            FROM projects
+            ORDER BY updated_at DESC, id DESC
+            """
+        ).fetchall()
+
+
 def update_project(project_id: int, name: str) -> sqlite3.Row | None:
     with connect() as db:
         existing = get_project_by_id(project_id, db)

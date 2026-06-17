@@ -186,6 +186,68 @@ input {
   opacity: 0.6;
 }
 
+.project-list-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid #d8e0e4;
+}
+
+.project-list-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-list-header h3 {
+  margin: 0;
+}
+
+.project-list-header button,
+.project-list-item button {
+  min-height: 34px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #2a6f89;
+  border: 1px solid #2a6f89;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.project-list-header button:disabled,
+.project-list-item button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.project-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-list-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #fbfcfd;
+  border: 1px solid #d8e0e4;
+  border-radius: 6px;
+}
+
+.project-list-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.project-list-item span {
+  font-size: 13px;
+  color: #60717a;
+}
+
 .error {
   color: #a3382b;
 }
@@ -664,6 +726,12 @@ input {
   }
 
   .project-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-list-header,
+  .project-list-item {
     align-items: stretch;
     flex-direction: column;
   }

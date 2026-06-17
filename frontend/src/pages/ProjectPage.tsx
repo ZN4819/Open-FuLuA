@@ -3,10 +3,12 @@ import {
   createRenderJob,
   createProject,
   exportProjectDocx,
+  getProject,
   getRenderJob,
   getRecordTemplates,
   getSectionDetail,
   getTemplateProfile,
+  listProjects,
   resolveFileUrl,
   updateSectionDetail,
   validateProject,
@@ -45,6 +47,7 @@ function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
 export function ProjectPage() {
   const [projectName, setProjectName] = useState("附录A测评结果记录");
   const [project, setProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeCode, setActiveCode] = useState<string>();
   const [profile, setProfile] = useState<TemplateProfile | null>(null);
   const [recordTemplates, setRecordTemplates] = useState<RecordTemplate[]>([]);
@@ -53,6 +56,8 @@ export function ProjectPage() {
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>();
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [openingProjectId, setOpeningProjectId] = useState<number | null>(null);
   const [isLoadingSection, setIsLoadingSection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
@@ -82,6 +87,7 @@ export function ProjectPage() {
     getRecordTemplates()
       .then(setRecordTemplates)
       .catch((err) => setError(err instanceof Error ? err.message : "读取结果记录模板失败"));
+    refreshProjects();
   }, []);
 
   useEffect(() => {
@@ -114,18 +120,66 @@ export function ProjectPage() {
     return () => window.clearInterval(timer);
   }, [renderJob]);
 
+  async function refreshProjects() {
+    setIsLoadingProjects(true);
+    try {
+      const savedProjects = await listProjects();
+      setProjects(savedProjects);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取已有项目失败");
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }
+
+  function openProject(projectToOpen: Project) {
+    setProject(projectToOpen);
+    setSectionDetails({});
+    setDraftRows({});
+    setDirtySections(new Set());
+    setValidation(undefined);
+    setRenderJob(undefined);
+    setSaveMessage(undefined);
+    setError(undefined);
+    setActiveCode(projectToOpen.sections[0]?.code);
+  }
+
+  async function handleOpenProject(projectId: number) {
+    setOpeningProjectId(projectId);
+    setError(undefined);
+    try {
+      const loaded = await getProject(projectId);
+      openProject(loaded);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "打开项目失败");
+    } finally {
+      setOpeningProjectId(null);
+    }
+  }
+
+  function handleBackToProjects() {
+    if (dirtySections.size > 0) {
+      setError("当前还有未保存的章节，请先保存后再返回项目列表。");
+      return;
+    }
+    setProject(null);
+    setActiveCode(undefined);
+    setSectionDetails({});
+    setDraftRows({});
+    setValidation(undefined);
+    setRenderJob(undefined);
+    setSaveMessage(undefined);
+    refreshProjects();
+  }
+
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(undefined);
     setIsCreating(true);
     try {
       const created = await createProject(projectName);
-      setProject(created);
-      setSectionDetails({});
-      setDraftRows({});
-      setDirtySections(new Set());
-      setSaveMessage(undefined);
-      setActiveCode(created.sections[0]?.code);
+      setProjects((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      openProject(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建项目失败");
     } finally {
@@ -278,6 +332,38 @@ export function ProjectPage() {
               {isCreating ? "创建中..." : "创建项目"}
             </button>
           </form>
+          <div className="project-list-panel">
+            <div className="project-list-header">
+              <div>
+                <p className="eyebrow">已有项目</p>
+                <h3>打开之前的项目</h3>
+              </div>
+              <button type="button" onClick={refreshProjects} disabled={isLoadingProjects}>
+                {isLoadingProjects ? "刷新中..." : "刷新"}
+              </button>
+            </div>
+            {projects.length === 0 ? (
+              <p className="empty-sidebar">还没有可打开的项目。</p>
+            ) : (
+              <div className="project-list">
+                {projects.map((savedProject) => (
+                  <article className="project-list-item" key={savedProject.id}>
+                    <div>
+                      <strong>{savedProject.name}</strong>
+                      <span>最近更新：{formatDate(savedProject.updated_at)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProject(savedProject.id)}
+                      disabled={openingProjectId === savedProject.id}
+                    >
+                      {openingProjectId === savedProject.id ? "打开中..." : "打开"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
           {error ? <p className="error">{error}</p> : null}
         </section>
       ) : (
@@ -290,6 +376,9 @@ export function ProjectPage() {
             <div className="export-actions">
               <button type="button" onClick={handleValidate} disabled={isValidating}>
                 {isValidating ? "校验中..." : "校验项目"}
+              </button>
+              <button type="button" onClick={handleBackToProjects}>
+                返回项目列表
               </button>
               <button type="button" onClick={handleCreatePreview} disabled={isCreatingPreview}>
                 {isCreatingPreview ? "创建中..." : "生成预览"}
@@ -347,6 +436,14 @@ export function ProjectPage() {
       )}
     </Layout>
   );
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function ValidationPanel({ validation }: { validation: ValidationResponse }) {
