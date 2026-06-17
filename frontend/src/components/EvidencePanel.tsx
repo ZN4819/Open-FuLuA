@@ -29,6 +29,8 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
   const [isUploading, setIsUploading] = useState(false);
   const [busyImageId, setBusyImageId] = useState<number | null>(null);
   const [draggingImageId, setDraggingImageId] = useState<number | null>(null);
+  const warningCount = images.reduce((count, image) => count + image.warnings.length, 0);
+  const missingAltCount = images.filter((image) => !image.alt_text.trim()).length;
 
   useEffect(() => {
     setDrafts(
@@ -166,23 +168,40 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
   return (
     <div className="evidence-panel">
       <div className="editor-toolbar">
-        <div>
+        <div className="editor-toolbar-main">
           <p className="eyebrow">证据图片</p>
           <h3>上传、题注与排序</h3>
+          <div className="editor-toolbar-meta">
+            <span className="status-chip">图片 {images.length}</span>
+            <span className={warningCount > 0 ? "dirty-chip" : "clean-chip"}>提示 {warningCount}</span>
+            <span className={missingAltCount > 0 ? "dirty-chip" : "clean-chip"}>缺少 alt {missingAltCount}</span>
+          </div>
         </div>
       </div>
 
       <div className="upload-panel">
-        <input type="file" accept="image/png,image/jpeg" onChange={handleFileChange} />
-        <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="题注" />
-        <input value={altText} onChange={(event) => setAltText(event.target.value)} placeholder="alt 文本" />
-        <button type="button" onClick={handleUpload} disabled={isUploading}>
-          {isUploading ? "上传中..." : "上传图片"}
-        </button>
+        <label className="upload-field">
+          <span>图片文件</span>
+          <input type="file" accept="image/png,image/jpeg" onChange={handleFileChange} />
+        </label>
+        <label className="upload-field">
+          <span>题注</span>
+          <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="例如：机房门禁照片" />
+        </label>
+        <label className="upload-field">
+          <span>alt 文本</span>
+          <input value={altText} onChange={(event) => setAltText(event.target.value)} placeholder="例如：机房门禁设备现场照片" />
+        </label>
+        <div className="upload-actions">
+          {file ? <span className="status-chip">{file.name}</span> : null}
+          <button type="button" onClick={handleUpload} disabled={isUploading}>
+            {isUploading ? "上传中..." : "上传图片"}
+          </button>
+        </div>
       </div>
 
       {images.length === 0 ? (
-        <p className="empty-sidebar">当前章节还没有证据图片。</p>
+        <p className="evidence-empty">当前章节还没有证据图片。</p>
       ) : (
         <div className="evidence-grid">
           {images.map((image, index) => {
@@ -197,38 +216,57 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                 onDrop={(event) => handleDrop(event, image)}
                 onDragEnd={() => setDraggingImageId(null)}
               >
+                <div className="evidence-card-header">
+                  <div>
+                    <strong>{image.figure_label ?? `${sectionCode}-${index + 1}`}</strong>
+                    <span>{image.original_name}</span>
+                  </div>
+                  <span className="status-chip">排序 {index + 1}</span>
+                </div>
                 <div className="image-preview">
                   <img src={resolveFileUrl(image.file_url)} alt={image.alt_text || image.caption || image.original_name} />
                 </div>
-                <div className="image-meta">
-                  <strong>{image.figure_label ?? `${sectionCode}-${index + 1}`}</strong>
-                  <span>{image.pixel_width} x {image.pixel_height}px</span>
-                  <span>DPI: {image.dpi_x ?? "未知"} / {image.dpi_y ?? "未知"}</span>
-                  <span>显示: {image.display_width_in ?? "-"}in x {image.display_height_in ?? "-"}in</span>
+                <dl className="image-meta">
+                  <div>
+                    <dt>尺寸</dt>
+                    <dd>{image.pixel_width} x {image.pixel_height}px</dd>
+                  </div>
+                  <div>
+                    <dt>DPI</dt>
+                    <dd>{image.dpi_x ?? "未知"} / {image.dpi_y ?? "未知"}</dd>
+                  </div>
+                  <div>
+                    <dt>显示</dt>
+                    <dd>{image.display_width_in ?? "-"}in x {image.display_height_in ?? "-"}in</dd>
+                  </div>
+                </dl>
+                <div className="quality-row">
+                  {image.warnings.length > 0 ? (
+                    image.warnings.map((warning) => (
+                      <span className="dirty-chip" key={warning}>{warning}</span>
+                    ))
+                  ) : (
+                    <span className="clean-chip">质量正常</span>
+                  )}
                 </div>
-                {image.warnings.length > 0 ? (
-                  <ul className="warning-list">
-                    {image.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                <label>
-                  题注
-                  <textarea
-                    value={draft.caption}
-                    onChange={(event) => updateDraft(image.id, { caption: event.target.value })}
-                    rows={2}
-                  />
-                </label>
-                <label>
-                  alt 文本
-                  <textarea
-                    value={draft.alt_text}
-                    onChange={(event) => updateDraft(image.id, { alt_text: event.target.value })}
-                    rows={2}
-                  />
-                </label>
+                <div className="image-edit-grid">
+                  <label>
+                    题注
+                    <textarea
+                      value={draft.caption}
+                      onChange={(event) => updateDraft(image.id, { caption: event.target.value })}
+                      rows={2}
+                    />
+                  </label>
+                  <label>
+                    alt 文本
+                    <textarea
+                      value={draft.alt_text}
+                      onChange={(event) => updateDraft(image.id, { alt_text: event.target.value })}
+                      rows={2}
+                    />
+                  </label>
+                </div>
                 <div className="image-actions">
                   <button type="button" onClick={() => moveImage(image, -1)} disabled={index === 0}>
                     上移
