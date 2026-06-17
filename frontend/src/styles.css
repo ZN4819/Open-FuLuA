@@ -102,6 +102,17 @@ input {
   white-space: nowrap;
 }
 
+.section-nav em {
+  grid-column: 2;
+  justify-self: start;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-style: normal;
+  color: #7a4c00;
+  background: #fff2c7;
+  border-radius: 4px;
+}
+
 .content {
   padding: 28px;
 }
@@ -112,6 +123,10 @@ input {
   background: #ffffff;
   border: 1px solid #d8e0e4;
   border-radius: 8px;
+}
+
+.wide-panel {
+  max-width: 1400px;
 }
 
 .project-form {
@@ -144,6 +159,14 @@ input {
 
 .error {
   color: #a3382b;
+}
+
+.success {
+  color: #22663d;
+}
+
+.loading-text {
+  color: #60717a;
 }
 
 .empty-sidebar {
@@ -194,6 +217,137 @@ input {
   line-height: 1.6;
 }
 
+.editor-block {
+  margin-top: 22px;
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.editor-toolbar h3 {
+  margin: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar-actions button,
+.empty-table button,
+.inline-action,
+.danger-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toolbar-actions button,
+.empty-table button,
+.inline-action {
+  color: #ffffff;
+  background: #2a6f89;
+  border: 1px solid #2a6f89;
+}
+
+.toolbar-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.danger-button {
+  color: #9b2e25;
+  background: #fff7f6;
+  border: 1px solid #e5b9b4;
+}
+
+.dirty-chip,
+.clean-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 13px;
+  border-radius: 5px;
+}
+
+.dirty-chip {
+  color: #7a4c00;
+  background: #fff2c7;
+}
+
+.clean-chip {
+  color: #22663d;
+  background: #ddf3e5;
+}
+
+.empty-table {
+  padding: 20px;
+  background: #fbfcfd;
+  border: 1px dashed #b8c6cc;
+  border-radius: 8px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid #d8e0e4;
+  border-radius: 8px;
+}
+
+.assessment-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
+.assessment-table th,
+.assessment-table td {
+  padding: 10px;
+  vertical-align: top;
+  border: 1px solid #d8e0e4;
+}
+
+.assessment-table th {
+  font-size: 13px;
+  color: #26343a;
+  text-align: center;
+  background: #edf1f3;
+}
+
+.assessment-table textarea,
+.assessment-table input,
+.assessment-table select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  color: #172026;
+  background: #ffffff;
+  border: 1px solid #b8c6cc;
+  border-radius: 5px;
+}
+
+.assessment-table textarea {
+  min-height: 84px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.record-cell {
+  min-width: 360px;
+}
+
+.record-cell .inline-action {
+  margin-top: 8px;
+}
+
 @media (max-width: 820px) {
   .workspace,
   .placeholder-grid {
@@ -203,5 +357,10 @@ input {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid #d8e0e4;
+  }
+
+  .editor-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

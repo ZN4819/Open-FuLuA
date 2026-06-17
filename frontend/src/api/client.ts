@@ -85,6 +85,37 @@ export type SectionDetail = {
   cross_references: CrossReference[];
 };
 
+export type TemplateColumn = {
+  key: string;
+  label: string;
+  width_in: number;
+};
+
+export type TemplateProfile = {
+  profile_id: string;
+  sections: Array<{
+    code: string;
+    title: string;
+    table_title: string;
+    table_type: "technical" | "management";
+    figure_prefix: string;
+  }>;
+  tables: {
+    technical: { columns: TemplateColumn[] };
+    management: { columns: TemplateColumn[] };
+  };
+  content_controls: {
+    technical_metric: {
+      options: string[];
+      default: string;
+    };
+    management_compliance: {
+      options: string[];
+      default: string;
+    };
+  };
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -137,4 +168,8 @@ export function updateSectionDetail(
     method: "PUT",
     body: JSON.stringify(payload)
   });
+}
+
+export function getTemplateProfile(): Promise<TemplateProfile> {
+  return request<TemplateProfile>("/api/template-profile");
 }
