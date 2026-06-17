@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 2：模板 Profile 与样本文档结构分析器。
+当前已完成阶段 3：结构化数据模型。
 
 已包含：
 
@@ -17,6 +17,8 @@
 - 附录A模板 profile。
 - DOCX 结构分析器。
 - 样本文档结构回归测试。
+- 测评行、评分结果、证据图片、交叉引用、渲染任务和校验问题数据表。
+- 章节详情读取与保存接口。
 
 ## 模板 Profile
 
@@ -76,6 +78,15 @@ GET http://127.0.0.1:8000/api/health
 GET http://127.0.0.1:8000/api/template-profile
 ```
 
+章节详情接口：
+
+```text
+GET http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
+PUT http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
+```
+
+`PUT` 请求可一次性保存章节标题、表题、测评行、评分结果和引用 token。
+
 ## 前端运行
 
 ```powershell
@@ -119,6 +130,14 @@ stage2-template-profile
 $env:PYTHONPATH="F:\Codex\FLA\backend"
 .\backend\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
+
+当前测试覆盖：
+
+- 模板 profile 结构。
+- 样本文档结构回归。
+- 新项目 8 个章节初始化。
+- 测评行、评分结果和交叉引用保存读取。
+- 章节详情 API 契约。
 
 构建前端：
 

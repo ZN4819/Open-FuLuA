@@ -208,6 +208,13 @@ tests/test_sample_docx_analysis.py
 - 每个章节包含默认标题和表题。
 - 数据可保存、读取、更新。
 
+完成记录（2026-06-17）：
+
+- 已新增 `assessment_rows`、`metric_results`、`evidence_images`、`cross_references`、`render_jobs`、`validation_issues` 数据表。
+- 已让数据库连接支持 `FULUA_DATABASE_PATH` 环境变量，便于测试使用临时 SQLite。
+- 已实现测评行、评分结果和交叉引用的替换式保存。
+- 已新增结构化数据模型测试，确认新项目 8 个章节初始化、测评行和评分结果可保存读取。
+
 ### 5.2 章节 API
 
 实现接口：
@@ -229,6 +236,14 @@ PUT /api/projects/{project_id}/sections/{code}
 
 - 前端可读取某一章节。
 - 前端修改表格内容后可保存。
+
+完成记录（2026-06-17）：
+
+- 已新增 `GET /api/projects/{project_id}/sections/{code}`。
+- 已新增 `PUT /api/projects/{project_id}/sections/{code}`。
+- 章节详情响应包含章节信息、测评行列表、证据图片列表和交叉引用列表。
+- 前端 API client 已补充章节详情读取和保存函数。
+- 后端测试确认章节详情契约可返回管理类和技术类数据结构。
 
 ## 6. 阶段四：前端结构化编辑
 
