@@ -141,6 +141,24 @@ export type ValidationResponse = {
   issues: ValidationIssue[];
 };
 
+export type RenderJob = {
+  id: number;
+  project_id: number;
+  status: "queued" | "running" | "succeeded" | "failed" | "timeout";
+  mode: "editable" | "final";
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  output_docx_path?: string | null;
+  output_pdf_path?: string | null;
+  output_docx_url?: string | null;
+  output_pdf_url?: string | null;
+  page_count?: number | null;
+  log_path?: string | null;
+  log_url?: string | null;
+  error_message?: string | null;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -292,6 +310,16 @@ export function validateProject(projectId: number): Promise<ValidationResponse> 
   return request<ValidationResponse>(`/api/projects/${projectId}/validate`, {
     method: "POST"
   });
+}
+
+export function createRenderJob(projectId: number, mode: "editable" | "final" = "final"): Promise<RenderJob> {
+  return request<RenderJob>(`/api/projects/${projectId}/render-jobs?mode=${mode}`, {
+    method: "POST"
+  });
+}
+
+export function getRenderJob(jobId: number): Promise<RenderJob> {
+  return request<RenderJob>(`/api/render-jobs/${jobId}`);
 }
 
 function _fileNameFromDisposition(disposition: string | null): string | null {

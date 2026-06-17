@@ -142,6 +142,8 @@ def init_db() -> None:
                 finished_at TEXT,
                 output_docx_path TEXT,
                 output_pdf_path TEXT,
+                page_count INTEGER,
+                log_path TEXT,
                 error_message TEXT,
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
             )
@@ -162,6 +164,8 @@ def init_db() -> None:
             )
             """
         )
+        _ensure_column(db, "render_jobs", "page_count", "INTEGER")
+        _ensure_column(db, "render_jobs", "log_path", "TEXT")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS appendix_sections (
@@ -198,6 +202,12 @@ def create_project(name: str) -> sqlite3.Row:
             ],
         )
         return get_project_by_id(project_id, db)
+
+
+def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
+    if column_name not in columns:
+        db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
 
 
 def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
@@ -581,3 +591,68 @@ def list_validation_issues(project_id: int, db: sqlite3.Connection | None = None
         return db.execute(query, (project_id,)).fetchall()
     with connect() as connection:
         return connection.execute(query, (project_id,)).fetchall()
+
+
+def create_render_job(project_id: int, mode: str = "final") -> sqlite3.Row:
+    timestamp = utc_now()
+    with connect() as db:
+        if get_project_by_id(project_id, db) is None:
+            raise ValueError("项目不存在")
+        cursor = db.execute(
+            """
+            INSERT INTO render_jobs
+                (project_id, status, mode, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (project_id, "queued", mode, timestamp),
+        )
+        return get_render_job(int(cursor.lastrowid), db)
+
+
+def get_render_job(job_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = """
+        SELECT
+            id,
+            project_id,
+            status,
+            mode,
+            created_at,
+            started_at,
+            finished_at,
+            output_docx_path,
+            output_pdf_path,
+            page_count,
+            log_path,
+            error_message
+        FROM render_jobs
+        WHERE id = ?
+    """
+    if db is not None:
+        return db.execute(query, (job_id,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (job_id,)).fetchone()
+
+
+def update_render_job(job_id: int, fields: dict[str, Any]) -> sqlite3.Row | None:
+    allowed = {
+        "status",
+        "started_at",
+        "finished_at",
+        "output_docx_path",
+        "output_pdf_path",
+        "page_count",
+        "log_path",
+        "error_message",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if not updates:
+        return get_render_job(job_id)
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = list(updates.values()) + [job_id]
+    with connect() as db:
+        existing = get_render_job(job_id, db)
+        if existing is None:
+            return None
+        db.execute(f"UPDATE render_jobs SET {assignments} WHERE id = ?", values)
+        return get_render_job(job_id, db)

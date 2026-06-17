@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 7：校验服务。
+当前已完成阶段 8：异步预览任务。
 
 已包含：
 
@@ -44,6 +44,11 @@
 - 可检查图片引用断链、未引用图片、低 DPI、缺少 alt 文本、缺少题注。
 - 可检查导出 DOCX 的 REF 目标完整性。
 - 前端可展示校验汇总和问题清单。
+- 可创建异步预览任务。
+- 预览任务支持 `queued`、`running`、`succeeded`、`failed`、`timeout` 状态。
+- 可使用 LibreOffice headless 或 Microsoft Word 自动化生成 PDF 预览。
+- 预览任务会记录 DOCX、PDF、页数、日志和失败原因。
+- 前端可展示预览任务状态、PDF 链接、DOCX 链接和日志链接。
 
 ## 模板 Profile
 
@@ -140,6 +145,15 @@ POST http://127.0.0.1:8000/api/projects/{project_id}/validate
 
 校验结果会写入 `validation_issues`，接口会返回错误、警告、提示数量和问题清单。
 
+异步预览接口：
+
+```text
+POST http://127.0.0.1:8000/api/projects/{project_id}/render-jobs?mode=final
+GET  http://127.0.0.1:8000/api/render-jobs/{job_id}
+```
+
+预览文件和日志会生成到 `storage/previews/`。如果本机未安装 Microsoft Word 或 LibreOffice，任务会进入 `failed` 状态并返回清晰失败原因。
+
 ## 前端运行
 
 ```powershell
@@ -196,6 +210,7 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 - DOCX 生成器结构测试：8 分节、8 表、下拉内容控件、SEQ/REF 字段、书签、图片和表格 `tblGrid`。
 - 可编辑版与最终版导出差异测试。
 - 校验服务测试：必填字段、下拉值、评分格式、引用断链、图片质量、未引用图片和无错误路径。
+- 异步预览任务测试：成功生成 PDF 的状态更新、页数统计和缺少渲染器时的失败记录。
 - 前端结构化编辑器通过 TypeScript 构建检查。
 
 视觉渲染说明：

@@ -151,3 +151,25 @@ class ValidationIssueRead(BaseModel):
 class ValidationResponse(BaseModel):
     summary: ValidationSummary
     issues: list[ValidationIssueRead]
+
+
+class RenderJobCreate(BaseModel):
+    mode: str = Field(default="final", pattern="^(editable|final)$")
+
+
+class RenderJobRead(BaseModel):
+    id: int
+    project_id: int
+    status: str
+    mode: str
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    output_docx_path: str | None = None
+    output_pdf_path: str | None = None
+    output_docx_url: str | None = None
+    output_pdf_url: str | None = None
+    page_count: int | None = None
+    log_path: str | None = None
+    log_url: str | None = None
+    error_message: str | None = None

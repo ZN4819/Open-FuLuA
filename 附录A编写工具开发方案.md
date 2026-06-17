@@ -21,6 +21,7 @@
 - 2026-06-17：阶段 5 已实现证据图片管理，支持 PNG/JPEG 上传、本地预览、题注和 alt 文本维护、拖拽排序、图号预览、图片质量提示和真实图片 ID 引用 token。
 - 2026-06-17：阶段 6 已实现 DOCX 生成器，支持 editable/final 两类导出、8 分节横向 A4、两类真实 Word 表格、下拉内容控件、图片题注、SEQ/REF 字段、书签和结构级导出校验。
 - 2026-06-17：阶段 7 已实现校验服务，支持数据完整性、下拉值、评分格式、图片质量、引用断链、未使用图片和导出 DOCX 引用目标检查，并在前端展示错误、警告和提示清单。
+- 2026-06-17：阶段 8 已实现异步预览任务，支持创建/查询 render job、后台生成 DOCX、调用 LibreOffice 或 Word 输出 PDF、记录页数、日志和失败原因，并在前端展示预览状态和结果链接。
 
 ## 2. 样本文档分析结论
 
@@ -426,6 +427,15 @@ Windows 环境优先流程：
 
 - 如果安装 LibreOffice，则使用 LibreOffice headless 导出 PDF。
 - 如果没有可用渲染器，则只提供 DOCX 结构校验，并明确提示未完成视觉预览。
+
+当前实现状态：
+
+- 后端已提供 `POST /api/projects/{project_id}/render-jobs?mode=final|editable` 和 `GET /api/render-jobs/{job_id}`。
+- `render_jobs` 会保存 `queued`、`running`、`succeeded`、`failed`、`timeout` 状态。
+- 后台任务会先生成 DOCX，再尝试用 LibreOffice headless 转 PDF；如系统可用 pywin32，会尝试 Microsoft Word 自动化。
+- 任务会记录 DOCX 路径、PDF 路径、PDF 页数、日志路径和失败原因。
+- 当前开发机未安装 LibreOffice/soffice，真实渲染器路径暂不可用；系统会把这种情况记录为 `failed` 并显示原因。
+- 前端项目页已提供“生成预览”入口，并轮询展示状态、PDF 预览链接、DOCX 下载链接和日志链接。
 
 ## 14. API 设计
 

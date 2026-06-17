@@ -572,6 +572,15 @@ GET /api/render-jobs/{job_id}
 - `failed`
 - `timeout`
 
+完成记录（2026-06-17）：
+
+- 已新增 `POST /api/projects/{project_id}/render-jobs?mode=final|editable`。
+- 已新增 `GET /api/render-jobs/{job_id}`。
+- 已新增 `backend/app/services/preview.py`。
+- 已扩展 `render_jobs` 表，记录输出 DOCX、输出 PDF、页数、日志路径和失败原因。
+- 预览任务创建后返回 `queued`，后台继续生成 DOCX 和 PDF。
+- 前端项目页已新增“生成预览”按钮，并轮询展示任务状态。
+
 ### 10.2 Word 导出策略
 
 Windows 环境：
@@ -592,6 +601,15 @@ LibreOffice 环境：
 - 小型测试文档可成功生成 PDF 预览。
 - 大文档超时时不影响 DOCX 导出。
 - 前端清楚显示预览失败原因。
+
+完成记录（2026-06-17）：
+
+- 已支持 LibreOffice/soffice headless 转 PDF。
+- 已支持在安装 pywin32 的 Windows 环境下尝试 Microsoft Word 自动化转 PDF。
+- 已设置渲染超时，超时会记录为 `timeout` 状态。
+- 未找到 Word 或 LibreOffice 时，任务会记录为 `failed` 并保留日志。
+- 当前开发机未安装 LibreOffice/soffice，真实 PDF 渲染由自动化测试中的模拟渲染器覆盖；缺少渲染器的失败路径已通过测试。
+- 已新增 `tests/test_preview_jobs.py`，覆盖预览成功、页数统计、链接返回和无渲染器失败路径。
 
 ## 11. 阶段九：测试与回归
 

@@ -1,14 +1,18 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  createRenderJob,
   createProject,
   exportProjectDocx,
+  getRenderJob,
   getSectionDetail,
   getTemplateProfile,
+  resolveFileUrl,
   updateSectionDetail,
   validateProject,
   type AssessmentRowInput,
   type EvidenceImage,
   type Project,
+  type RenderJob,
   type SectionDetail,
   type TemplateProfile,
   type ValidationIssue,
@@ -50,6 +54,8 @@ export function ProjectPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [isCreatingPreview, setIsCreatingPreview] = useState(false);
+  const [renderJob, setRenderJob] = useState<RenderJob>();
   const [validation, setValidation] = useState<ValidationResponse>();
   const [saveMessage, setSaveMessage] = useState<string>();
 
@@ -83,6 +89,20 @@ export function ProjectPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "读取章节失败"))
       .finally(() => setIsLoadingSection(false));
   }, [activeCode, project, sectionDetails]);
+
+  useEffect(() => {
+    if (!renderJob || !["queued", "running"].includes(renderJob.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      getRenderJob(renderJob.id)
+        .then(setRenderJob)
+        .catch((err) => setError(err instanceof Error ? err.message : "刷新预览状态失败"));
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [renderJob]);
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -194,6 +214,28 @@ export function ProjectPage() {
     }
   }
 
+  async function handleCreatePreview() {
+    if (!project) {
+      return;
+    }
+    if (dirtySections.size > 0) {
+      setError("当前还有未保存的章节，请先保存后再生成预览。");
+      return;
+    }
+
+    setIsCreatingPreview(true);
+    setError(undefined);
+    try {
+      const job = await createRenderJob(project.id, "final");
+      setRenderJob(job);
+      setSaveMessage("预览任务已创建");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建预览任务失败");
+    } finally {
+      setIsCreatingPreview(false);
+    }
+  }
+
   return (
     <Layout
       title="附录A编写工具"
@@ -239,6 +281,9 @@ export function ProjectPage() {
               <button type="button" onClick={handleValidate} disabled={isValidating}>
                 {isValidating ? "校验中..." : "校验项目"}
               </button>
+              <button type="button" onClick={handleCreatePreview} disabled={isCreatingPreview}>
+                {isCreatingPreview ? "创建中..." : "生成预览"}
+              </button>
               <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
                 {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
               </button>
@@ -263,6 +308,7 @@ export function ProjectPage() {
           {isLoadingSection ? <p className="loading-text">正在读取章节...</p> : null}
 
           {validation ? <ValidationPanel validation={validation} /> : null}
+          {renderJob ? <PreviewPanel job={renderJob} /> : null}
 
           {profile && activeCode && activeDetail ? (
             <AssessmentTable
@@ -336,4 +382,54 @@ function severityLabel(severity: ValidationIssue["severity"]) {
     return "警告";
   }
   return "提示";
+}
+
+function PreviewPanel({ job }: { job: RenderJob }) {
+  return (
+    <div className={`preview-panel ${job.status}`}>
+      <div className="preview-summary">
+        <strong>预览任务 #{job.id}</strong>
+        <span>{renderStatusLabel(job.status)}</span>
+        {job.page_count ? <span>{job.page_count} 页</span> : null}
+      </div>
+      {job.status === "succeeded" ? (
+        <div className="preview-links">
+          {job.output_pdf_url ? (
+            <a href={resolveFileUrl(job.output_pdf_url)} target="_blank" rel="noreferrer">
+              打开 PDF 预览
+            </a>
+          ) : null}
+          {job.output_docx_url ? (
+            <a href={resolveFileUrl(job.output_docx_url)} target="_blank" rel="noreferrer">
+              下载预览 DOCX
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {["failed", "timeout"].includes(job.status) ? (
+        <p className="preview-error">{job.error_message ?? "预览生成失败。"}</p>
+      ) : null}
+      {job.log_url ? (
+        <a className="preview-log" href={resolveFileUrl(job.log_url)} target="_blank" rel="noreferrer">
+          查看预览日志
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function renderStatusLabel(status: RenderJob["status"]) {
+  if (status === "queued") {
+    return "排队中";
+  }
+  if (status === "running") {
+    return "生成中";
+  }
+  if (status === "succeeded") {
+    return "已完成";
+  }
+  if (status === "timeout") {
+    return "已超时";
+  }
+  return "失败";
 }
