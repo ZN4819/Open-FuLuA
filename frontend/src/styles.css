@@ -808,9 +808,22 @@ a:hover {
 .editor-toolbar {
   display: flex;
   gap: var(--space-4);
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   margin-bottom: var(--space-4);
+}
+
+.editor-toolbar-main {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.editor-toolbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .toolbar-actions {
@@ -845,34 +858,41 @@ a:hover {
 }
 
 .table-scroll {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  scrollbar-gutter: stable;
 }
 
 .assessment-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1080px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .technical-table {
-  min-width: 1280px;
+  min-width: 1180px;
 }
 
 .management-table {
-  min-width: 1160px;
+  min-width: 1040px;
 }
 
 .assessment-table th,
 .assessment-table td {
-  padding: 10px;
+  padding: 8px;
   vertical-align: top;
   border: 1px solid var(--color-border);
 }
 
 .assessment-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   font-size: 13px;
   font-weight: 800;
   color: #24343c;
@@ -882,17 +902,17 @@ a:hover {
 
 .technical-table th:nth-child(1),
 .technical-table td:nth-child(1) {
-  width: 130px;
+  width: 128px;
 }
 
 .technical-table th:nth-child(2),
 .technical-table td:nth-child(2) {
-  width: 140px;
+  width: 136px;
 }
 
 .technical-table th:nth-child(3),
 .technical-table td:nth-child(3) {
-  width: 500px;
+  width: 440px;
 }
 
 .technical-table th:nth-child(4),
@@ -901,14 +921,14 @@ a:hover {
 .technical-table td:nth-child(5),
 .technical-table th:nth-child(6),
 .technical-table td:nth-child(6) {
-  width: 74px;
+  width: 62px;
 }
 
 .technical-table th:nth-child(7),
 .technical-table td:nth-child(7),
 .technical-table th:nth-child(8),
 .technical-table td:nth-child(8) {
-  width: 110px;
+  width: 96px;
 }
 
 .technical-table th:nth-child(9),
@@ -918,22 +938,22 @@ a:hover {
 
 .management-table th:nth-child(1),
 .management-table td:nth-child(1) {
-  width: 150px;
+  width: 140px;
 }
 
 .management-table th:nth-child(2),
 .management-table td:nth-child(2) {
-  width: 170px;
+  width: 156px;
 }
 
 .management-table th:nth-child(3),
 .management-table td:nth-child(3) {
-  width: 600px;
+  width: 520px;
 }
 
 .management-table th:nth-child(4),
 .management-table td:nth-child(4) {
-  width: 150px;
+  width: 132px;
 }
 
 .management-table th:nth-child(5),
@@ -954,7 +974,8 @@ a:hover {
 .reference-select {
   width: 100%;
   min-width: 0;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 7px 9px;
 }
 
 .technical-table td:nth-child(4),
@@ -971,17 +992,63 @@ a:hover {
 }
 
 .assessment-table textarea {
-  min-height: 84px;
+  min-height: 76px;
 }
 
 .record-cell {
-  min-width: 380px;
+  min-width: 360px;
 }
 
-.record-cell .inline-action,
+.record-input-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.record-textarea {
+  min-height: 126px;
+}
+
+.record-control-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .reference-select,
 .record-template-select {
-  margin-top: var(--space-2);
+  min-height: 34px;
+}
+
+.metric-cell,
+.score-cell,
+.compliance-cell,
+.row-action-cell {
+  text-align: center;
+}
+
+.metric-select,
+.score-input,
+.compliance-select {
+  text-align: center;
+}
+
+.metric-select {
+  padding-right: 4px;
+  padding-left: 6px;
+}
+
+.score-input {
+  min-width: 0;
+}
+
+.row-action-cell .danger-button {
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .evidence-panel {

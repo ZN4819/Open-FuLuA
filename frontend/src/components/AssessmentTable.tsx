@@ -68,6 +68,7 @@ export function AssessmentTable({
   const metricOptions = profile.content_controls.technical_metric.options;
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
+  const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
 
   function updateRow(index: number, patch: Partial<AssessmentRowInput>) {
     const next = normalizeRows(
@@ -141,9 +142,14 @@ export function AssessmentTable({
   return (
     <div className="editor-block">
       <div className="editor-toolbar">
-        <div>
+        <div className="editor-toolbar-main">
           <p className="eyebrow">{technical ? "技术测评表" : "管理测评表"}</p>
-          <h3>{technical ? "D / A / K 指标录入" : "符合情况录入"}</h3>
+          <h3>{tableTitle}</h3>
+          <div className="editor-toolbar-meta">
+            <span className="status-chip">测评行 {rows.length}</span>
+            <span className="status-chip">模板 {recordTemplates.length}</span>
+            <span className="status-chip">证据 {evidenceImages.length}</span>
+          </div>
         </div>
         <div className="toolbar-actions">
           {isDirty ? <span className="dirty-chip">有未保存修改</span> : <span className="clean-chip">已保存</span>}
@@ -191,64 +197,70 @@ export function AssessmentTable({
             <tbody>
               {rows.map((row, index) => (
                 <tr key={`${sectionCode}-${index}`}>
-                  <td>
+                  <td className="unit-cell">
                     <textarea
                       value={row.unit}
                       onChange={(event) => updateRow(index, { unit: event.target.value })}
-                      rows={3}
+                      rows={2}
                     />
                   </td>
-                  <td>
+                  <td className="object-cell">
                     <textarea
                       value={row.object_name}
                       onChange={(event) => updateRow(index, { object_name: event.target.value })}
-                      rows={3}
+                      rows={2}
                     />
                   </td>
                   <td className="record-cell">
-                    <textarea
-                      value={row.record_text}
-                      onChange={(event) => {
-                        rememberRecordSelection(index, event.target);
-                        updateRow(index, { record_text: event.target.value });
-                      }}
-                      onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
-                      onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
-                      onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
-                      rows={6}
-                    />
-                    {recordTemplates.length > 0 ? (
-                      <select
-                        className="record-template-select"
-                        value=""
-                        onChange={(event) => applyRecordTemplate(index, event.target.value)}
-                      >
-                        <option value="">套用结果模板</option>
-                        {recordTemplates.map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.title}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    <select
-                      className="reference-select"
-                      value=""
-                      onChange={(event) => insertReferenceToken(index, event.target.value)}
-                    >
-                      <option value="">插入图片引用</option>
-                      {evidenceImages.map((image) => (
-                        <option key={image.id} value={image.id}>
-                          {image.figure_label ?? `${sectionCode}-${image.sort_order}`} {image.caption || image.original_name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="record-input-group">
+                      <textarea
+                        className="record-textarea"
+                        value={row.record_text}
+                        onChange={(event) => {
+                          rememberRecordSelection(index, event.target);
+                          updateRow(index, { record_text: event.target.value });
+                        }}
+                        onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
+                        onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
+                        onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
+                        rows={5}
+                      />
+                      <div className="record-control-row">
+                        {recordTemplates.length > 0 ? (
+                          <select
+                            className="record-template-select"
+                            value=""
+                            onChange={(event) => applyRecordTemplate(index, event.target.value)}
+                          >
+                            <option value="">套用结果模板</option>
+                            {recordTemplates.map((template) => (
+                              <option key={template.id} value={template.id}>
+                                {template.title}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <select
+                          className="reference-select"
+                          value=""
+                          onChange={(event) => insertReferenceToken(index, event.target.value)}
+                        >
+                          <option value="">插入图片引用</option>
+                          {evidenceImages.map((image) => (
+                            <option key={image.id} value={image.id}>
+                              {image.figure_label ?? `${sectionCode}-${image.sort_order}`} {image.caption || image.original_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </td>
                   {technical ? (
                     <>
                       {(["d", "a", "k"] as const).map((key) => (
-                        <td key={key}>
+                        <td className="metric-cell" key={key}>
                           <select
+                            className="metric-select"
                             value={row.metric_result?.[key] ?? ""}
                             onChange={(event) => updateMetric(index, key, event.target.value)}
                           >
@@ -261,14 +273,16 @@ export function AssessmentTable({
                           </select>
                         </td>
                       ))}
-                      <td>
+                      <td className="score-cell">
                         <input
+                          className="score-input"
                           value={row.metric_result?.object_score ?? ""}
                           onChange={(event) => updateMetric(index, "object_score", event.target.value)}
                         />
                       </td>
-                      <td>
+                      <td className="score-cell">
                         <input
+                          className="score-input"
                           value={row.metric_result?.unit_score ?? ""}
                           onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
                         />
@@ -276,8 +290,9 @@ export function AssessmentTable({
                     </>
                   ) : (
                     <>
-                      <td>
+                      <td className="compliance-cell">
                         <select
+                          className="compliance-select"
                           value={row.metric_result?.compliance ?? ""}
                           onChange={(event) => updateMetric(index, "compliance", event.target.value)}
                         >
@@ -289,15 +304,16 @@ export function AssessmentTable({
                           ))}
                         </select>
                       </td>
-                      <td>
+                      <td className="score-cell">
                         <input
+                          className="score-input"
                           value={row.metric_result?.unit_score ?? ""}
                           onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
                         />
                       </td>
                     </>
                   )}
-                  <td>
+                  <td className="row-action-cell">
                     <button type="button" className="danger-button" onClick={() => removeRow(index)}>
                       删除
                     </button>
