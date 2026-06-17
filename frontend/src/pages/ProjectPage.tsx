@@ -533,26 +533,64 @@ function projectCountLabel(count: number) {
   return count > 0 ? `${count} 个项目` : "无项目";
 }
 
+const severityOrder: Record<ValidationIssue["severity"], number> = {
+  error: 0,
+  warning: 1,
+  info: 2
+};
+
 function ValidationPanel({ validation }: { validation: ValidationResponse }) {
   const { summary, issues } = validation;
+  const issueCount = issues.length;
+  const sortedIssues = [...issues].sort((first, second) => severityOrder[first.severity] - severityOrder[second.severity]);
+
   return (
-    <div className="validation-panel">
+    <section className={`feedback-panel validation-panel${summary.errors > 0 ? " has-errors" : ""}`} aria-label="校验结果">
+      <div className="feedback-heading">
+        <div>
+          <p className="eyebrow">校验反馈</p>
+          <h3>项目校验结果</h3>
+        </div>
+        <span className={summary.errors > 0 ? "dirty-chip" : "clean-chip"}>
+          {issueCount > 0 ? `发现 ${issueCount} 项` : "未发现问题"}
+        </span>
+      </div>
+
       <div className="validation-summary">
-        <strong>校验结果</strong>
-        <span className="severity error">错误 {summary.errors}</span>
-        <span className="severity warning">警告 {summary.warnings}</span>
-        <span className="severity info">提示 {summary.info}</span>
+        <ValidationMetric label="错误" value={summary.errors} severity="error" note="导出前需处理" />
+        <ValidationMetric label="警告" value={summary.warnings} severity="warning" note="建议确认" />
+        <ValidationMetric label="提示" value={summary.info} severity="info" note="可按需优化" />
       </div>
 
       {issues.length === 0 ? (
         <p className="validation-empty">未发现需要处理的问题。</p>
       ) : (
         <ul className="validation-list">
-          {issues.map((issue) => (
+          {sortedIssues.map((issue) => (
             <ValidationIssueItem issue={issue} key={issue.id ?? `${issue.code}-${issue.target_type}-${issue.target_id}`} />
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function ValidationMetric({
+  label,
+  value,
+  severity,
+  note
+}: {
+  label: string;
+  value: number;
+  severity: ValidationIssue["severity"];
+  note: string;
+}) {
+  return (
+    <div className={`validation-metric ${severity}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
     </div>
   );
 }
@@ -560,10 +598,14 @@ function ValidationPanel({ validation }: { validation: ValidationResponse }) {
 function ValidationIssueItem({ issue }: { issue: ValidationIssue }) {
   return (
     <li className={`validation-item ${issue.severity}`}>
-      <span>{severityLabel(issue.severity)}</span>
+      <span className={`severity ${issue.severity}`}>{severityLabel(issue.severity)}</span>
       <div>
         <strong>{issue.message}</strong>
-        <p>{issue.code}{issue.target_type ? ` · ${issue.target_type}` : ""}{issue.target_id ? ` · ${issue.target_id}` : ""}</p>
+        <p>
+          <span>{issue.code}</span>
+          {issue.target_type ? <span>{issue.target_type}</span> : null}
+          {issue.target_id ? <span>{issue.target_id}</span> : null}
+        </p>
       </div>
     </li>
   );
@@ -580,37 +622,79 @@ function severityLabel(severity: ValidationIssue["severity"]) {
 }
 
 function PreviewPanel({ job }: { job: RenderJob }) {
+  const isWorking = job.status === "queued" || job.status === "running";
+  const isFailed = job.status === "failed" || job.status === "timeout";
+  const hasOutputLinks = Boolean(job.output_pdf_url || job.output_docx_url);
+
   return (
-    <div className={`preview-panel ${job.status}`}>
-      <div className="preview-summary">
-        <strong>预览任务 #{job.id}</strong>
-        <span>{renderStatusLabel(job.status)}</span>
-        {job.page_count ? <span>{job.page_count} 页</span> : null}
+    <section className={`feedback-panel preview-panel ${job.status}`} aria-label="预览任务状态">
+      <div className="feedback-heading">
+        <div>
+          <p className="eyebrow">预览反馈</p>
+          <h3>预览任务 #{job.id}</h3>
+        </div>
+        <span className={`preview-status ${renderStatusTone(job.status)}`}>{renderStatusLabel(job.status)}</span>
       </div>
+
+      <div className="preview-detail-grid">
+        <div>
+          <span>状态</span>
+          <strong>{renderStatusLabel(job.status)}</strong>
+          <small>{renderStatusHint(job.status)}</small>
+        </div>
+        <div>
+          <span>页数</span>
+          <strong>{job.page_count ?? "-"}</strong>
+          <small>PDF 预览页数</small>
+        </div>
+        <div>
+          <span>类型</span>
+          <strong>{renderModeLabel(job.mode)}</strong>
+          <small>预览生成模式</small>
+        </div>
+      </div>
+
+      {isWorking ? <p className="preview-pending">预览任务正在处理，页面会自动刷新状态。</p> : null}
+
       {job.status === "succeeded" ? (
-        <div className="preview-links">
-          {job.output_pdf_url ? (
-            <a href={resolveFileUrl(job.output_pdf_url)} target="_blank" rel="noreferrer">
-              打开 PDF 预览
-            </a>
-          ) : null}
-          {job.output_docx_url ? (
-            <a href={resolveFileUrl(job.output_docx_url)} target="_blank" rel="noreferrer">
-              下载预览 DOCX
-            </a>
-          ) : null}
+        hasOutputLinks ? (
+          <div className="preview-link-grid">
+            {job.output_pdf_url ? (
+              <a className="preview-link primary" href={resolveFileUrl(job.output_pdf_url)} target="_blank" rel="noreferrer">
+                PDF 预览
+              </a>
+            ) : null}
+            {job.output_docx_url ? (
+              <a className="preview-link" href={resolveFileUrl(job.output_docx_url)} target="_blank" rel="noreferrer">
+                预览 DOCX
+              </a>
+            ) : null}
+            {job.log_url ? (
+              <a className="preview-log" href={resolveFileUrl(job.log_url)} target="_blank" rel="noreferrer">
+                查看日志
+              </a>
+            ) : null}
+          </div>
+        ) : (
+          <p className="preview-warning">预览已完成，但没有返回可打开的 PDF 或 DOCX 链接。</p>
+        )
+      ) : null}
+
+      {isFailed ? <p className="preview-error">{previewErrorMessage(job)}</p> : null}
+
+      {job.status !== "succeeded" && job.log_url ? (
+        <div className="preview-link-grid compact">
+          <a className="preview-log" href={resolveFileUrl(job.log_url)} target="_blank" rel="noreferrer">
+            查看预览日志
+          </a>
         </div>
       ) : null}
-      {["failed", "timeout"].includes(job.status) ? (
-        <p className="preview-error">{job.error_message ?? "预览生成失败。"}</p>
-      ) : null}
-      {job.log_url ? (
-        <a className="preview-log" href={resolveFileUrl(job.log_url)} target="_blank" rel="noreferrer">
-          查看预览日志
-        </a>
-      ) : null}
-    </div>
+    </section>
   );
+}
+
+function renderModeLabel(mode: RenderJob["mode"]) {
+  return mode === "editable" ? "可编辑版" : "最终版";
 }
 
 function renderStatusLabel(status: RenderJob["status"]) {
@@ -627,4 +711,54 @@ function renderStatusLabel(status: RenderJob["status"]) {
     return "已超时";
   }
   return "失败";
+}
+
+function renderStatusTone(status: RenderJob["status"]) {
+  if (status === "succeeded") {
+    return "success";
+  }
+  if (status === "failed" || status === "timeout") {
+    return "danger";
+  }
+  return "info";
+}
+
+function renderStatusHint(status: RenderJob["status"]) {
+  if (status === "queued") {
+    return "等待本地渲染器处理";
+  }
+  if (status === "running") {
+    return "正在生成 DOCX 和 PDF";
+  }
+  if (status === "succeeded") {
+    return "可打开预览文件";
+  }
+  if (status === "timeout") {
+    return "等待时间已超过限制";
+  }
+  return "需要查看失败原因";
+}
+
+function previewErrorMessage(job: RenderJob) {
+  const rawMessage = job.error_message?.trim();
+  if (!rawMessage) {
+    return job.status === "timeout"
+      ? "预览生成超过等待时间，请确认本机 Word 或 LibreOffice 可用后重试。"
+      : "预览生成失败，请查看日志确认本机渲染器或文件路径是否正常。";
+  }
+
+  const lowerMessage = rawMessage.toLowerCase();
+  if (job.status === "timeout" || lowerMessage.includes("timeout") || lowerMessage.includes("timed out")) {
+    return `预览生成超过等待时间，请稍后重试或查看日志。原始信息：${rawMessage}`;
+  }
+  if (lowerMessage.includes("not found") || lowerMessage.includes("no such file") || rawMessage.includes("未找到")) {
+    return `未找到可用的 Word 或 LibreOffice 渲染器，请安装或配置渲染器后重试。原始信息：${rawMessage}`;
+  }
+  if (lowerMessage.includes("libreoffice")) {
+    return `LibreOffice 转换 PDF 未完成，请确认 LibreOffice 可用后重试。原始信息：${rawMessage}`;
+  }
+  if (lowerMessage.includes("word")) {
+    return `Microsoft Word 自动化预览未完成，请确认 Word 可正常启动后重试。原始信息：${rawMessage}`;
+  }
+  return rawMessage;
 }
