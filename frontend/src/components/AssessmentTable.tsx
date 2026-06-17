@@ -165,7 +165,7 @@ export function AssessmentTable({
         </div>
       ) : (
         <div className="table-scroll">
-          <table className="assessment-table">
+          <table className={`assessment-table ${technical ? "technical-table" : "management-table"}`}>
             <thead>
               <tr>
                 <th>测评单元</th>
