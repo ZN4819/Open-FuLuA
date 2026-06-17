@@ -1,0 +1,127 @@
+{
+  "profile_id": "appendix_a_v1",
+  "name": "附录A测评结果记录模板",
+  "source_document": "附录A编写.docx",
+  "page": {
+    "size": "A4",
+    "orientation": "landscape",
+    "width_in": 11.69,
+    "height_in": 8.27,
+    "usable_width_in": 9.69,
+    "margin_cm": {
+      "top": 3.17,
+      "right": 2.54,
+      "bottom": 3.17,
+      "left": 2.54,
+      "header": 1.5,
+      "footer": 1.75
+    }
+  },
+  "typography": {
+    "body": {
+      "ascii_font": "Times New Roman",
+      "east_asia_font": "宋体",
+      "size_pt": 10.5,
+      "line_twips": 240,
+      "spacing_after_twips": 0
+    },
+    "table_header": {
+      "ascii_font": "Times New Roman",
+      "east_asia_font": "宋体",
+      "size_pt": 10.5,
+      "bold": true,
+      "alignment": "center"
+    },
+    "section_title": {
+      "east_asia_font": "黑体",
+      "size_pt": 12,
+      "bold": true,
+      "alignment": "center"
+    },
+    "caption": {
+      "ascii_font": "Times New Roman",
+      "east_asia_font": "宋体",
+      "size_pt": 10.5,
+      "alignment": "center"
+    }
+  },
+  "colors": {
+    "table_header_fill": "E7E6E6",
+    "table_body_fill": "FFFFFF",
+    "border": "000000",
+    "text": "000000"
+  },
+  "tables": {
+    "technical": {
+      "applies_to": ["A-1", "A-2", "A-3", "A-4"],
+      "columns": [
+        { "key": "unit", "label": "测评单元", "width_in": 1.43 },
+        { "key": "object_name", "label": "测评对象", "width_in": 1.29 },
+        { "key": "record_text", "label": "结果记录", "width_in": 3.16 },
+        { "key": "d", "label": "密码使用有效性 D", "width_in": 0.69 },
+        { "key": "a", "label": "密码算法/技术合规性 A", "width_in": 0.59 },
+        { "key": "k", "label": "密钥管理安全 K", "width_in": 0.59 },
+        { "key": "object_score", "label": "测评对象评分 Si,j,k", "width_in": 0.59 },
+        { "key": "unit_score", "label": "测评单元得分", "width_in": 1.17 }
+      ],
+      "layout": "fixed",
+      "allow_row_height_auto": true,
+      "vertical_alignment": "center"
+    },
+    "management": {
+      "applies_to": ["A-5", "A-6", "A-7", "A-8"],
+      "columns": [
+        { "key": "unit", "label": "测评单元", "width_in": 1.68 },
+        { "key": "object_name", "label": "测评对象", "width_in": 1.68 },
+        { "key": "record_text", "label": "结果记录", "width_in": 4.3 },
+        { "key": "compliance", "label": "测评指标符合情况（符合/部分符合/不符合/不适用）", "width_in": 0.91 },
+        { "key": "unit_score", "label": "测评单元得分", "width_in": 1.08 }
+      ],
+      "layout": "fixed",
+      "allow_row_height_auto": true,
+      "vertical_alignment": "center"
+    }
+  },
+  "sections": [
+    { "code": "A-1", "title": "物理和环境安全", "table_title": "表A-1物理和环境安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-1-" },
+    { "code": "A-2", "title": "网络和通信安全", "table_title": "表A-2网络和通信安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-2-" },
+    { "code": "A-3", "title": "设备和计算安全", "table_title": "表A-3设备和计算安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-3-" },
+    { "code": "A-4", "title": "应用和数据安全", "table_title": "表A-4应用和数据安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-4-" },
+    { "code": "A-5", "title": "管理制度", "table_title": "表A-5管理制度测评结果记录", "table_type": "management", "figure_prefix": "图A-5-" },
+    { "code": "A-6", "title": "人员管理", "table_title": "表A-6人员管理测评结果记录", "table_type": "management", "figure_prefix": "图A-6-" },
+    { "code": "A-7", "title": "建设运行", "table_title": "表A-7建设运行测评结果记录", "table_type": "management", "figure_prefix": "图A-7-" },
+    { "code": "A-8", "title": "应急处置", "table_title": "表A-8应急处置测评结果记录", "table_type": "management", "figure_prefix": "图A-8-" }
+  ],
+  "content_controls": {
+    "technical_metric": {
+      "type": "dropDownList",
+      "options": ["√", "×", "/"],
+      "default": "/"
+    },
+    "management_compliance": {
+      "type": "dropDownList",
+      "options": ["符合", "部分符合", "不符合", "不适用"],
+      "default": "不适用"
+    }
+  },
+  "numbering": {
+    "table_prefix": "表A-",
+    "figure_sequence_template": "图A-{section_number}-",
+    "reference_token_pattern": "[[FIG:{image_id}]]"
+  },
+  "images": {
+    "placement": "inline",
+    "max_width_in": 9.69,
+    "dpi_warning_threshold": 120,
+    "require_alt_text": true,
+    "caption_after_image": true
+  },
+  "sample_baseline": {
+    "sections": 8,
+    "tables": 8,
+    "content_controls": 307,
+    "ref_fields": 292,
+    "seq_fields": 179,
+    "images": 196
+  }
+}

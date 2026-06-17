@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.projects import router as projects_router
+from .api.templates import router as templates_router
 from .config import settings
 from .database import init_db
 from .schemas import HealthResponse
@@ -32,3 +33,4 @@ def health() -> HealthResponse:
 
 
 app.include_router(projects_router, prefix=settings.api_prefix)
+app.include_router(templates_router, prefix=settings.api_prefix)

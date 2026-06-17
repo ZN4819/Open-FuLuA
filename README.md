@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前处于阶段 1：可运行骨架。
+当前已完成阶段 2：模板 Profile 与样本文档结构分析器。
 
 已包含：
 
@@ -14,6 +14,27 @@
 - 新项目自动初始化 A-1 至 A-8 章节。
 - 前端 React/Vite 应用骨架。
 - 项目创建页面和章节导航。
+- 附录A模板 profile。
+- DOCX 结构分析器。
+- 样本文档结构回归测试。
+
+## 模板 Profile
+
+模板规则位于：
+
+```text
+templates/appendix_a/template_profile.json
+```
+
+当前 profile 固化了：
+
+- 横向 A4 页面设置。
+- A-1 至 A-8 章节和表题。
+- 技术测评 8 列表格 schema。
+- 管理测评 5 列表格 schema。
+- 两类下拉控件选项。
+- 图片宽度、DPI 和内联放置规则。
+- 样本文档结构基准指标。
 
 ## 目录结构
 
@@ -49,6 +70,12 @@ http://127.0.0.1:8000
 GET http://127.0.0.1:8000/api/health
 ```
 
+模板 profile 接口：
+
+```text
+GET http://127.0.0.1:8000/api/template-profile
+```
+
 ## 前端运行
 
 ```powershell
@@ -77,3 +104,25 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 2. 运行该阶段可运行的测试或手动检查。
 3. 提交代码。
 4. 推送到远程仓库 [ZN4819/FuLuA](https://github.com/ZN4819/FuLuA)。
+
+重要变更应在独立阶段分支中完成，例如：
+
+```text
+stage2-template-profile
+```
+
+## 测试
+
+运行后端结构测试：
+
+```powershell
+$env:PYTHONPATH="F:\Codex\FLA\backend"
+.\backend\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+构建前端：
+
+```powershell
+cd frontend
+npm run build
+```

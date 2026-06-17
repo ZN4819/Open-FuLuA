@@ -139,6 +139,13 @@ frontend/src/components/SectionNav.tsx
 - 后端可读取 profile。
 - 单元测试确认 8 个章节和 2 类表格 schema 存在。
 
+完成记录（2026-06-17）：
+
+- 已创建 `templates/appendix_a/template_profile.json`。
+- 已固化横向 A4 页面设置、A-1 至 A-8 章节、两类表格 schema、下拉选项、图片规则和样本文档基准指标。
+- 已实现后端 profile 读取服务。
+- 已提供 `GET /api/template-profile` 接口。
+
 ### 4.2 样本文档分析器
 
 任务：
@@ -166,6 +173,13 @@ tests/test_sample_docx_analysis.py
 
 - 测试可以读取原始样本文档。
 - 分析结果与基准指标一致或在可解释范围内。
+
+完成记录（2026-06-17）：
+
+- 已实现 `backend/app/services/docx_analyzer.py`。
+- 已支持统计分节、表格、内容控件、下拉控件、REF、SEQ、书签、图片和表格形态。
+- 已新增 `tests/test_template_profile.py` 和 `tests/test_sample_docx_analysis.py`。
+- 本地样本文档回归测试通过，确认 8 分节、8 表、307 下拉、292 REF、179 SEQ、196 图片对象。
 
 ## 5. 阶段三：结构化数据模型
 
