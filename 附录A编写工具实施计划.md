@@ -37,6 +37,7 @@ F:\Codex\FLA
 ├─ templates/
 │  └─ appendix_a/
 │     ├─ template_profile.json
+│     ├─ record_templates.json
 │     └─ README.md
 ├─ storage/
 │  ├─ projects/
@@ -311,7 +312,16 @@ ScoreInput.tsx
 - A-1 至 A-4 显示 D/A/K、对象评分、单元得分。
 - A-5 至 A-8 显示符合情况和单元得分。
 - 下拉选项来自模板 profile。
+- 已补充结果记录模板选择，用户可套用当前章节模板后继续手动修改。
 - 章节保存会调用 `PUT /api/projects/{project_id}/sections/{code}`，保存后可重新读取恢复。
+
+补充完成记录（2026-06-17）：
+
+- 已新增 `scripts/extract_record_templates.py`，从 `附录A编写.docx` 只读抽取结果记录模板。
+- 已生成 `templates/appendix_a/record_templates.json`，覆盖 A-1 至 A-8 共 117 条模板。
+- 已新增 `GET /api/record-templates` 接口，支持按 `section_code` 筛选。
+- 已在前端结果记录输入区增加“套用结果模板”下拉。
+- 已新增结果记录模板测试，确认模板覆盖全部章节，并清理样本文档固定图号。
 
 ### 6.3 引用 token 编辑
 

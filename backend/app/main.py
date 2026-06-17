@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.evidence import router as evidence_router
 from .api.exports import router as exports_router
 from .api.projects import router as projects_router
+from .api.record_templates import router as record_templates_router
 from .api.render_jobs import router as render_jobs_router
 from .api.sections import router as sections_router
 from .api.templates import router as templates_router
@@ -40,6 +41,7 @@ def health() -> HealthResponse:
 
 
 app.include_router(projects_router, prefix=settings.api_prefix)
+app.include_router(record_templates_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)
 app.include_router(evidence_router, prefix=settings.api_prefix)

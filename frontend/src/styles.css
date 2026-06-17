@@ -522,7 +522,8 @@ input {
   margin-top: 8px;
 }
 
-.reference-select {
+.reference-select,
+.record-template-select {
   margin-top: 8px;
 }
 

@@ -159,6 +159,17 @@ export type RenderJob = {
   error_message?: string | null;
 };
 
+export type RecordTemplate = {
+  id: string;
+  section_code: string;
+  table_type: "technical" | "management";
+  unit: string;
+  object_name: string;
+  title: string;
+  record_text: string;
+  source_row: number;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -215,6 +226,11 @@ export function updateSectionDetail(
 
 export function getTemplateProfile(): Promise<TemplateProfile> {
   return request<TemplateProfile>("/api/template-profile");
+}
+
+export function getRecordTemplates(sectionCode?: string): Promise<RecordTemplate[]> {
+  const query = sectionCode ? `?section_code=${encodeURIComponent(sectionCode)}` : "";
+  return request<RecordTemplate[]>(`/api/record-templates${query}`);
 }
 
 export function resolveFileUrl(fileUrl?: string | null): string {

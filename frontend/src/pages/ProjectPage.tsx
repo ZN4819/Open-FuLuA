@@ -4,6 +4,7 @@ import {
   createProject,
   exportProjectDocx,
   getRenderJob,
+  getRecordTemplates,
   getSectionDetail,
   getTemplateProfile,
   resolveFileUrl,
@@ -13,6 +14,7 @@ import {
   type EvidenceImage,
   type Project,
   type RenderJob,
+  type RecordTemplate,
   type SectionDetail,
   type TemplateProfile,
   type ValidationIssue,
@@ -45,6 +47,7 @@ export function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [activeCode, setActiveCode] = useState<string>();
   const [profile, setProfile] = useState<TemplateProfile | null>(null);
+  const [recordTemplates, setRecordTemplates] = useState<RecordTemplate[]>([]);
   const [sectionDetails, setSectionDetails] = useState<Record<string, SectionDetail>>({});
   const [draftRows, setDraftRows] = useState<Record<string, AssessmentRowInput[]>>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
@@ -66,12 +69,19 @@ export function ProjectPage() {
 
   const activeDetail = activeCode ? sectionDetails[activeCode] : undefined;
   const activeRows = activeCode ? draftRows[activeCode] ?? [] : [];
+  const activeRecordTemplates = useMemo(
+    () => recordTemplates.filter((template) => template.section_code === activeCode),
+    [activeCode, recordTemplates]
+  );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
 
   useEffect(() => {
     getTemplateProfile()
       .then(setProfile)
       .catch((err) => setError(err instanceof Error ? err.message : "读取模板 profile 失败"));
+    getRecordTemplates()
+      .then(setRecordTemplates)
+      .catch((err) => setError(err instanceof Error ? err.message : "读取结果记录模板失败"));
   }, []);
 
   useEffect(() => {
@@ -318,6 +328,7 @@ export function ProjectPage() {
               isSaving={isSaving}
               isDirty={isDirty}
               evidenceImages={activeDetail.evidence_images}
+              recordTemplates={activeRecordTemplates}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSave={handleSaveSection}
             />

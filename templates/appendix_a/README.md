@@ -1,8 +1,10 @@
 # 附录A模板目录
 
-本目录用于存放附录A模板 profile 和后续模板资产。
+本目录用于存放附录A模板 profile、结果记录模板库和后续模板资产。
 
 阶段 2 已根据 `附录A编写.docx` 固化 `template_profile.json`，用于描述页面设置、表格 schema、字体、下拉选项、图片规则和图表编号规则。
+
+已根据 `附录A编写.docx` 只读抽取 `record_templates.json`，用于在结果记录录入时提供可套用的文本模板。
 
 当前 profile 包含：
 
@@ -13,3 +15,15 @@
 - 两类下拉控件选项。
 - 图片默认内联、最大宽度和 DPI 警告阈值。
 - 样本文档结构基准指标。
+
+当前结果记录模板库包含：
+
+- A-1 至 A-8 共 117 条结果记录模板。
+- 每条模板包含章节、表格类型、测评单元、测评对象、模板标题、结果记录正文和来源行号。
+- 固定旧图号已统一替换为 `[插入图片引用]`，真实 DOCX 引用仍由系统图片引用 token 生成。
+
+重新生成模板库：
+
+```powershell
+.\backend\.venv\Scripts\python.exe scripts\extract_record_templates.py
+```

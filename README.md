@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成阶段 9：测试、回归与本地打包说明。
+当前已完成阶段 9：测试、回归与本地打包说明，并补充了结果记录模板库功能。
 
 已包含：
 
@@ -52,6 +52,8 @@
 - 已补充端到端回归测试，覆盖创建项目、填写 A-1/A-5、插入图片引用、校验、导出和预览任务。
 - 已提供统一检查脚本 `scripts/run_checks.ps1`。
 - 已提供本地运行与打包说明 `docs/本地运行与打包说明.md`。
+- 已从样本文档抽取 117 条结果记录模板，录入结果记录时可选择套用模板或手动填写。
+- 套用模板时，原样本文档中的固定图号会以 `[插入图片引用]` 占位，真实引用仍通过图片引用下拉生成。
 
 ## 模板 Profile
 
@@ -70,6 +72,18 @@ templates/appendix_a/template_profile.json
 - 两类下拉控件选项。
 - 图片宽度、DPI 和内联放置规则。
 - 样本文档结构基准指标。
+
+结果记录模板库位于：
+
+```text
+templates/appendix_a/record_templates.json
+```
+
+当前模板库根据 `附录A编写.docx` 只读抽取生成，包含 A-1 至 A-8 的测评单元、测评对象和结果记录正文。重新生成模板库可运行：
+
+```powershell
+.\backend\.venv\Scripts\python.exe scripts\extract_record_templates.py
+```
 
 ## 目录结构
 
@@ -109,6 +123,13 @@ GET http://127.0.0.1:8000/api/health
 
 ```text
 GET http://127.0.0.1:8000/api/template-profile
+```
+
+结果记录模板接口：
+
+```text
+GET http://127.0.0.1:8000/api/record-templates
+GET http://127.0.0.1:8000/api/record-templates?section_code=A-1
 ```
 
 章节详情接口：
@@ -204,6 +225,7 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 当前测试覆盖：
 
 - 模板 profile 结构。
+- 结果记录模板库结构、章节覆盖和旧图号清理。
 - 样本文档结构回归。
 - 新项目 8 个章节初始化。
 - 测评行、评分结果和交叉引用保存读取。

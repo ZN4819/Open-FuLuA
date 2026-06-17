@@ -1,4 +1,4 @@
-import type { AssessmentRowInput, EvidenceImage, TemplateProfile } from "../api/client";
+import type { AssessmentRowInput, EvidenceImage, RecordTemplate, TemplateProfile } from "../api/client";
 
 type AssessmentTableProps = {
   sectionCode: string;
@@ -7,6 +7,7 @@ type AssessmentTableProps = {
   isSaving: boolean;
   isDirty: boolean;
   evidenceImages: EvidenceImage[];
+  recordTemplates: RecordTemplate[];
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSave: () => void;
 };
@@ -51,6 +52,7 @@ export function AssessmentTable({
   isSaving,
   isDirty,
   evidenceImages,
+  recordTemplates,
   onRowsChange,
   onSave
 }: AssessmentTableProps) {
@@ -103,6 +105,20 @@ export function AssessmentTable({
           display_text: displayText
         }
       ]
+    });
+  }
+
+  function applyRecordTemplate(index: number, templateId: string) {
+    const template = recordTemplates.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+
+    const row = rows[index];
+    updateRow(index, {
+      unit: row.unit || template.unit,
+      object_name: row.object_name || template.object_name,
+      record_text: template.record_text
     });
   }
 
@@ -179,6 +195,20 @@ export function AssessmentTable({
                       onChange={(event) => updateRow(index, { record_text: event.target.value })}
                       rows={6}
                     />
+                    {recordTemplates.length > 0 ? (
+                      <select
+                        className="record-template-select"
+                        value=""
+                        onChange={(event) => applyRecordTemplate(index, event.target.value)}
+                      >
+                        <option value="">套用结果模板</option>
+                        {recordTemplates.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.title}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
                     <select
                       className="reference-select"
                       value=""

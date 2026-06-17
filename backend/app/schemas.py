@@ -131,6 +131,17 @@ class SectionUpdate(BaseModel):
     rows: list[AssessmentRowWrite] = []
 
 
+class RecordTemplateRead(BaseModel):
+    id: str
+    section_code: str
+    table_type: str
+    unit: str
+    object_name: str
+    title: str
+    record_text: str
+    source_row: int
+
+
 class ValidationSummary(BaseModel):
     errors: int = 0
     warnings: int = 0
