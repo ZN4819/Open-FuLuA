@@ -119,6 +119,28 @@ export type TemplateProfile = {
   };
 };
 
+export type ValidationSummary = {
+  errors: number;
+  warnings: number;
+  info: number;
+};
+
+export type ValidationIssue = {
+  id?: number | null;
+  project_id: number;
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  created_at?: string | null;
+};
+
+export type ValidationResponse = {
+  summary: ValidationSummary;
+  issues: ValidationIssue[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -264,6 +286,12 @@ export async function exportProjectDocx(projectId: number, mode: "editable" | "f
   link.remove();
   URL.revokeObjectURL(url);
   return fileName;
+}
+
+export function validateProject(projectId: number): Promise<ValidationResponse> {
+  return request<ValidationResponse>(`/api/projects/${projectId}/validate`, {
+    method: "POST"
+  });
 }
 
 function _fileNameFromDisposition(disposition: string | null): string | null {

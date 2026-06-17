@@ -536,3 +536,48 @@ def replace_section_rows(
                 )
 
         return get_section(project_id, code, db)
+
+
+def replace_validation_issues(project_id: int, issues: list[dict[str, Any]]) -> list[sqlite3.Row]:
+    timestamp = utc_now()
+    with connect() as db:
+        if get_project_by_id(project_id, db) is None:
+            raise ValueError("项目不存在")
+        db.execute("DELETE FROM validation_issues WHERE project_id = ?", (project_id,))
+        for issue in issues:
+            db.execute(
+                """
+                INSERT INTO validation_issues
+                    (project_id, severity, code, message, target_type, target_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    issue["severity"],
+                    issue["code"],
+                    issue["message"],
+                    issue.get("target_type"),
+                    issue.get("target_id"),
+                    timestamp,
+                ),
+            )
+        return list_validation_issues(project_id, db)
+
+
+def list_validation_issues(project_id: int, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    query = """
+        SELECT id, project_id, severity, code, message, target_type, target_id, created_at
+        FROM validation_issues
+        WHERE project_id = ?
+        ORDER BY
+            CASE severity
+                WHEN 'error' THEN 1
+                WHEN 'warning' THEN 2
+                ELSE 3
+            END,
+            id
+    """
+    if db is not None:
+        return db.execute(query, (project_id,)).fetchall()
+    with connect() as connection:
+        return connection.execute(query, (project_id,)).fetchall()

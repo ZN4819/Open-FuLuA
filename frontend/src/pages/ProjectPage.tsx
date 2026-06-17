@@ -5,11 +5,14 @@ import {
   getSectionDetail,
   getTemplateProfile,
   updateSectionDetail,
+  validateProject,
   type AssessmentRowInput,
   type EvidenceImage,
   type Project,
   type SectionDetail,
-  type TemplateProfile
+  type TemplateProfile,
+  type ValidationIssue,
+  type ValidationResponse
 } from "../api/client";
 import { AssessmentTable } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
@@ -46,6 +49,8 @@ export function ProjectPage() {
   const [isLoadingSection, setIsLoadingSection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validation, setValidation] = useState<ValidationResponse>();
   const [saveMessage, setSaveMessage] = useState<string>();
 
   const activeSection = useMemo(
@@ -167,6 +172,28 @@ export function ProjectPage() {
     }
   }
 
+  async function handleValidate() {
+    if (!project) {
+      return;
+    }
+    if (dirtySections.size > 0) {
+      setError("当前还有未保存的章节，请先保存后再校验。");
+      return;
+    }
+
+    setIsValidating(true);
+    setError(undefined);
+    try {
+      const result = await validateProject(project.id);
+      setValidation(result);
+      setSaveMessage("校验已完成");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "校验项目失败");
+    } finally {
+      setIsValidating(false);
+    }
+  }
+
   return (
     <Layout
       title="附录A编写工具"
@@ -209,6 +236,9 @@ export function ProjectPage() {
               <h2>{project.name}</h2>
             </div>
             <div className="export-actions">
+              <button type="button" onClick={handleValidate} disabled={isValidating}>
+                {isValidating ? "校验中..." : "校验项目"}
+              </button>
               <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
                 {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
               </button>
@@ -231,6 +261,8 @@ export function ProjectPage() {
           {saveMessage ? <p className="success">{saveMessage}</p> : null}
 
           {isLoadingSection ? <p className="loading-text">正在读取章节...</p> : null}
+
+          {validation ? <ValidationPanel validation={validation} /> : null}
 
           {profile && activeCode && activeDetail ? (
             <AssessmentTable
@@ -258,4 +290,50 @@ export function ProjectPage() {
       )}
     </Layout>
   );
+}
+
+function ValidationPanel({ validation }: { validation: ValidationResponse }) {
+  const { summary, issues } = validation;
+  return (
+    <div className="validation-panel">
+      <div className="validation-summary">
+        <strong>校验结果</strong>
+        <span className="severity error">错误 {summary.errors}</span>
+        <span className="severity warning">警告 {summary.warnings}</span>
+        <span className="severity info">提示 {summary.info}</span>
+      </div>
+
+      {issues.length === 0 ? (
+        <p className="validation-empty">未发现需要处理的问题。</p>
+      ) : (
+        <ul className="validation-list">
+          {issues.map((issue) => (
+            <ValidationIssueItem issue={issue} key={issue.id ?? `${issue.code}-${issue.target_type}-${issue.target_id}`} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ValidationIssueItem({ issue }: { issue: ValidationIssue }) {
+  return (
+    <li className={`validation-item ${issue.severity}`}>
+      <span>{severityLabel(issue.severity)}</span>
+      <div>
+        <strong>{issue.message}</strong>
+        <p>{issue.code}{issue.target_type ? ` · ${issue.target_type}` : ""}{issue.target_id ? ` · ${issue.target_id}` : ""}</p>
+      </div>
+    </li>
+  );
+}
+
+function severityLabel(severity: ValidationIssue["severity"]) {
+  if (severity === "error") {
+    return "错误";
+  }
+  if (severity === "warning") {
+    return "警告";
+  }
+  return "提示";
 }

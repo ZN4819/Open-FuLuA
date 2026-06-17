@@ -542,6 +542,19 @@ POST /api/projects/{project_id}/validate
 - 前端能展示错误、警告、提示。
 - 错误可定位到章节、测评行或图片。
 
+完成记录（2026-06-17）：
+
+- 已新增 `backend/app/services/validator.py`。
+- 已新增 `POST /api/projects/{project_id}/validate` 接口。
+- 校验结果会替换式保存到 `validation_issues` 表。
+- 已支持错误、警告、提示三类严重级别汇总。
+- 已支持必填字段、非法下拉值、评分缺失/格式错误校验。
+- 已支持 `[[FIG:imageId]]` 引用 token 断链和已保存交叉引用断链校验。
+- 已支持未使用图片、低 DPI、缺少 alt 文本、缺少题注、本地图片文件缺失校验。
+- 已在校验流程中生成并重新解析 final DOCX，检查导出 REF 目标完整性。
+- 前端项目页已新增“校验项目”按钮、校验汇总和问题清单。
+- 已新增 `tests/test_validation_service.py`，覆盖问题项目和无错误项目两类路径。
+
 ## 10. 阶段八：异步预览
 
 ### 10.1 任务接口

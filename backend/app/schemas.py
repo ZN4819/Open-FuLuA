@@ -129,3 +129,25 @@ class SectionUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     table_title: str | None = Field(default=None, max_length=200)
     rows: list[AssessmentRowWrite] = []
+
+
+class ValidationSummary(BaseModel):
+    errors: int = 0
+    warnings: int = 0
+    info: int = 0
+
+
+class ValidationIssueRead(BaseModel):
+    id: int | None = None
+    project_id: int
+    severity: str
+    code: str
+    message: str
+    target_type: str | None = None
+    target_id: str | None = None
+    created_at: str | None = None
+
+
+class ValidationResponse(BaseModel):
+    summary: ValidationSummary
+    issues: list[ValidationIssueRead]
