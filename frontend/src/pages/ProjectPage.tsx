@@ -198,7 +198,12 @@ export function ProjectPage() {
     setError(undefined);
     setIsCreating(true);
     try {
-      const created = await createProject(projectName);
+      const name = projectName.trim();
+      if (!name) {
+        setError("请输入项目名称。");
+        return;
+      }
+      const created = await createProject(name);
       setProjects((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       openProject(created);
     } catch (err) {
@@ -338,64 +343,92 @@ export function ProjectPage() {
       }
     >
       {!project ? (
-        <section className="panel">
-          <h2>创建项目</h2>
-          <form className="project-form" onSubmit={handleCreateProject}>
-            <label htmlFor="projectName">项目名称</label>
-            <input
-              id="projectName"
-              value={projectName}
-              onChange={(event) => setProjectName(event.target.value)}
-              maxLength={120}
-              required
-            />
-            <button type="submit" disabled={isCreating}>
-              {isCreating ? "创建中..." : "创建项目"}
-            </button>
-          </form>
-          <div className="project-list-panel">
-            <div className="project-list-header">
+        <section className="home-page">
+          <div className="home-heading">
+            <p className="eyebrow">当前项目</p>
+            <h2>附录A测评结果记录</h2>
+          </div>
+          <div className="home-grid">
+            <section className="home-create-panel">
               <div>
-                <p className="eyebrow">已有项目</p>
-                <h3>打开之前的项目</h3>
+                <p className="eyebrow">新建项目</p>
+                <h3>创建附录A项目</h3>
               </div>
-              <button type="button" onClick={refreshProjects} disabled={isLoadingProjects}>
-                {isLoadingProjects ? "刷新中..." : "刷新"}
-              </button>
-            </div>
-            {projects.length === 0 ? (
-              <p className="empty-sidebar">还没有可打开的项目。</p>
-            ) : (
-              <div className="project-list">
-                {projects.map((savedProject) => (
-                  <article className="project-list-item" key={savedProject.id}>
-                    <div>
-                      <strong>{savedProject.name}</strong>
-                      <span>最近更新：{formatDate(savedProject.updated_at)}</span>
-                    </div>
-                    <div className="project-list-actions">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenProject(savedProject.id)}
-                        disabled={openingProjectId === savedProject.id || deletingProjectId === savedProject.id}
-                      >
-                        {openingProjectId === savedProject.id ? "打开中..." : "打开"}
-                      </button>
-                      <button
-                        type="button"
-                        className="danger-button"
-                        onClick={() => handleDeleteProject(savedProject)}
-                        disabled={deletingProjectId === savedProject.id || openingProjectId === savedProject.id}
-                      >
-                        {deletingProjectId === savedProject.id ? "删除中..." : "删除"}
-                      </button>
-                    </div>
-                  </article>
-                ))}
+              <form className="project-form" onSubmit={handleCreateProject}>
+                <label htmlFor="projectName">项目名称</label>
+                <input
+                  id="projectName"
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  maxLength={120}
+                  required
+                />
+                <button type="submit" disabled={isCreating}>
+                  {isCreating ? "创建中..." : "创建项目"}
+                </button>
+              </form>
+            </section>
+
+            <section className="home-projects-panel">
+              <div className="project-list-header">
+                <div>
+                  <p className="eyebrow">已有项目</p>
+                  <h3>继续之前的项目</h3>
+                </div>
+                <div className="project-list-tools">
+                  <span>{projectCountLabel(projects.length)}</span>
+                  <button type="button" onClick={refreshProjects} disabled={isLoadingProjects}>
+                    {isLoadingProjects ? "刷新中..." : "刷新"}
+                  </button>
+                </div>
               </div>
-            )}
+
+              {isLoadingProjects && projects.length === 0 ? (
+                <p className="project-empty-state">正在读取项目...</p>
+              ) : projects.length === 0 ? (
+                <p className="project-empty-state">还没有可打开的项目。</p>
+              ) : (
+                <div className="project-list">
+                  {projects.map((savedProject) => (
+                    <article className="project-list-item" key={savedProject.id}>
+                      <div className="project-list-main">
+                        <strong>{savedProject.name}</strong>
+                        <dl>
+                          <div>
+                            <dt>更新</dt>
+                            <dd>{formatDate(savedProject.updated_at)}</dd>
+                          </div>
+                          <div>
+                            <dt>创建</dt>
+                            <dd>{formatDate(savedProject.created_at)}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <div className="project-list-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenProject(savedProject.id)}
+                          disabled={openingProjectId === savedProject.id || deletingProjectId === savedProject.id}
+                        >
+                          {openingProjectId === savedProject.id ? "打开中..." : "打开"}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger-button"
+                          onClick={() => handleDeleteProject(savedProject)}
+                          disabled={deletingProjectId === savedProject.id || openingProjectId === savedProject.id}
+                        >
+                          {deletingProjectId === savedProject.id ? "删除中..." : "删除"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
           {error ? <p className="error">{error}</p> : null}
+          {saveMessage ? <p className="success">{saveMessage}</p> : null}
         </section>
       ) : (
         <section className="panel wide-panel">
@@ -475,6 +508,10 @@ function formatDate(value: string) {
     return value;
   }
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function projectCountLabel(count: number) {
+  return count > 0 ? `${count} 个项目` : "无项目";
 }
 
 function ValidationPanel({ validation }: { validation: ValidationResponse }) {

@@ -193,6 +193,51 @@ a:hover {
   max-width: 1440px;
 }
 
+.home-page {
+  width: 100%;
+  max-width: 1280px;
+}
+
+.home-heading {
+  margin-bottom: var(--space-5);
+}
+
+.home-heading h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.home-create-panel,
+.home-projects-panel {
+  min-width: 0;
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+
+.home-create-panel {
+  position: sticky;
+  top: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.home-create-panel h3,
+.home-projects-panel h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
 .project-header {
   display: flex;
   gap: var(--space-4);
@@ -276,6 +321,11 @@ a:hover {
   margin-top: var(--space-5);
 }
 
+.home-create-panel .project-form {
+  max-width: none;
+  margin-top: 0;
+}
+
 .project-form label,
 .evidence-card label {
   font-size: 13px;
@@ -304,30 +354,91 @@ a:hover {
   justify-content: space-between;
 }
 
+.project-list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.project-list-tools span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-xs);
+}
+
 .project-list {
   display: grid;
   gap: var(--space-3);
 }
 
 .project-list-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-4);
-  align-items: center;
-  justify-content: space-between;
+  align-items: start;
   padding: var(--space-4);
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
 
-.project-list-item div {
+.project-list-main {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.project-list-main strong {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.project-list-main dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.project-list-main dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.project-list-main dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-subtle);
+}
+
+.project-list-main dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
 .project-list-item span {
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+.project-empty-state {
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--color-text-muted);
+  text-align: center;
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .section-nav {
@@ -860,7 +971,8 @@ a:hover {
 @media (max-width: 820px) {
   .workspace,
   .placeholder-grid,
-  .upload-panel {
+  .upload-panel,
+  .home-grid {
     grid-template-columns: 1fr;
   }
 
@@ -886,17 +998,30 @@ a:hover {
     padding: var(--space-4);
   }
 
+  .home-create-panel,
+  .home-projects-panel {
+    padding: var(--space-4);
+  }
+
+  .home-create-panel {
+    position: static;
+  }
+
   .editor-toolbar,
   .project-header,
-  .project-list-header,
-  .project-list-item {
+  .project-list-header {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .project-list-item {
+    grid-template-columns: 1fr;
+  }
+
   .export-actions,
   .project-list-actions,
-  .toolbar-actions {
+  .toolbar-actions,
+  .project-list-tools {
     justify-content: flex-start;
   }
 
