@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 import type { AssessmentRowInput, EvidenceImage, RecordTemplate, TemplateProfile } from "../api/client";
 
 type AssessmentTableProps = {
@@ -19,6 +21,12 @@ const EMPTY_METRIC = {
   object_score: "",
   unit_score: "",
   compliance: undefined
+};
+const FIGURE_PLACEHOLDER = "[插入图片引用]";
+
+type TextSelection = {
+  start: number;
+  end: number;
 };
 
 function isTechnicalSection(code: string) {
@@ -59,6 +67,7 @@ export function AssessmentTable({
   const technical = isTechnicalSection(sectionCode);
   const metricOptions = profile.content_controls.technical_metric.options;
   const complianceOptions = profile.content_controls.management_compliance.options;
+  const recordSelections = useRef<Record<number, TextSelection>>({});
 
   function updateRow(index: number, patch: Partial<AssessmentRowInput>) {
     const next = normalizeRows(
@@ -85,6 +94,13 @@ export function AssessmentTable({
     onRowsChange(normalizeRows(rows.filter((_, rowIndex) => rowIndex !== index)));
   }
 
+  function rememberRecordSelection(index: number, target: HTMLTextAreaElement) {
+    recordSelections.current[index] = {
+      start: target.selectionStart,
+      end: target.selectionEnd
+    };
+  }
+
   function insertReferenceToken(index: number, imageIdValue: string) {
     const imageId = Number(imageIdValue);
     const image = evidenceImages.find((item) => item.id === imageId);
@@ -94,7 +110,7 @@ export function AssessmentTable({
     const token = `[[FIG:${image.id}]]`;
     const displayText = image.figure_label ?? `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? "图A-"}${image.sort_order}`;
     const row = rows[index];
-    const recordText = row.record_text ? `${row.record_text}${token}` : token;
+    const recordText = insertAtSelectionOrPlaceholder(row.record_text, token, recordSelections.current[index]);
     updateRow(index, {
       record_text: recordText,
       cross_references: [
@@ -192,7 +208,13 @@ export function AssessmentTable({
                   <td className="record-cell">
                     <textarea
                       value={row.record_text}
-                      onChange={(event) => updateRow(index, { record_text: event.target.value })}
+                      onChange={(event) => {
+                        rememberRecordSelection(index, event.target);
+                        updateRow(index, { record_text: event.target.value });
+                      }}
+                      onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
+                      onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
+                      onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
                       rows={6}
                     />
                     {recordTemplates.length > 0 ? (
@@ -288,4 +310,50 @@ export function AssessmentTable({
       )}
     </div>
   );
+}
+
+function insertAtSelectionOrPlaceholder(text: string, token: string, selection?: TextSelection) {
+  if (!text) {
+    return token;
+  }
+
+  const range = insertionRange(text, selection);
+  if (!range) {
+    return `${text}${token}`;
+  }
+
+  return `${text.slice(0, range.start)}${token}${text.slice(range.end)}`;
+}
+
+function insertionRange(text: string, selection?: TextSelection): TextSelection | undefined {
+  if (!selection) {
+    const placeholderIndex = text.indexOf(FIGURE_PLACEHOLDER);
+    if (placeholderIndex >= 0) {
+      return {
+        start: placeholderIndex,
+        end: placeholderIndex + FIGURE_PLACEHOLDER.length
+      };
+    }
+    return undefined;
+  }
+
+  const start = Math.max(0, Math.min(selection.start, text.length));
+  const end = Math.max(start, Math.min(selection.end, text.length));
+  const placeholderRange = placeholderAroundSelection(text, { start, end });
+
+  return placeholderRange ?? { start, end };
+}
+
+function placeholderAroundSelection(text: string, selection: TextSelection): TextSelection | undefined {
+  let index = text.indexOf(FIGURE_PLACEHOLDER);
+  while (index >= 0) {
+    const end = index + FIGURE_PLACEHOLDER.length;
+    const caretInsidePlaceholder = selection.start === selection.end && selection.start >= index && selection.start <= end;
+    const selectionTouchesPlaceholder = selection.start < end && selection.end > index;
+    if (caretInsidePlaceholder || selectionTouchesPlaceholder) {
+      return { start: index, end };
+    }
+    index = text.indexOf(FIGURE_PLACEHOLDER, end);
+  }
+  return undefined;
 }

@@ -321,6 +321,7 @@ ScoreInput.tsx
 - 已生成 `templates/appendix_a/record_templates.json`，覆盖 A-1 至 A-8 共 117 条模板。
 - 已新增 `GET /api/record-templates` 接口，支持按 `section_code` 筛选。
 - 已在前端结果记录输入区增加“套用结果模板”下拉。
+- 已修正图片引用插入交互，引用 token 会按结果记录输入框的光标位置或选区插入，并可直接替换 `[插入图片引用]` 占位。
 - 已新增结果记录模板测试，确认模板覆盖全部章节，并清理样本文档固定图号。
 
 ### 6.3 引用 token 编辑
