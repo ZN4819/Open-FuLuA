@@ -357,6 +357,7 @@ ScoreInput.tsx
 
 ```text
 POST /api/projects/{project_id}/evidence
+POST /api/projects/{project_id}/evidence/batch
 PUT /api/evidence/{image_id}
 DELETE /api/evidence/{image_id}
 ```
@@ -371,7 +372,7 @@ DELETE /api/evidence/{image_id}
 
 验收标准：
 
-- 可上传 PNG/JPEG。
+- 可单张或批量上传 PNG/JPEG。
 - 可显示缩略图。
 - 可保存题注。
 
@@ -381,6 +382,13 @@ DELETE /api/evidence/{image_id}
 - 已使用 Pillow 读取图片像素、DPI 和建议显示尺寸。
 - 已将上传文件保存到 `storage/uploads/`，并通过 `/api/files/` 提供本地预览访问。
 - 前端已新增证据图片面板，支持 PNG/JPEG 上传、缩略图预览和题注编辑。
+
+补充完成记录（2026-06-18）：
+
+- 已新增 `POST /api/projects/{project_id}/evidence/batch` 批量上传接口。
+- 前端证据图片面板已支持一次选择多张 PNG/JPEG 并批量上传。
+- 批量上传会按选择顺序追加图片和图号；如批量中存在不支持或损坏图片，本次批量上传会回滚已保存文件和记录。
+- 已补充批量上传测试，确认返回连续图号、排序和共享题注。
 
 ### 7.2 排序与编号
 
@@ -670,7 +678,7 @@ LibreOffice 环境：
 
 - 已形成覆盖模板、样本文档、结构化数据、图片、DOCX 生成、校验服务和预览任务的单元测试集。
 - 已新增端到端回归测试 `tests/test_end_to_end_workflow.py`。
-- 当前后端测试共 28 项，覆盖结构化编写到导出、预览任务和导出模板格式对齐的主流程。
+- 当前后端测试共 30 项，覆盖结构化编写到导出、预览任务、批量上传、批量失败回滚和导出模板格式对齐的主流程。
 
 ### 11.2 集成测试
 

@@ -66,6 +66,40 @@ def upload_evidence_image(
     return evidence_to_schema(row, index)
 
 
+@router.post("/projects/{project_id}/evidence/batch", response_model=list[EvidenceImageRead], status_code=201)
+def upload_evidence_images(
+    project_id: int,
+    section_code: str = Form(...),
+    caption: str = Form(""),
+    alt_text: str = Form(""),
+    files: list[UploadFile] = File(...),
+) -> list[EvidenceImageRead]:
+    if not files:
+        raise HTTPException(status_code=400, detail="请选择至少一张 PNG 或 JPEG 图片。")
+    if database.get_section(project_id, section_code) is None:
+        raise HTTPException(status_code=404, detail="章节不存在")
+
+    created_rows = []
+    saved_paths: list[str] = []
+    try:
+        for file in files:
+            image_data = save_upload_file(project_id, section_code, file)
+            saved_paths.append(str(image_data["file_path"]))
+            image_data["caption"] = caption
+            image_data["alt_text"] = alt_text
+            created_rows.append(database.create_evidence_image(project_id, section_code, image_data))
+    except ValueError as exc:
+        _rollback_uploaded_images(created_rows, saved_paths)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceImageError as exc:
+        _rollback_uploaded_images(created_rows, saved_paths)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    rows = database.list_evidence_images(project_id, section_code)
+    index_by_id = {row["id"]: index for index, row in enumerate(rows, start=1)}
+    return [evidence_to_schema(row, index_by_id.get(row["id"])) for row in created_rows]
+
+
 @router.put("/evidence/{image_id}", response_model=EvidenceImageRead)
 def update_evidence_image(image_id: int, payload: EvidenceImageUpdate) -> EvidenceImageRead:
     row = database.update_evidence_image(
@@ -95,3 +129,10 @@ def reorder_evidence_images(project_id: int, section_code: str, payload: Evidenc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [evidence_to_schema(row, index) for index, row in enumerate(rows, start=1)]
+
+
+def _rollback_uploaded_images(rows, file_paths: list[str]) -> None:
+    for row in rows:
+        database.delete_evidence_image(row["id"])
+    for file_path in file_paths:
+        remove_stored_file(file_path)

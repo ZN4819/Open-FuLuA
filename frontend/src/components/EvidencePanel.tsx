@@ -4,7 +4,7 @@ import {
   reorderEvidenceImages,
   resolveFileUrl,
   updateEvidenceImage,
-  uploadEvidenceImage,
+  uploadEvidenceImages,
   type EvidenceImage
 } from "../api/client";
 
@@ -25,7 +25,8 @@ function isAltTextWarning(warning: string): boolean {
 }
 
 export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, onError }: EvidencePanelProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [caption, setCaption] = useState("");
   const [drafts, setDrafts] = useState<Record<number, ImageDraft>>({});
   const [isUploading, setIsUploading] = useState(false);
@@ -50,27 +51,28 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
   }, [images]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFile(event.target.files?.[0] ?? null);
+    setFiles(Array.from(event.target.files ?? []));
   }
 
   async function handleUpload() {
-    if (!file) {
-      onError("请选择一张 PNG 或 JPEG 图片。");
+    if (files.length === 0) {
+      onError("请选择至少一张 PNG 或 JPEG 图片。");
       return;
     }
 
     setIsUploading(true);
     try {
-      const uploaded = await uploadEvidenceImage(projectId, {
+      const uploaded = await uploadEvidenceImages(projectId, {
         section_code: sectionCode,
-        file,
+        files,
         caption
       });
-      onImagesChange([...images, uploaded]);
-      setFile(null);
+      onImagesChange([...images, ...uploaded]);
+      setFiles([]);
+      setFileInputKey((current) => current + 1);
       setCaption("");
     } catch (err) {
-      onError(err instanceof Error ? err.message : "上传图片失败");
+      onError(err instanceof Error ? err.message : "批量上传图片失败");
     } finally {
       setIsUploading(false);
     }
@@ -180,16 +182,16 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       <div className="upload-panel">
         <label className="upload-field">
           <span>图片文件</span>
-          <input type="file" accept="image/png,image/jpeg" onChange={handleFileChange} />
+          <input key={fileInputKey} type="file" accept="image/png,image/jpeg" multiple onChange={handleFileChange} />
         </label>
         <label className="upload-field">
           <span>题注</span>
-          <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="例如：机房门禁照片" />
+          <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="例如：机房门禁照片，可上传后逐张调整" />
         </label>
         <div className="upload-actions">
-          {file ? <span className="status-chip">{file.name}</span> : null}
-          <button type="button" onClick={handleUpload} disabled={isUploading}>
-            {isUploading ? "上传中..." : "上传图片"}
+          {files.length > 0 ? <span className="status-chip">{selectedFileSummary(files)}</span> : null}
+          <button type="button" onClick={handleUpload} disabled={isUploading || files.length === 0}>
+            {isUploading ? "上传中..." : uploadButtonText(files.length)}
           </button>
         </div>
       </div>
@@ -275,4 +277,18 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       )}
     </div>
   );
+}
+
+function selectedFileSummary(files: File[]): string {
+  if (files.length === 1) {
+    return files[0].name;
+  }
+  return `${files.length} 张图片：${files[0].name} 等`;
+}
+
+function uploadButtonText(count: number): string {
+  if (count <= 1) {
+    return "上传图片";
+  }
+  return `上传 ${count} 张图片`;
 }

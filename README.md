@@ -27,7 +27,7 @@
 - 结果记录引用 token 插入和保存。
 - 章节切换时保留未保存草稿，并在导航中显示未保存状态。
 - 项目工作台支持一次性保存所有未保存章节。
-- PNG/JPEG 证据图片上传、预览、删除。
+- PNG/JPEG 证据图片单张/批量上传、预览、删除。
 - 图片像素、DPI、建议显示宽高自动读取。
 - 图片题注维护。
 - 同章节图片拖拽排序和上移/下移排序。
@@ -176,12 +176,13 @@ PUT http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}
 
 ```text
 POST   http://127.0.0.1:8000/api/projects/{project_id}/evidence
+POST   http://127.0.0.1:8000/api/projects/{project_id}/evidence/batch
 PUT    http://127.0.0.1:8000/api/evidence/{image_id}
 DELETE http://127.0.0.1:8000/api/evidence/{image_id}
 PUT    http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}/evidence-order
 ```
 
-上传图片会存入 `storage/uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。
+上传图片会存入 `storage/uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。批量上传接口会一次接收多张图片，并按当前章节顺序追加图号；如批量中有不支持或损坏的图片，本次批量上传会回滚。
 
 DOCX 导出接口：
 
@@ -262,7 +263,7 @@ $env:PYTHONPATH="F:\Codex\FLA\backend"
 - 已有项目列表、重新打开和删除。
 - 测评行、评分结果和交叉引用保存读取。
 - 章节详情 API 契约。
-- 图片尺寸、DPI、自动缩放提示和图号生成。
+- 图片尺寸、DPI、自动缩放提示、图号生成和批量上传。
 - 图片排序保存。
 - DOCX 生成器结构测试：8 分节、8 表、下拉内容控件、SEQ/REF 字段、书签、图片和表格 `tblGrid`。
 - DOCX 模板格式测试：总标题、章节标题、表题、技术表两行合并表头、外粗内细表格边框。

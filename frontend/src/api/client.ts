@@ -281,6 +281,34 @@ export async function uploadEvidenceImage(
   return response.json() as Promise<EvidenceImage>;
 }
 
+export async function uploadEvidenceImages(
+  projectId: number,
+  payload: {
+    section_code: string;
+    files: File[];
+    caption?: string;
+    alt_text?: string;
+  }
+): Promise<EvidenceImage[]> {
+  const form = new FormData();
+  form.append("section_code", payload.section_code);
+  form.append("caption", payload.caption ?? "");
+  form.append("alt_text", payload.alt_text ?? "");
+  payload.files.forEach((file) => form.append("files", file));
+
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/evidence/batch`, {
+    method: "POST",
+    body: form
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `上传失败：${response.status}`);
+  }
+
+  return response.json() as Promise<EvidenceImage[]>;
+}
+
 export function updateEvidenceImage(
   imageId: number,
   payload: Partial<Pick<EvidenceImage, "section_code" | "caption" | "alt_text" | "sort_order" | "display_width_in" | "display_height_in">>
