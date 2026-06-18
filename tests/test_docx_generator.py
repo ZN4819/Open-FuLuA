@@ -65,6 +65,8 @@ class DocxGeneratorTest(unittest.TestCase):
                 "fills": ["E7E6E6", "E7E6E6"],
                 "alignment": "center",
                 "vertical_alignment": "center",
+                "bold": "true",
+                "bold_cs": "true",
             },
         )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
@@ -236,6 +238,9 @@ def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | N
     cell_properties = first_cell.find("w:tcPr", NS)
     alignment = paragraph_properties.find("w:jc", NS) if paragraph_properties is not None else None
     vertical_alignment = cell_properties.find("w:vAlign", NS) if cell_properties is not None else None
+    run_properties = first_cell.find("w:p/w:r/w:rPr", NS)
+    bold = run_properties.find("w:b", NS) if run_properties is not None else None
+    bold_cs = run_properties.find("w:bCs", NS) if run_properties is not None else None
     fills = []
     for cell in cells:
         shading = cell.find("w:tcPr/w:shd", NS)
@@ -245,7 +250,16 @@ def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | N
         "fills": fills,
         "alignment": alignment.get(f"{{{NS['w']}}}val") if alignment is not None else None,
         "vertical_alignment": vertical_alignment.get(f"{{{NS['w']}}}val") if vertical_alignment is not None else None,
+        "bold": _word_boolean_state(bold),
+        "bold_cs": _word_boolean_state(bold_cs),
     }
+
+
+def _word_boolean_state(element: ET.Element | None) -> str:
+    if element is None:
+        return "false"
+    value = element.get(f"{{{NS['w']}}}val")
+    return "false" if value in {"0", "false", "False"} else "true"
 
 
 def _dropdown_tags(path: Path) -> set[str]:

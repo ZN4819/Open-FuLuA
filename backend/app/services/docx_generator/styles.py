@@ -33,11 +33,27 @@ def apply_run_font(run: Run, profile: dict[str, Any], role: str = "body", bold: 
     font = run.font
     font.name = token.get("ascii_font", "Times New Roman")
     font.size = Pt(float(token["size_pt"]))
+    effective_bold = None
     if bold is not None:
-        font.bold = bold
+        effective_bold = bool(bold)
     elif "bold" in token:
-        font.bold = bool(token["bold"])
+        effective_bold = bool(token["bold"])
+    if effective_bold is not None:
+        font.bold = effective_bold
+        set_complex_script_bold(run, effective_bold)
     run._element.rPr.rFonts.set(qn("w:eastAsia"), token.get("east_asia_font", "宋体"))
+
+
+def set_complex_script_bold(run: Run, enabled: bool) -> None:
+    r_pr = run._element.get_or_add_rPr()
+    bold_cs = r_pr.find(qn("w:bCs"))
+    if bold_cs is None:
+        bold_cs = OxmlElement("w:bCs")
+        r_pr.append(bold_cs)
+    if enabled:
+        bold_cs.attrib.pop(qn("w:val"), None)
+    else:
+        bold_cs.set(qn("w:val"), "0")
 
 
 def set_paragraph_format(paragraph: Paragraph, profile: dict[str, Any], role: str = "body") -> None:

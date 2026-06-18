@@ -147,7 +147,7 @@ def _fill_body_cell(
 
 
 def _set_unit_cell(cell: _Cell, text: str, profile: dict[str, Any]) -> None:
-    set_cell_text(cell, text, profile, "body", "center")
+    set_cell_text(cell, text, profile, "body", "center", bold=True)
     shade_cell(cell, profile["colors"].get("table_unit_fill", profile["colors"]["table_header_fill"]))
 
 
