@@ -43,9 +43,9 @@ def add_section_images(
 
         if not image_path.exists():
             paragraph = document.add_paragraph()
-            set_paragraph_format(paragraph, profile, "caption")
+            set_paragraph_format(paragraph, profile, "figure_caption")
             run = paragraph.add_run(f"[图片文件缺失：{image['original_name']}]")
-            apply_run_font(run, profile, "caption")
+            apply_run_font(run, profile, "figure_caption")
             continue
 
         paragraph = document.add_paragraph()
@@ -56,19 +56,24 @@ def add_section_images(
         _set_image_alt_text(inline_shape, image["alt_text"] or image["caption"] or image["original_name"])
 
         caption = document.add_paragraph()
-        set_paragraph_format(caption, profile, "caption")
+        set_paragraph_format(caption, profile, "figure_caption")
         _format_figure_caption_paragraph(caption)
         caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
         bookmark_id = bookmark_writer.start(caption, ref["bookmark"])
         prefix_run = caption.add_run(f"图{section_code}-")
-        apply_run_font(prefix_run, profile, "caption")
-        add_complex_field(caption, f"SEQ AppendixFigure_{section_code.replace('-', '_')}", ref["sequence"])
+        apply_run_font(prefix_run, profile, "figure_caption")
+        add_complex_field(
+            caption,
+            f"SEQ 图{section_code}- \\* ARABIC",
+            ref["sequence"],
+            lambda run: apply_run_font(run, profile, "figure_caption"),
+        )
         bookmark_writer.end(caption, bookmark_id)
 
         caption_text = image["caption"].strip()
         if caption_text:
             suffix_run = caption.add_run(f" {caption_text}")
-            apply_run_font(suffix_run, profile, "caption")
+            apply_run_font(suffix_run, profile, "figure_caption")
 
 
 def _format_figure_image_paragraph(paragraph) -> None:
@@ -112,7 +117,7 @@ def _caption_reserved_height(
     profile: dict[str, Any],
     usable_width: float,
 ) -> float:
-    caption_profile = profile["typography"]["caption"]
+    caption_profile = profile["typography"].get("figure_caption", profile["typography"]["caption"])
     image_profile = profile["images"]
     font_size_pt = _positive_float(caption_profile.get("size_pt"), 12.0)
     line_height = _positive_float(caption_profile.get("line_twips"), font_size_pt * 24) / 1440

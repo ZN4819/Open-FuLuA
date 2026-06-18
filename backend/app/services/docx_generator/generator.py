@@ -107,7 +107,7 @@ def _add_table_caption(
     bookmark_id = bookmark_writer.start(paragraph, bookmark_name)
     prefix = paragraph.add_run("表A-")
     apply_run_font(prefix, profile, "caption")
-    add_complex_field(paragraph, "SEQ AppendixTable", table_number)
+    add_complex_field(paragraph, "SEQ AppendixTable", table_number, lambda run: apply_run_font(run, profile, "caption"))
     bookmark_writer.end(paragraph, bookmark_id)
 
     table_title = section["table_title"]

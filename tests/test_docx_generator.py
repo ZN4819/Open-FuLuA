@@ -77,6 +77,32 @@ class DocxGeneratorTest(unittest.TestCase):
             _unit_score_header_formulas(path),
             {"technical": "Si,j=1≤k≤ni,jSi,j,kni,j", "management": "Si,j"},
         )
+        self.assertEqual(
+            _first_figure_caption_format(path),
+            {
+                "paragraph": {
+                    "alignment": "center",
+                    "spacing_after": "200",
+                    "line": "276",
+                },
+                "runs": [
+                    {
+                        "ascii": "Cambria",
+                        "hAnsi": "Cambria",
+                        "eastAsia": "宋体",
+                        "cs": "Times New Roman",
+                        "bold": "false",
+                        "bold_cs": "false",
+                        "caps": "true",
+                        "spacing": "10",
+                        "kern": "0",
+                        "size": "18",
+                        "size_cs": "18",
+                    }
+                ],
+                "instruction": "SEQ 图A-1- \\* ARABIC",
+            },
+        )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
         self.assertIn("A5.row1.compliance", _dropdown_tags(path))
 
@@ -324,6 +350,64 @@ def _word_boolean_state(element: ET.Element | None) -> str:
         return "false"
     value = element.get(f"{{{NS['w']}}}val")
     return "false" if value in {"0", "false", "False"} else "true"
+
+
+def _first_figure_caption_format(path: Path) -> dict[str, object]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    paragraphs = document.findall(".//w:p", NS)
+    for index, paragraph in enumerate(paragraphs):
+        if paragraph.find(".//wp:inline", NS) is None:
+            continue
+        caption = paragraphs[index + 1]
+        paragraph_properties = caption.find("w:pPr", NS)
+        spacing = paragraph_properties.find("w:spacing", NS) if paragraph_properties is not None else None
+        alignment = paragraph_properties.find("w:jc", NS) if paragraph_properties is not None else None
+        run_formats = {
+            tuple(_run_format(run).items())
+            for run in caption.findall("w:r", NS)
+            if run.find(".//w:t", NS) is not None
+            or run.find(".//w:instrText", NS) is not None
+            or run.find("w:fldChar", NS) is not None
+        }
+        return {
+            "paragraph": {
+                "alignment": _w_attr(alignment, "val"),
+                "spacing_after": _w_attr(spacing, "after"),
+                "line": _w_attr(spacing, "line"),
+            },
+            "runs": [dict(items) for items in sorted(run_formats)],
+            "instruction": " ".join(_field_instruction(caption).split()),
+        }
+    return {}
+
+
+def _run_format(run: ET.Element) -> dict[str, str | None]:
+    run_properties = run.find("w:rPr", NS)
+    fonts = run_properties.find("w:rFonts", NS) if run_properties is not None else None
+    return {
+        "ascii": _w_attr(fonts, "ascii"),
+        "hAnsi": _w_attr(fonts, "hAnsi"),
+        "eastAsia": _w_attr(fonts, "eastAsia"),
+        "cs": _w_attr(fonts, "cs"),
+        "bold": _word_boolean_state(run_properties.find("w:b", NS) if run_properties is not None else None),
+        "bold_cs": _word_boolean_state(run_properties.find("w:bCs", NS) if run_properties is not None else None),
+        "caps": _word_boolean_state(run_properties.find("w:caps", NS) if run_properties is not None else None),
+        "spacing": _w_attr(run_properties.find("w:spacing", NS) if run_properties is not None else None, "val"),
+        "kern": _w_attr(run_properties.find("w:kern", NS) if run_properties is not None else None, "val"),
+        "size": _w_attr(run_properties.find("w:sz", NS) if run_properties is not None else None, "val"),
+        "size_cs": _w_attr(run_properties.find("w:szCs", NS) if run_properties is not None else None, "val"),
+    }
+
+
+def _field_instruction(paragraph: ET.Element) -> str:
+    return "".join(node.text or "" for node in paragraph.findall(".//w:instrText", NS))
+
+
+def _w_attr(element: ET.Element | None, local_name: str) -> str | None:
+    if element is None:
+        return None
+    return element.get(f"{{{NS['w']}}}{local_name}")
 
 
 def _dropdown_tags(path: Path) -> set[str]:

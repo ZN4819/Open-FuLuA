@@ -62,6 +62,18 @@
       "spacing_before_twips": 163,
       "spacing_after_twips": 80,
       "line_twips": 276
+    },
+    "figure_caption": {
+      "ascii_font": "Cambria",
+      "east_asia_font": "宋体",
+      "complex_script_font": "Times New Roman",
+      "size_pt": 9,
+      "alignment": "center",
+      "spacing_after_twips": 200,
+      "line_twips": 276,
+      "caps": true,
+      "character_spacing_twips": 10,
+      "kern_half_points": 0
     }
   },
   "colors": {

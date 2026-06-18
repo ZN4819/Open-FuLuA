@@ -33,6 +33,7 @@ def apply_run_font(run: Run, profile: dict[str, Any], role: str = "body", bold: 
     font = run.font
     font.name = token.get("ascii_font", "Times New Roman")
     font.size = Pt(float(token["size_pt"]))
+    set_run_complex_script_size(run, int(round(float(token["size_pt"]) * 2)))
     effective_bold = None
     if bold is not None:
         effective_bold = bool(bold)
@@ -42,6 +43,14 @@ def apply_run_font(run: Run, profile: dict[str, Any], role: str = "body", bold: 
         font.bold = effective_bold
         set_complex_script_bold(run, effective_bold)
     run._element.rPr.rFonts.set(qn("w:eastAsia"), token.get("east_asia_font", "宋体"))
+    if token.get("complex_script_font"):
+        run._element.rPr.rFonts.set(qn("w:cs"), token["complex_script_font"])
+    if token.get("caps"):
+        set_run_caps(run, True)
+    if "character_spacing_twips" in token:
+        set_run_character_spacing(run, int(token["character_spacing_twips"]))
+    if "kern_half_points" in token:
+        set_run_kerning(run, int(token["kern_half_points"]))
 
 
 def set_complex_script_bold(run: Run, enabled: bool) -> None:
@@ -54,6 +63,45 @@ def set_complex_script_bold(run: Run, enabled: bool) -> None:
         bold_cs.attrib.pop(qn("w:val"), None)
     else:
         bold_cs.set(qn("w:val"), "0")
+
+
+def set_run_caps(run: Run, enabled: bool) -> None:
+    r_pr = run._element.get_or_add_rPr()
+    caps = r_pr.find(qn("w:caps"))
+    if caps is None:
+        caps = OxmlElement("w:caps")
+        r_pr.append(caps)
+    if enabled:
+        caps.attrib.pop(qn("w:val"), None)
+    else:
+        caps.set(qn("w:val"), "0")
+
+
+def set_run_character_spacing(run: Run, value_twips: int) -> None:
+    r_pr = run._element.get_or_add_rPr()
+    spacing = r_pr.find(qn("w:spacing"))
+    if spacing is None:
+        spacing = OxmlElement("w:spacing")
+        r_pr.append(spacing)
+    spacing.set(qn("w:val"), str(value_twips))
+
+
+def set_run_kerning(run: Run, value_half_points: int) -> None:
+    r_pr = run._element.get_or_add_rPr()
+    kern = r_pr.find(qn("w:kern"))
+    if kern is None:
+        kern = OxmlElement("w:kern")
+        r_pr.append(kern)
+    kern.set(qn("w:val"), str(value_half_points))
+
+
+def set_run_complex_script_size(run: Run, value_half_points: int) -> None:
+    r_pr = run._element.get_or_add_rPr()
+    size = r_pr.find(qn("w:szCs"))
+    if size is None:
+        size = OxmlElement("w:szCs")
+        r_pr.append(size)
+    size.set(qn("w:val"), str(value_half_points))
 
 
 def set_paragraph_format(paragraph: Paragraph, profile: dict[str, Any], role: str = "body") -> None:
