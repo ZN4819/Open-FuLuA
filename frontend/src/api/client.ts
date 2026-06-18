@@ -161,13 +161,18 @@ export type RenderJob = {
 
 export type RecordTemplate = {
   id: string;
+  source_type?: "system" | "user";
   section_code: string;
   table_type: "technical" | "management";
   unit: string;
   object_name: string;
   title: string;
   record_text: string;
-  source_row: number;
+  source_row?: number | null;
+  tags?: string[];
+  is_enabled?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

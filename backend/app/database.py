@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
+import json
 import os
+import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -164,6 +165,45 @@ def init_db() -> None:
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS record_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_key TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL DEFAULT 'system',
+                section_code TEXT NOT NULL,
+                table_type TEXT NOT NULL,
+                unit TEXT NOT NULL DEFAULT '',
+                object_name TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '',
+                record_text TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '[]',
+                source_row INTEGER,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                deleted_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_templates_section_unit
+            ON record_templates(section_code, unit)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_templates_source_type
+            ON record_templates(source_type)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_templates_enabled
+            ON record_templates(is_enabled, deleted_at)
+            """
+        )
         _ensure_column(db, "render_jobs", "page_count", "INTEGER")
         _ensure_column(db, "render_jobs", "log_path", "TEXT")
         db.execute(
@@ -208,6 +248,109 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def upsert_system_record_templates(templates: list[dict[str, Any]]) -> None:
+    timestamp = utc_now()
+    with connect() as db:
+        for template in templates:
+            db.execute(
+                """
+                INSERT INTO record_templates (
+                    template_key,
+                    source_type,
+                    section_code,
+                    table_type,
+                    unit,
+                    object_name,
+                    title,
+                    record_text,
+                    tags,
+                    source_row,
+                    is_enabled,
+                    deleted_at,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+                ON CONFLICT(template_key) DO UPDATE SET
+                    source_type = 'system',
+                    section_code = excluded.section_code,
+                    table_type = excluded.table_type,
+                    unit = excluded.unit,
+                    object_name = excluded.object_name,
+                    title = excluded.title,
+                    record_text = excluded.record_text,
+                    tags = excluded.tags,
+                    source_row = excluded.source_row,
+                    is_enabled = 1,
+                    deleted_at = NULL,
+                    updated_at = excluded.updated_at
+                WHERE
+                    record_templates.source_type != 'system'
+                    OR record_templates.section_code != excluded.section_code
+                    OR record_templates.table_type != excluded.table_type
+                    OR record_templates.unit != excluded.unit
+                    OR record_templates.object_name != excluded.object_name
+                    OR record_templates.title != excluded.title
+                    OR record_templates.record_text != excluded.record_text
+                    OR record_templates.tags != excluded.tags
+                    OR record_templates.source_row IS NOT excluded.source_row
+                    OR record_templates.is_enabled != 1
+                    OR record_templates.deleted_at IS NOT NULL
+                """,
+                (
+                    template["id"],
+                    template["section_code"],
+                    template["table_type"],
+                    template["unit"],
+                    template["object_name"],
+                    template["title"],
+                    template["record_text"],
+                    json.dumps(template.get("tags", []), ensure_ascii=False),
+                    template.get("source_row"),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+
+def list_record_template_rows(section_code: str | None = None) -> list[sqlite3.Row]:
+    conditions = ["deleted_at IS NULL", "is_enabled = 1"]
+    values: list[Any] = []
+    if section_code is not None:
+        conditions.append("section_code = ?")
+        values.append(section_code)
+    where_sql = " AND ".join(conditions)
+
+    with connect() as db:
+        return db.execute(
+            f"""
+            SELECT
+                template_key,
+                source_type,
+                section_code,
+                table_type,
+                unit,
+                object_name,
+                title,
+                record_text,
+                tags,
+                source_row,
+                is_enabled,
+                created_at,
+                updated_at
+            FROM record_templates
+            WHERE {where_sql}
+            ORDER BY
+                CAST(SUBSTR(section_code, 3) AS INTEGER),
+                unit,
+                CASE source_type WHEN 'system' THEN 0 ELSE 1 END,
+                COALESCE(source_row, id),
+                id
+            """,
+            values,
+        ).fetchall()
 
 
 def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:

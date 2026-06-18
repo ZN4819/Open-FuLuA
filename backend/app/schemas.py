@@ -139,7 +139,12 @@ class RecordTemplateRead(BaseModel):
     object_name: str
     title: str
     record_text: str
-    source_row: int
+    source_row: int | None = None
+    source_type: str = "system"
+    tags: list[str] = []
+    is_enabled: bool = True
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class ValidationSummary(BaseModel):

@@ -41,6 +41,7 @@
 - 2026-06-18：已支持证据图片替换，选中单张图片后可替换文件，同时保留图片 ID、图号、题注、排序和正文引用 token。
 - 2026-06-18：已优化 DOCX 图片导出版式，每张证据图片单独分页，按页面可用宽高等比最大化，并通过 Word 段落分页属性保持图片与题注同页。
 - 2026-06-18：已对齐 DOCX 图片题注字体格式，图片题注不再复用表题样式，改为样本文档中的 9pt、中文宋体、西文 Cambria、不加粗、居中和 `SEQ 图A-x-` 字段。
+- 2026-06-18：已启动结果记录模板知识库专项，新增专项实施方案和计划，并完成 KB-1：系统模板由 JSON 种子同步到 SQLite `record_templates` 运行时知识库，现有模板套用接口保持兼容。
 
 ## 2. 样本文档分析结论
 
@@ -243,6 +244,23 @@ ValidationIssue
 - message
 - target_type
 - target_id
+
+RecordTemplate
+- id
+- template_key
+- source_type
+- section_code
+- table_type
+- unit
+- object_name
+- title
+- record_text
+- tags
+- source_row
+- is_enabled
+- deleted_at
+- created_at
+- updated_at
 ```
 
 ## 7. 模板 Profile
@@ -264,9 +282,16 @@ Profile 至少包含：
 - 图表编号前缀。
 - 图片最大显示宽度和 DPI 警告阈值。
 
-结果记录模板作为独立模板资产存放在 `templates/appendix_a/record_templates.json`，不与版式 profile 混合。该模板库由 `scripts/extract_record_templates.py` 从样本文档只读抽取生成，固定样本文档图号会替换为 `[插入图片引用]`，避免新项目误用旧图号。
+结果记录模板作为独立模板资产管理，不与版式 profile 混合。`templates/appendix_a/record_templates.json` 是系统模板种子，由 `scripts/extract_record_templates.py` 从样本文档只读抽取生成，固定样本文档图号会替换为 `[插入图片引用]`，避免新项目误用旧图号。
 
-前端会从 `record_templates.json` 中按章节提取去重后的测评单元清单，用作 A-1 至 A-8 的固定测评单元分组。测评单元不再需要用户手动填写，测评对象、结果记录和评分仍按测评行保存，导出时继续由后端合并相同测评单元的 Word 表格首列。
+应用运行时会将系统模板种子同步到 SQLite `record_templates` 表，并由 `GET /api/record-templates` 返回给前端。前端会从模板接口中按章节提取去重后的测评单元清单，用作 A-1 至 A-8 的固定测评单元分组。测评单元不再需要用户手动填写，测评对象、结果记录和评分仍按测评行保存，导出时继续由后端合并相同测评单元的 Word 表格首列。
+
+结果记录模板知识库专项详见：
+
+```text
+docs/结果记录模板知识库实施方案.md
+docs/结果记录模板知识库实施计划.md
+```
 
 示例结构：
 
