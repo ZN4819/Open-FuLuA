@@ -6,8 +6,8 @@ from typing import Any
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 from docx.table import _Cell, Table
 
 from .content_controls import wrap_cell_paragraph_with_dropdown
@@ -75,7 +75,10 @@ def _add_management_header_row(table: Table, columns: list[Any], profile: dict[s
     header = table.rows[0]
     _mark_repeat_header(header)
     for index, column in enumerate(columns):
-        _set_header_cell(header.cells[index], column["label"], profile)
+        if column["key"] == "unit_score":
+            _set_score_header_cell(header.cells[index], column["label"], "management", profile)
+        else:
+            _set_header_cell(header.cells[index], column["label"], profile)
 
 
 def _add_technical_header_rows(table: Table, columns: list[Any], profile: dict[str, Any]) -> None:
@@ -89,7 +92,7 @@ def _add_technical_header_rows(table: Table, columns: list[Any], profile: dict[s
     _set_header_cell(table.cell(0, 1).merge(table.cell(1, 1)), columns[1]["label"], profile)
     _set_header_cell(table.cell(0, 2).merge(table.cell(1, 2)), columns[2]["label"], profile)
     _set_header_cell(table.cell(0, 3).merge(table.cell(0, 6)), "量化指标", profile)
-    _set_header_cell(table.cell(0, 7).merge(table.cell(1, 7)), columns[7]["label"], profile)
+    _set_score_header_cell(table.cell(0, 7).merge(table.cell(1, 7)), columns[7]["label"], "technical", profile)
 
     for index in range(3, 7):
         _set_header_cell(table.cell(1, index), columns[index]["label"].replace(" ", ""), profile)
@@ -98,6 +101,14 @@ def _add_technical_header_rows(table: Table, columns: list[Any], profile: dict[s
 def _set_header_cell(cell: _Cell, text: str, profile: dict[str, Any]) -> None:
     set_cell_text(cell, text, profile, "table_header", "center")
     shade_cell(cell, profile["colors"]["table_header_fill"])
+
+
+def _set_score_header_cell(cell: _Cell, text: str, table_type: str, profile: dict[str, Any]) -> None:
+    _set_header_cell(cell, text, profile)
+    paragraph = cell.add_paragraph()
+    set_paragraph_format(paragraph, profile, "table_header")
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph._p.append(_score_formula_xml(table_type))
 
 
 def _fill_body_cell(
@@ -200,6 +211,44 @@ def _append_text(paragraph, text: str, profile: dict[str, Any]) -> None:
             paragraph.add_run().add_break()
         run = paragraph.add_run(part)
         apply_run_font(run, profile, "body")
+
+
+def _score_formula_xml(table_type: str):
+    if table_type == "management":
+        formula = _subscript("S", "i,j")
+    else:
+        formula = (
+            f"{_subscript('S', 'i,j')}"
+            f"{_math_run('=')}"
+            "<m:f>"
+            "<m:num>"
+            "<m:nary>"
+            '<m:naryPr><m:chr m:val="∑"/><m:limLoc m:val="undOvr"/><m:supHide m:val="1"/></m:naryPr>'
+            f"<m:sub>{_math_run('1≤k≤')}{_subscript('n', 'i,j')}</m:sub>"
+            f"<m:e>{_subscript('S', 'i,j,k')}</m:e>"
+            "</m:nary>"
+            "</m:num>"
+            f"<m:den>{_subscript('n', 'i,j')}</m:den>"
+            "</m:f>"
+        )
+    return parse_xml(f'<m:oMathPara {nsdecls("m", "w")}><m:oMath>{formula}</m:oMath></m:oMathPara>')
+
+
+def _subscript(base: str, subscript: str) -> str:
+    return f"<m:sSub><m:e>{_math_run(base)}</m:e><m:sub>{_math_run(subscript)}</m:sub></m:sSub>"
+
+
+def _math_run(text: str) -> str:
+    return (
+        "<m:r>"
+        '<m:rPr><m:sty m:val="bi"/></m:rPr>'
+        "<w:rPr>"
+        '<w:rFonts w:ascii="Cambria Math" w:eastAsia="宋体" w:hAnsi="Cambria Math" w:cs="Times New Roman"/>'
+        '<w:sz w:val="21"/><w:szCs w:val="21"/>'
+        "</w:rPr>"
+        f"<m:t>{text}</m:t>"
+        "</m:r>"
+    )
 
 
 def _section_profile(profile: dict[str, Any], code: str) -> dict[str, Any]:

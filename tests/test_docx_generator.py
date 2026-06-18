@@ -18,7 +18,10 @@ from app.services.docx_analyzer import analyze_docx  # noqa: E402
 from app.services.docx_generator import generate_project_docx  # noqa: E402
 
 
-NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+NS = {
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+}
 
 
 class DocxGeneratorTest(unittest.TestCase):
@@ -68,6 +71,10 @@ class DocxGeneratorTest(unittest.TestCase):
                 "bold": "true",
                 "bold_cs": "true",
             },
+        )
+        self.assertEqual(
+            _unit_score_header_formulas(path),
+            {"technical": "Si,j=1≤k≤ni,jSi,j,kni,j", "management": "Si,j"},
         )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
         self.assertIn("A5.row1.compliance", _dropdown_tags(path))
@@ -253,6 +260,22 @@ def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | N
         "bold": _word_boolean_state(bold),
         "bold_cs": _word_boolean_state(bold_cs),
     }
+
+
+def _unit_score_header_formulas(path: Path) -> dict[str, str]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    tables = document.findall(".//w:tbl", NS)
+    technical_header = tables[0].findall("w:tr", NS)[0].findall("w:tc", NS)[4]
+    management_header = tables[4].findall("w:tr", NS)[0].findall("w:tc", NS)[4]
+    return {
+        "technical": _math_text(technical_header),
+        "management": _math_text(management_header),
+    }
+
+
+def _math_text(cell: ET.Element) -> str:
+    return "".join(node.text or "" for node in cell.findall(".//m:t", NS))
 
 
 def _word_boolean_state(element: ET.Element | None) -> str:
