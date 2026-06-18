@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app import database  # noqa: E402
 from app.api.evidence import evidence_to_schema  # noqa: E402
+from app.api.evidence import replace_evidence_image_file as api_replace_evidence_image_file  # noqa: E402
 from app.api.evidence import upload_evidence_images  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.services.evidence import image_warnings, inspect_image  # noqa: E402
@@ -51,6 +52,28 @@ class EvidenceImagesTest(unittest.TestCase):
             file=BytesIO(content),
             filename=filename,
             headers=Headers({"content-type": content_type}),
+        )
+
+    def create_stored_evidence_image(self, project_id: int, filename: str = "old.png"):
+        relative_path = Path("uploads") / str(project_id) / "A-1" / filename
+        absolute_path = settings.storage_path / relative_path
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (100, 100), color=(255, 255, 255)).save(absolute_path, dpi=(150, 150))
+        return database.create_evidence_image(
+            project_id,
+            "A-1",
+            {
+                "file_path": relative_path.as_posix(),
+                "original_name": filename,
+                "caption": "旧题注",
+                "alt_text": "旧题注",
+                "pixel_width": 100,
+                "pixel_height": 100,
+                "dpi_x": 150,
+                "dpi_y": 150,
+                "display_width_in": 1,
+                "display_height_in": 1,
+            },
         )
 
     def test_inspect_image_reads_dimensions_dpi_and_display_size(self) -> None:
@@ -142,6 +165,42 @@ class EvidenceImagesTest(unittest.TestCase):
         self.assertEqual(database.list_evidence_images(project["id"], "A-1"), [])
         stored_files = [path for path in settings.storage_path.rglob("*") if path.is_file()]
         self.assertEqual(stored_files, [])
+
+    def test_replace_evidence_image_file_preserves_identity_caption_and_order(self) -> None:
+        project = database.create_project("图片替换测试")
+        image = self.create_stored_evidence_image(project["id"])
+        old_path = settings.storage_path / image["file_path"]
+
+        updated = api_replace_evidence_image_file(
+            image["id"],
+            file=self.make_upload("new.png", self.make_image_bytes(size=(320, 160))),
+        )
+
+        self.assertEqual(updated.id, image["id"])
+        self.assertEqual(updated.figure_label, "图A-1-1")
+        self.assertEqual(updated.caption, "旧题注")
+        self.assertEqual(updated.sort_order, 1)
+        self.assertEqual(updated.original_name, "new.png")
+        self.assertEqual(updated.pixel_width, 320)
+        self.assertFalse(old_path.exists())
+        self.assertTrue((settings.storage_path / updated.file_path).exists())
+
+    def test_replace_evidence_image_file_keeps_original_when_new_file_is_invalid(self) -> None:
+        project = database.create_project("图片替换失败测试")
+        image = self.create_stored_evidence_image(project["id"])
+        old_path = settings.storage_path / image["file_path"]
+
+        with self.assertRaises(HTTPException) as context:
+            api_replace_evidence_image_file(
+                image["id"],
+                file=self.make_upload("bad.txt", b"not image", "text/plain"),
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        current = database.get_evidence_image(image["id"])
+        self.assertEqual(current["file_path"], image["file_path"])
+        self.assertEqual(current["original_name"], "old.png")
+        self.assertTrue(old_path.exists())
 
     def test_image_warnings_report_low_dpi_without_requiring_alt_text(self) -> None:
         warnings = image_warnings(

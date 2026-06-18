@@ -319,6 +319,23 @@ export function updateEvidenceImage(
   });
 }
 
+export async function replaceEvidenceImageFile(imageId: number, file: File): Promise<EvidenceImage> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/evidence/${imageId}/file`, {
+    method: "POST",
+    body: form
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `替换失败：${response.status}`);
+  }
+
+  return response.json() as Promise<EvidenceImage>;
+}
+
 export function deleteEvidenceImage(imageId: number): Promise<EvidenceImage> {
   return request<EvidenceImage>(`/api/evidence/${imageId}`, {
     method: "DELETE"

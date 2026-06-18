@@ -442,6 +442,42 @@ def update_evidence_image(image_id: int, fields: dict[str, Any]) -> sqlite3.Row 
         return get_evidence_image(image_id, db)
 
 
+def replace_evidence_image_file(image_id: int, image: dict[str, Any]) -> sqlite3.Row | None:
+    with connect() as db:
+        existing = get_evidence_image(image_id, db)
+        if existing is None:
+            return None
+        db.execute(
+            """
+            UPDATE evidence_images
+            SET
+                file_path = ?,
+                original_name = ?,
+                pixel_width = ?,
+                pixel_height = ?,
+                dpi_x = ?,
+                dpi_y = ?,
+                display_width_in = ?,
+                display_height_in = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                image["file_path"],
+                image.get("original_name", ""),
+                image.get("pixel_width"),
+                image.get("pixel_height"),
+                image.get("dpi_x"),
+                image.get("dpi_y"),
+                image.get("display_width_in"),
+                image.get("display_height_in"),
+                utc_now(),
+                image_id,
+            ),
+        )
+        return get_evidence_image(image_id, db)
+
+
 def delete_evidence_image(image_id: int) -> sqlite3.Row | None:
     with connect() as db:
         existing = get_evidence_image(image_id, db)

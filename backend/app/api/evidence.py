@@ -113,6 +113,28 @@ def update_evidence_image(image_id: int, payload: EvidenceImageUpdate) -> Eviden
     return evidence_to_schema(row, index)
 
 
+@router.post("/evidence/{image_id}/file", response_model=EvidenceImageRead)
+def replace_evidence_image_file(image_id: int, file: UploadFile = File(...)) -> EvidenceImageRead:
+    existing = database.get_evidence_image(image_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    try:
+        image_data = save_upload_file(existing["project_id"], existing["section_code"], file)
+        row = database.replace_evidence_image_file(image_id, image_data)
+    except EvidenceImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if row is None:
+        remove_stored_file(str(image_data["file_path"]))
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    remove_stored_file(existing["file_path"])
+    rows = database.list_evidence_images(row["project_id"], row["section_code"])
+    index = next((idx for idx, item in enumerate(rows, start=1) if item["id"] == row["id"]), None)
+    return evidence_to_schema(row, index)
+
+
 @router.delete("/evidence/{image_id}", response_model=EvidenceImageRead)
 def delete_evidence_image(image_id: int) -> EvidenceImageRead:
     row = database.delete_evidence_image(image_id)

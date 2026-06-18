@@ -1,6 +1,7 @@
 import { ChangeEvent, DragEvent, useEffect, useState } from "react";
 import {
   deleteEvidenceImage,
+  replaceEvidenceImageFile,
   reorderEvidenceImages,
   resolveFileUrl,
   updateEvidenceImage,
@@ -100,6 +101,24 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       onImagesChange(images.filter((item) => item.id !== image.id));
     } catch (err) {
       onError(err instanceof Error ? err.message : "删除图片失败");
+    } finally {
+      setBusyImageId(null);
+    }
+  }
+
+  async function replaceImage(image: EvidenceImage, event: ChangeEvent<HTMLInputElement>) {
+    const replacement = event.target.files?.[0];
+    event.target.value = "";
+    if (!replacement) {
+      return;
+    }
+
+    setBusyImageId(image.id);
+    try {
+      const updated = await replaceEvidenceImageFile(image.id, replacement);
+      onImagesChange(images.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "替换图片失败");
     } finally {
       setBusyImageId(null);
     }
@@ -266,6 +285,15 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                   <button type="button" onClick={() => saveImage(image)} disabled={busyImageId === image.id}>
                     保存
                   </button>
+                  <label className={`replace-file-button${busyImageId === image.id ? " disabled" : ""}`}>
+                    替换图片
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      disabled={busyImageId === image.id}
+                      onChange={(event) => replaceImage(image, event)}
+                    />
+                  </label>
                   <button type="button" className="danger-button" onClick={() => removeImage(image)} disabled={busyImageId === image.id}>
                     删除
                   </button>

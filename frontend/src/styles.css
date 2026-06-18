@@ -315,7 +315,8 @@ a:hover {
 .empty-table button,
 .inline-action,
 .upload-panel button,
-.image-actions button {
+.image-actions button,
+.replace-file-button {
   min-height: 36px;
   padding: 0 14px;
   color: var(--color-primary-text);
@@ -333,7 +334,8 @@ a:hover {
 .empty-table button:not(:disabled):hover,
 .inline-action:not(:disabled):hover,
 .upload-panel button:not(:disabled):hover,
-.image-actions button:not(:disabled):hover {
+.image-actions button:not(:disabled):hover,
+.replace-file-button:not(.disabled):hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
 }
@@ -1391,6 +1393,25 @@ a:hover {
 .image-actions button {
   min-height: 34px;
   padding: 0 10px;
+}
+
+.replace-file-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.replace-file-button.disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.replace-file-button input {
+  display: none;
 }
 
 .placeholder-grid {
