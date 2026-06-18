@@ -1181,6 +1181,12 @@ a:hover {
   min-height: 34px;
 }
 
+.record-template-select:disabled {
+  color: var(--color-text-muted);
+  background: #eef2f4;
+  border-style: dashed;
+}
+
 .metric-cell,
 .score-cell,
 .compliance-cell,

@@ -56,10 +56,40 @@ function uniqueValues(values: string[]) {
 }
 
 function fixedUnitsFromTemplates(recordTemplates: RecordTemplate[], rows: AssessmentRowInput[]) {
+  const systemTemplates = recordTemplates.filter((template) => template.source_type !== "user");
   return uniqueValues([
-    ...recordTemplates.map((template) => template.unit),
+    ...systemTemplates.map((template) => template.unit),
     ...rows.map((row) => row.unit)
   ]);
+}
+
+function templateSourceLabel(sourceType?: string) {
+  return sourceType === "user" ? "我的模板" : "系统模板";
+}
+
+function templateOptionLabel(template: RecordTemplate) {
+  const objectName = template.object_name.trim();
+  const title = template.title.trim();
+  if (objectName && title && title !== objectName) {
+    return `${objectName} - ${title}`;
+  }
+  return title || objectName || "未命名模板";
+}
+
+function groupedTemplatesForUnit(recordTemplates: RecordTemplate[], unit: string) {
+  const templates = recordTemplates.filter((template) => template.unit === unit);
+  return [
+    {
+      key: "system",
+      label: templateSourceLabel("system"),
+      templates: templates.filter((template) => template.source_type !== "user")
+    },
+    {
+      key: "user",
+      label: templateSourceLabel("user"),
+      templates: templates.filter((template) => template.source_type === "user")
+    }
+  ].filter((group) => group.templates.length > 0);
 }
 
 function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = []) {
@@ -106,6 +136,8 @@ export function AssessmentTable({
   const recordSelections = useRef<Record<number, TextSelection>>({});
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromTemplates(recordTemplates, rows);
+  const systemTemplateCount = recordTemplates.filter((template) => template.source_type !== "user").length;
+  const userTemplateCount = recordTemplates.filter((template) => template.source_type === "user").length;
   const groupedRows = unitOrder.map((unit) => ({
     unit,
     entries: rows
@@ -193,7 +225,8 @@ export function AssessmentTable({
           <div className="editor-toolbar-meta">
             <span className="status-chip">测评对象 {rows.length}</span>
             <span className="status-chip">固定单元 {unitOrder.length}</span>
-            <span className="status-chip">模板 {recordTemplates.length}</span>
+            <span className="status-chip">系统模板 {systemTemplateCount}</span>
+            <span className="status-chip">我的模板 {userTemplateCount}</span>
             <span className="status-chip">证据 {evidenceImages.length}</span>
           </div>
         </div>
@@ -273,7 +306,8 @@ export function AssessmentTable({
                   </tr>
                 ) : (
                   group.entries.map(({ row, index }, entryIndex) => {
-                    const templateOptions = recordTemplates.filter((template) => template.unit === row.unit);
+                    const templateGroups = groupedTemplatesForUnit(recordTemplates, row.unit);
+                    const templateOptionsCount = templateGroups.reduce((total, group) => total + group.templates.length, 0);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -309,20 +343,26 @@ export function AssessmentTable({
                               rows={5}
                             />
                             <div className="record-control-row">
-                              {templateOptions.length > 0 ? (
-                                <select
-                                  className="record-template-select"
-                                  value=""
-                                  onChange={(event) => applyRecordTemplate(index, event.target.value)}
-                                >
-                                  <option value="">套用本单元模板</option>
-                                  {templateOptions.map((template) => (
-                                    <option key={template.id} value={template.id}>
-                                      {template.title}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : null}
+                              <select
+                                className="record-template-select"
+                                value=""
+                                disabled={templateOptionsCount === 0}
+                                title={templateOptionsCount === 0 ? "当前测评单元暂无可套用模板" : "按来源选择结果记录模板"}
+                                onChange={(event) => applyRecordTemplate(index, event.target.value)}
+                              >
+                                <option value="">
+                                  {templateOptionsCount > 0 ? "套用本单元模板" : "本单元暂无模板"}
+                                </option>
+                                {templateGroups.map((group) => (
+                                  <optgroup key={group.key} label={group.label}>
+                                    {group.templates.map((template) => (
+                                      <option key={template.id} value={template.id}>
+                                        {templateOptionLabel(template)}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
                               <select
                                 className="reference-select"
                                 value=""
