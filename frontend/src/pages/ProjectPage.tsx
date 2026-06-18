@@ -62,6 +62,7 @@ export function ProjectPage() {
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null);
   const [isLoadingSection, setIsLoadingSection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isCreatingPreview, setIsCreatingPreview] = useState(false);
@@ -82,6 +83,7 @@ export function ProjectPage() {
   );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
   const dirtyCount = dirtySections.size;
+  const isSavingAny = isSaving || isSavingAll;
   const activeEvidenceCount = activeDetail?.evidence_images.length ?? 0;
 
   useEffect(() => {
@@ -221,6 +223,19 @@ export function ProjectPage() {
     setSaveMessage(undefined);
   }
 
+  function applySavedSectionDetail(code: string, detail: SectionDetail) {
+    setSectionDetails((current) => ({ ...current, [code]: detail }));
+    setDraftRows((current) => ({ ...current, [code]: rowsFromDetail(detail) }));
+  }
+
+  function markSectionsSaved(codes: string[]) {
+    setDirtySections((current) => {
+      const next = new Set(current);
+      codes.forEach((code) => next.delete(code));
+      return next;
+    });
+  }
+
   async function handleSaveSection() {
     if (!project || !activeCode) {
       return;
@@ -232,18 +247,63 @@ export function ProjectPage() {
       const detail = await updateSectionDetail(project.id, activeCode, {
         rows: draftRows[activeCode] ?? []
       });
-      setSectionDetails((current) => ({ ...current, [activeCode]: detail }));
-      setDraftRows((current) => ({ ...current, [activeCode]: rowsFromDetail(detail) }));
-      setDirtySections((current) => {
-        const next = new Set(current);
-        next.delete(activeCode);
-        return next;
-      });
+      applySavedSectionDetail(activeCode, detail);
+      markSectionsSaved([activeCode]);
       setSaveMessage(`${activeCode} 已保存`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存章节失败");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleSaveAllSections() {
+    if (!project || dirtySections.size === 0) {
+      return;
+    }
+
+    const codesToSave = Array.from(dirtySections);
+    const missingDraftCodes = codesToSave.filter((code) => !Object.prototype.hasOwnProperty.call(draftRows, code));
+    if (missingDraftCodes.length > 0) {
+      setError(`${missingDraftCodes.join("、")} 的草稿还没有加载，无法执行全部保存。`);
+      return;
+    }
+
+    setIsSavingAll(true);
+    setError(undefined);
+    setSaveMessage(undefined);
+    try {
+      const results = await Promise.allSettled(
+        codesToSave.map(async (code) => {
+          const detail = await updateSectionDetail(project.id, code, {
+            rows: draftRows[code] ?? []
+          });
+          return { code, detail };
+        })
+      );
+      const savedResults = results
+        .filter((result): result is PromiseFulfilledResult<{ code: string; detail: SectionDetail }> => result.status === "fulfilled")
+        .map((result) => result.value);
+      const failedCodes = results
+        .map((result, index) => (result.status === "rejected" ? codesToSave[index] : undefined))
+        .filter((code): code is string => Boolean(code));
+
+      savedResults.forEach(({ code, detail }) => applySavedSectionDetail(code, detail));
+      markSectionsSaved(savedResults.map((result) => result.code));
+
+      if (failedCodes.length > 0) {
+        setError(`${failedCodes.join("、")} 保存失败，请检查后重试。`);
+        if (savedResults.length > 0) {
+          setSaveMessage(`已保存 ${savedResults.length} 个章节，${failedCodes.length} 个章节失败。`);
+        }
+        return;
+      }
+
+      setSaveMessage(`已保存 ${savedResults.length} 个章节`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "全部保存失败");
+    } finally {
+      setIsSavingAll(false);
     }
   }
 
@@ -447,23 +507,26 @@ export function ProjectPage() {
             </div>
             <div className="workspace-actions" aria-label="项目操作">
               <div className="action-group">
-                <button type="button" className="secondary-button" onClick={handleBackToProjects}>
+                <button type="button" className="secondary-button" onClick={handleBackToProjects} disabled={isSavingAny}>
                   返回项目列表
+                </button>
+                <button type="button" onClick={handleSaveAllSections} disabled={isSavingAny || dirtyCount === 0}>
+                  {isSavingAll ? "全部保存中..." : "全部保存"}
                 </button>
               </div>
               <div className="action-group">
-                <button type="button" className="secondary-button" onClick={handleValidate} disabled={isValidating}>
+                <button type="button" className="secondary-button" onClick={handleValidate} disabled={isValidating || isSavingAny}>
                   {isValidating ? "校验中..." : "校验项目"}
                 </button>
-                <button type="button" className="secondary-button" onClick={handleCreatePreview} disabled={isCreatingPreview}>
+                <button type="button" className="secondary-button" onClick={handleCreatePreview} disabled={isCreatingPreview || isSavingAny}>
                   {isCreatingPreview ? "创建中..." : "生成预览"}
                 </button>
               </div>
               <div className="action-group">
-                <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null}>
+                <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null || isSavingAny}>
                   {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
                 </button>
-                <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null}>
+                <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null || isSavingAny}>
                   {isExporting === "final" ? "生成中..." : "导出最终版"}
                 </button>
               </div>
@@ -497,7 +560,7 @@ export function ProjectPage() {
               sectionCode={activeCode}
               rows={activeRows}
               profile={profile}
-              isSaving={isSaving}
+              isSaving={isSavingAny}
               isDirty={isDirty}
               evidenceImages={activeDetail.evidence_images}
               recordTemplates={activeRecordTemplates}
