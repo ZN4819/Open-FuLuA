@@ -478,7 +478,7 @@ export function ProjectPage() {
               </div>
               <div className="section-summary-meta" aria-label="当前章节状态">
                 <span className={isDirty ? "dirty-chip" : "clean-chip"}>{isDirty ? "未保存" : "已保存"}</span>
-                <span className="status-chip">测评行 {activeRows.length}</span>
+                <span className="status-chip">测评对象 {activeRows.length}</span>
                 <span className="status-chip">证据 {activeEvidenceCount}</span>
               </div>
             </div>

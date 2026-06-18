@@ -33,9 +33,9 @@ function isTechnicalSection(code: string) {
   return ["A-1", "A-2", "A-3", "A-4"].includes(code);
 }
 
-function createEmptyRow(sortOrder: number): AssessmentRowInput {
+function createEmptyRow(sortOrder: number, unit: string): AssessmentRowInput {
   return {
-    unit: "",
+    unit,
     object_name: "",
     record_text: "",
     sort_order: sortOrder,
@@ -44,13 +44,49 @@ function createEmptyRow(sortOrder: number): AssessmentRowInput {
   };
 }
 
-function normalizeRows(rows: AssessmentRowInput[]) {
-  return rows.map((row, index) => ({
-    ...row,
-    sort_order: index + 1,
-    metric_result: row.metric_result ?? { ...EMPTY_METRIC },
-    cross_references: row.cross_references ?? []
-  }));
+function uniqueValues(values: string[]) {
+  const result: string[] = [];
+  values.forEach((value) => {
+    const trimmed = value.trim();
+    if (trimmed && !result.includes(trimmed)) {
+      result.push(trimmed);
+    }
+  });
+  return result;
+}
+
+function fixedUnitsFromTemplates(recordTemplates: RecordTemplate[], rows: AssessmentRowInput[]) {
+  return uniqueValues([
+    ...recordTemplates.map((template) => template.unit),
+    ...rows.map((row) => row.unit)
+  ]);
+}
+
+function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = []) {
+  const order = new Map(unitOrder.map((unit, index) => [unit, index]));
+  return rows
+    .map((row, index) => {
+      const unit = row.unit.trim();
+      return {
+        row: {
+          ...row,
+          unit,
+          sort_order: index + 1,
+          metric_result: row.metric_result ?? { ...EMPTY_METRIC },
+          cross_references: row.cross_references ?? []
+        },
+        index
+      };
+    })
+    .sort((first, second) => {
+      const firstOrder = order.get(first.row.unit) ?? unitOrder.length;
+      const secondOrder = order.get(second.row.unit) ?? unitOrder.length;
+      return firstOrder - secondOrder || first.index - second.index;
+    })
+    .map(({ row }, index) => ({
+      ...row,
+      sort_order: index + 1
+    }));
 }
 
 export function AssessmentTable({
@@ -69,10 +105,19 @@ export function AssessmentTable({
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
+  const unitOrder = fixedUnitsFromTemplates(recordTemplates, rows);
+  const groupedRows = unitOrder.map((unit) => ({
+    unit,
+    entries: rows
+      .map((row, index) => ({ row, index }))
+      .filter((entry) => entry.row.unit.trim() === unit)
+  }));
+  const tableColumnCount = technical ? 9 : 6;
 
   function updateRow(index: number, patch: Partial<AssessmentRowInput>) {
     const next = normalizeRows(
-      rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row))
+      rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
+      unitOrder
     );
     onRowsChange(next);
   }
@@ -87,12 +132,12 @@ export function AssessmentTable({
     });
   }
 
-  function addRow() {
-    onRowsChange([...normalizeRows(rows), createEmptyRow(rows.length + 1)]);
+  function addRow(unit: string) {
+    onRowsChange(normalizeRows([...rows, createEmptyRow(rows.length + 1, unit)], unitOrder));
   }
 
   function removeRow(index: number) {
-    onRowsChange(normalizeRows(rows.filter((_, rowIndex) => rowIndex !== index)));
+    onRowsChange(normalizeRows(rows.filter((_, rowIndex) => rowIndex !== index), unitOrder));
   }
 
   function rememberRecordSelection(index: number, target: HTMLTextAreaElement) {
@@ -109,7 +154,8 @@ export function AssessmentTable({
       return;
     }
     const token = `[[FIG:${image.id}]]`;
-    const displayText = image.figure_label ?? `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? "图A-"}${image.sort_order}`;
+    const displayText = image.figure_label ??
+      `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? `图${sectionCode}-`}${image.sort_order}`;
     const row = rows[index];
     const recordText = insertAtSelectionOrPlaceholder(row.record_text, token, recordSelections.current[index]);
     updateRow(index, {
@@ -126,14 +172,13 @@ export function AssessmentTable({
   }
 
   function applyRecordTemplate(index: number, templateId: string) {
-    const template = recordTemplates.find((item) => item.id === templateId);
+    const row = rows[index];
+    const template = recordTemplates.find((item) => item.id === templateId && item.unit === row.unit);
     if (!template) {
       return;
     }
 
-    const row = rows[index];
     updateRow(index, {
-      unit: row.unit || template.unit,
       object_name: row.object_name || template.object_name,
       record_text: template.record_text
     });
@@ -146,32 +191,47 @@ export function AssessmentTable({
           <p className="eyebrow">{technical ? "技术测评表" : "管理测评表"}</p>
           <h3>{tableTitle}</h3>
           <div className="editor-toolbar-meta">
-            <span className="status-chip">测评行 {rows.length}</span>
+            <span className="status-chip">测评对象 {rows.length}</span>
+            <span className="status-chip">固定单元 {unitOrder.length}</span>
             <span className="status-chip">模板 {recordTemplates.length}</span>
             <span className="status-chip">证据 {evidenceImages.length}</span>
           </div>
         </div>
         <div className="toolbar-actions">
           {isDirty ? <span className="dirty-chip">有未保存修改</span> : <span className="clean-chip">已保存</span>}
-          <button type="button" onClick={addRow}>
-            新增行
-          </button>
           <button type="button" onClick={onSave} disabled={isSaving || !isDirty}>
             {isSaving ? "保存中..." : "保存"}
           </button>
         </div>
       </div>
 
-      {rows.length === 0 ? (
+      {unitOrder.length === 0 ? (
         <div className="empty-table">
-          <p>当前章节还没有测评行。</p>
-          <button type="button" onClick={addRow}>
-            添加第一行
-          </button>
+          <p>当前章节还没有可用的固定测评单元，请确认结果记录模板是否已加载。</p>
         </div>
       ) : (
         <div className="table-scroll">
           <table className={`assessment-table ${technical ? "technical-table" : "management-table"}`}>
+            <colgroup>
+              <col className="col-unit" />
+              <col className="col-object" />
+              <col className="col-record" />
+              {technical ? (
+                <>
+                  <col className="col-metric" />
+                  <col className="col-metric" />
+                  <col className="col-metric" />
+                  <col className="col-score" />
+                  <col className="col-score" />
+                </>
+              ) : (
+                <>
+                  <col className="col-compliance" />
+                  <col className="col-score" />
+                </>
+              )}
+              <col className="col-action" />
+            </colgroup>
             <thead>
               <tr>
                 <th>测评单元</th>
@@ -195,131 +255,157 @@ export function AssessmentTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <tr key={`${sectionCode}-${index}`}>
-                  <td className="unit-cell">
-                    <textarea
-                      value={row.unit}
-                      onChange={(event) => updateRow(index, { unit: event.target.value })}
-                      rows={2}
-                    />
-                  </td>
-                  <td className="object-cell">
-                    <textarea
-                      value={row.object_name}
-                      onChange={(event) => updateRow(index, { object_name: event.target.value })}
-                      rows={2}
-                    />
-                  </td>
-                  <td className="record-cell">
-                    <div className="record-input-group">
-                      <textarea
-                        className="record-textarea"
-                        value={row.record_text}
-                        onChange={(event) => {
-                          rememberRecordSelection(index, event.target);
-                          updateRow(index, { record_text: event.target.value });
-                        }}
-                        onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
-                        onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
-                        onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
-                        rows={5}
-                      />
-                      <div className="record-control-row">
-                        {recordTemplates.length > 0 ? (
-                          <select
-                            className="record-template-select"
-                            value=""
-                            onChange={(event) => applyRecordTemplate(index, event.target.value)}
-                          >
-                            <option value="">套用结果模板</option>
-                            {recordTemplates.map((template) => (
-                              <option key={template.id} value={template.id}>
-                                {template.title}
-                              </option>
-                            ))}
-                          </select>
-                        ) : null}
-                        <select
-                          className="reference-select"
-                          value=""
-                          onChange={(event) => insertReferenceToken(index, event.target.value)}
-                        >
-                          <option value="">插入图片引用</option>
-                          {evidenceImages.map((image) => (
-                            <option key={image.id} value={image.id}>
-                              {image.figure_label ?? `${sectionCode}-${image.sort_order}`} {image.caption || image.original_name}
-                            </option>
-                          ))}
-                        </select>
+              {groupedRows.map((group) =>
+                group.entries.length === 0 ? (
+                  <tr className="unit-empty-row" key={`${sectionCode}-${group.unit}-empty`}>
+                    <td className="unit-cell fixed-unit-cell">
+                      <div className="fixed-unit-content">
+                        <strong>{group.unit}</strong>
+                        <span>对象 0</span>
+                        <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
+                          新增对象
+                        </button>
                       </div>
-                    </div>
-                  </td>
-                  {technical ? (
-                    <>
-                      {(["d", "a", "k"] as const).map((key) => (
-                        <td className="metric-cell" key={key}>
-                          <select
-                            className="metric-select"
-                            value={row.metric_result?.[key] ?? ""}
-                            onChange={(event) => updateMetric(index, key, event.target.value)}
-                          >
-                            <option value="">选择</option>
-                            {metricOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
+                    </td>
+                    <td className="unit-empty-cell" colSpan={tableColumnCount - 1}>
+                      当前测评单元还没有测评对象。
+                    </td>
+                  </tr>
+                ) : (
+                  group.entries.map(({ row, index }, entryIndex) => {
+                    const templateOptions = recordTemplates.filter((template) => template.unit === row.unit);
+                    return (
+                      <tr key={`${sectionCode}-${group.unit}-${index}`}>
+                        {entryIndex === 0 ? (
+                          <td className="unit-cell fixed-unit-cell" rowSpan={group.entries.length}>
+                            <div className="fixed-unit-content">
+                              <strong>{group.unit}</strong>
+                              <span>对象 {group.entries.length}</span>
+                              <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
+                                新增对象
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
+                        <td className="object-cell">
+                          <textarea
+                            value={row.object_name}
+                            onChange={(event) => updateRow(index, { object_name: event.target.value })}
+                            rows={2}
+                          />
                         </td>
-                      ))}
-                      <td className="score-cell">
-                        <input
-                          className="score-input"
-                          value={row.metric_result?.object_score ?? ""}
-                          onChange={(event) => updateMetric(index, "object_score", event.target.value)}
-                        />
-                      </td>
-                      <td className="score-cell">
-                        <input
-                          className="score-input"
-                          value={row.metric_result?.unit_score ?? ""}
-                          onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
-                        />
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="compliance-cell">
-                        <select
-                          className="compliance-select"
-                          value={row.metric_result?.compliance ?? ""}
-                          onChange={(event) => updateMetric(index, "compliance", event.target.value)}
-                        >
-                          <option value="">选择</option>
-                          {complianceOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="score-cell">
-                        <input
-                          className="score-input"
-                          value={row.metric_result?.unit_score ?? ""}
-                          onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
-                        />
-                      </td>
-                    </>
-                  )}
-                  <td className="row-action-cell">
-                    <button type="button" className="danger-button" onClick={() => removeRow(index)}>
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        <td className="record-cell">
+                          <div className="record-input-group">
+                            <textarea
+                              className="record-textarea"
+                              value={row.record_text}
+                              onChange={(event) => {
+                                rememberRecordSelection(index, event.target);
+                                updateRow(index, { record_text: event.target.value });
+                              }}
+                              onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
+                              onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
+                              onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
+                              rows={5}
+                            />
+                            <div className="record-control-row">
+                              {templateOptions.length > 0 ? (
+                                <select
+                                  className="record-template-select"
+                                  value=""
+                                  onChange={(event) => applyRecordTemplate(index, event.target.value)}
+                                >
+                                  <option value="">套用本单元模板</option>
+                                  {templateOptions.map((template) => (
+                                    <option key={template.id} value={template.id}>
+                                      {template.title}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : null}
+                              <select
+                                className="reference-select"
+                                value=""
+                                onChange={(event) => insertReferenceToken(index, event.target.value)}
+                              >
+                                <option value="">插入图片引用</option>
+                                {evidenceImages.map((image) => (
+                                  <option key={image.id} value={image.id}>
+                                    {image.figure_label ?? `${sectionCode}-${image.sort_order}`} {image.caption || image.original_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </td>
+                        {technical ? (
+                          <>
+                            {(["d", "a", "k"] as const).map((key) => (
+                              <td className="metric-cell" key={key}>
+                                <select
+                                  className="metric-select"
+                                  value={row.metric_result?.[key] ?? ""}
+                                  onChange={(event) => updateMetric(index, key, event.target.value)}
+                                >
+                                  <option value="">选择</option>
+                                  {metricOptions.map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            ))}
+                            <td className="score-cell">
+                              <input
+                                className="score-input"
+                                value={row.metric_result?.object_score ?? ""}
+                                onChange={(event) => updateMetric(index, "object_score", event.target.value)}
+                              />
+                            </td>
+                            <td className="score-cell">
+                              <input
+                                className="score-input"
+                                value={row.metric_result?.unit_score ?? ""}
+                                onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="compliance-cell">
+                              <select
+                                className="compliance-select"
+                                value={row.metric_result?.compliance ?? ""}
+                                onChange={(event) => updateMetric(index, "compliance", event.target.value)}
+                              >
+                                <option value="">选择</option>
+                                {complianceOptions.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="score-cell">
+                              <input
+                                className="score-input"
+                                value={row.metric_result?.unit_score ?? ""}
+                                onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
+                              />
+                            </td>
+                          </>
+                        )}
+                        <td className="row-action-cell">
+                          <button type="button" className="danger-button" onClick={() => removeRow(index)}>
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )
+              )}
             </tbody>
           </table>
         </div>
