@@ -134,6 +134,11 @@
   "images": {
     "placement": "inline",
     "max_width_in": 9.69,
+    "fit_to_page": true,
+    "caption_min_height_in": 0.45,
+    "caption_safety_height_in": 0.12,
+    "figure_page_break_before": true,
+    "keep_caption_with_image": true,
     "dpi_warning_threshold": 120,
     "require_alt_text": true,
     "caption_after_image": true

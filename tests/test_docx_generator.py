@@ -21,6 +21,7 @@ from app.services.docx_generator import generate_project_docx  # noqa: E402
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+    "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
 }
 
 
@@ -78,6 +79,36 @@ class DocxGeneratorTest(unittest.TestCase):
         )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
         self.assertIn("A5.row1.compliance", _dropdown_tags(path))
+
+    def test_evidence_images_are_scaled_to_page_and_kept_with_captions(self) -> None:
+        project = self._make_project_with_content()
+        self._create_evidence_image(
+            project["id"],
+            "A-1",
+            filename="portrait.png",
+            caption="纵向截图",
+            size=(300, 900),
+            dpi=(72, 72),
+            display_width_in=0.4,
+            display_height_in=1.2,
+        )
+
+        path = generate_project_docx(project["id"], "editable")
+        layouts = _figure_layouts(path)
+
+        self.assertEqual(len(layouts), 2)
+        self.assertAlmostEqual(layouts[0]["width_in"], 9.69, places=2)
+        self.assertGreater(layouts[0]["height_in"], 4.8)
+        self.assertLess(layouts[0]["height_in"], 4.9)
+        self.assertGreater(layouts[1]["height_in"], 5.0)
+        self.assertLess(layouts[1]["width_in"], 2.0)
+        for layout in layouts:
+            self.assertTrue(layout["page_break_before"])
+            self.assertTrue(layout["keep_next"])
+            self.assertTrue(layout["keep_lines"])
+            self.assertTrue(layout["caption_keep_lines"])
+            self.assertFalse(layout["caption_page_break_before"])
+            self.assertIn("图A-1-", layout["caption_text"])
 
     def test_final_docx_flattens_content_controls_but_keeps_references(self) -> None:
         project = self._make_project_with_content()
@@ -148,26 +179,36 @@ class DocxGeneratorTest(unittest.TestCase):
         )
         return project
 
-    def _create_evidence_image(self, project_id: int, section_code: str):
-        relative_path = Path("uploads") / str(project_id) / section_code / "sample.png"
+    def _create_evidence_image(
+        self,
+        project_id: int,
+        section_code: str,
+        filename: str = "sample.png",
+        caption: str = "登录策略截图",
+        size: tuple[int, int] = (600, 300),
+        dpi: tuple[int, int] = (150, 150),
+        display_width_in: float = 4,
+        display_height_in: float = 2,
+    ):
+        relative_path = Path("uploads") / str(project_id) / section_code / filename
         absolute_path = settings.storage_path / relative_path
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.new("RGB", (600, 300), color=(255, 255, 255))
-        image.save(absolute_path, dpi=(150, 150))
+        image = Image.new("RGB", size, color=(255, 255, 255))
+        image.save(absolute_path, dpi=dpi)
         return database.create_evidence_image(
             project_id,
             section_code,
             {
                 "file_path": relative_path.as_posix(),
-                "original_name": "sample.png",
-                "caption": "登录策略截图",
-                "alt_text": "登录策略截图",
-                "pixel_width": 600,
-                "pixel_height": 300,
-                "dpi_x": 150,
-                "dpi_y": 150,
-                "display_width_in": 4,
-                "display_height_in": 2,
+                "original_name": filename,
+                "caption": caption,
+                "alt_text": caption,
+                "pixel_width": size[0],
+                "pixel_height": size[1],
+                "dpi_x": dpi[0],
+                "dpi_y": dpi[1],
+                "display_width_in": display_width_in,
+                "display_height_in": display_height_in,
             },
         )
 
@@ -294,6 +335,42 @@ def _dropdown_tags(path: Path) -> set[str]:
         if value:
             tags.add(value)
     return tags
+
+
+def _figure_layouts(path: Path) -> list[dict[str, float | bool | str]]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    paragraphs = document.findall(".//w:p", NS)
+    layouts: list[dict[str, float | bool | str]] = []
+    for index, paragraph in enumerate(paragraphs):
+        inline = paragraph.find(".//wp:inline", NS)
+        if inline is None:
+            continue
+        extent = inline.find("wp:extent", NS)
+        paragraph_properties = paragraph.find("w:pPr", NS)
+        caption = paragraphs[index + 1] if index + 1 < len(paragraphs) else None
+        caption_properties = caption.find("w:pPr", NS) if caption is not None else None
+        layouts.append(
+            {
+                "width_in": int(extent.get("cx")) / 914400 if extent is not None else 0,
+                "height_in": int(extent.get("cy")) / 914400 if extent is not None else 0,
+                "page_break_before": _has_paragraph_property(paragraph_properties, "pageBreakBefore"),
+                "keep_next": _has_paragraph_property(paragraph_properties, "keepNext"),
+                "keep_lines": _has_paragraph_property(paragraph_properties, "keepLines"),
+                "caption_keep_lines": _has_paragraph_property(caption_properties, "keepLines"),
+                "caption_page_break_before": _has_paragraph_property(caption_properties, "pageBreakBefore"),
+                "caption_text": _paragraph_text(caption) if caption is not None else "",
+            }
+        )
+    return layouts
+
+
+def _has_paragraph_property(paragraph_properties: ET.Element | None, property_name: str) -> bool:
+    return paragraph_properties is not None and paragraph_properties.find(f"w:{property_name}", NS) is not None
+
+
+def _paragraph_text(paragraph: ET.Element) -> str:
+    return "".join(node.text or "" for node in paragraph.findall(".//w:t", NS)).strip()
 
 
 if __name__ == "__main__":
