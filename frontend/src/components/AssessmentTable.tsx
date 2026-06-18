@@ -12,6 +12,7 @@ type AssessmentTableProps = {
   recordTemplates: RecordTemplate[];
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSave: () => void;
+  onSaveRowAsTemplate?: (row: AssessmentRowInput) => void | Promise<RecordTemplate | undefined>;
 };
 
 const EMPTY_METRIC = {
@@ -128,7 +129,8 @@ export function AssessmentTable({
   evidenceImages,
   recordTemplates,
   onRowsChange,
-  onSave
+  onSave,
+  onSaveRowAsTemplate
 }: AssessmentTableProps) {
   const technical = isTechnicalSection(sectionCode);
   const metricOptions = profile.content_controls.technical_metric.options;
@@ -375,6 +377,17 @@ export function AssessmentTable({
                                   </option>
                                 ))}
                               </select>
+                              {onSaveRowAsTemplate ? (
+                                <button
+                                  type="button"
+                                  className="inline-action template-save-button"
+                                  onClick={() => void onSaveRowAsTemplate(row)}
+                                  disabled={!row.record_text.trim()}
+                                  title={row.record_text.trim() ? "将当前结果记录保存为我的模板" : "请先填写结果记录正文"}
+                                >
+                                  存为模板
+                                </button>
+                              ) : null}
                             </div>
                           </div>
                         </td>

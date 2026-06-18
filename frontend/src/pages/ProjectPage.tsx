@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  copyRecordTemplate,
   createRenderJob,
   createProject,
+  createRecordTemplate,
+  deleteRecordTemplate,
   deleteProject,
   exportProjectDocx,
   getProject,
@@ -11,6 +14,7 @@ import {
   getTemplateProfile,
   listProjects,
   resolveFileUrl,
+  updateRecordTemplate,
   updateSectionDetail,
   validateProject,
   type AssessmentRowInput,
@@ -18,6 +22,7 @@ import {
   type Project,
   type RenderJob,
   type RecordTemplate,
+  type RecordTemplateInput,
   type SectionDetail,
   type TemplateProfile,
   type ValidationIssue,
@@ -27,6 +32,7 @@ import { AssessmentTable } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
+import { TemplateManagerPanel } from "../components/TemplateManagerPanel";
 
 function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
@@ -69,6 +75,7 @@ export function ProjectPage() {
   const [renderJob, setRenderJob] = useState<RenderJob>();
   const [validation, setValidation] = useState<ValidationResponse>();
   const [saveMessage, setSaveMessage] = useState<string>();
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
 
   const activeSection = useMemo(
     () => project?.sections.find((section) => section.code === activeCode),
@@ -90,9 +97,7 @@ export function ProjectPage() {
     getTemplateProfile()
       .then(setProfile)
       .catch((err) => setError(err instanceof Error ? err.message : "读取模板 profile 失败"));
-    getRecordTemplates()
-      .then(setRecordTemplates)
-      .catch((err) => setError(err instanceof Error ? err.message : "读取结果记录模板失败"));
+    refreshRecordTemplates().catch((err) => setError(err instanceof Error ? err.message : "读取结果记录模板失败"));
     refreshProjects();
   }, []);
 
@@ -136,6 +141,12 @@ export function ProjectPage() {
     } finally {
       setIsLoadingProjects(false);
     }
+  }
+
+  async function refreshRecordTemplates() {
+    const templates = await getRecordTemplates();
+    setRecordTemplates(templates);
+    return templates;
   }
 
   function openProject(projectToOpen: Project) {
@@ -221,6 +232,68 @@ export function ProjectPage() {
     setDraftRows((current) => ({ ...current, [code]: rows }));
     setDirtySections((current) => new Set([...current, code]));
     setSaveMessage(undefined);
+  }
+
+  function tableTypeForSection(code: string): RecordTemplateInput["table_type"] {
+    return profile?.sections.find((section) => section.code === code)?.table_type ?? "technical";
+  }
+
+  async function handleCreateRecordTemplate(payload: RecordTemplateInput) {
+    const created = await createRecordTemplate(payload);
+    await refreshRecordTemplates();
+    setSaveMessage("结果记录模板已新增。");
+    return created;
+  }
+
+  async function handleUpdateRecordTemplate(templateId: string, payload: Partial<RecordTemplateInput>) {
+    const updated = await updateRecordTemplate(templateId, payload);
+    await refreshRecordTemplates();
+    setSaveMessage("结果记录模板已更新。");
+    return updated;
+  }
+
+  async function handleDeleteRecordTemplate(templateId: string) {
+    const deleted = await deleteRecordTemplate(templateId);
+    await refreshRecordTemplates();
+    setSaveMessage("结果记录模板已删除。");
+    return deleted;
+  }
+
+  async function handleCopyRecordTemplate(templateId: string) {
+    const copied = await copyRecordTemplate(templateId);
+    await refreshRecordTemplates();
+    setSaveMessage("结果记录模板已复制为我的模板。");
+    return copied;
+  }
+
+  async function handleSaveRowAsTemplate(row: AssessmentRowInput) {
+    if (!activeCode) {
+      return undefined;
+    }
+    const recordText = row.record_text.trim();
+    if (!recordText) {
+      setError("请先填写结果记录正文，再保存为模板。");
+      return undefined;
+    }
+
+    setError(undefined);
+    try {
+      const created = await createRecordTemplate({
+        section_code: activeCode,
+        table_type: tableTypeForSection(activeCode),
+        unit: row.unit.trim(),
+        object_name: row.object_name.trim(),
+        title: row.object_name.trim() || row.unit.trim(),
+        record_text: recordText,
+        tags: ["手动保存"]
+      });
+      await refreshRecordTemplates();
+      setSaveMessage("当前测评行已保存为我的模板。");
+      return created;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存测评行为模板失败。");
+      return undefined;
+    }
   }
 
   function applySavedSectionDetail(code: string, detail: SectionDetail) {
@@ -513,6 +586,13 @@ export function ProjectPage() {
                 <button type="button" onClick={handleSaveAllSections} disabled={isSavingAny || dirtyCount === 0}>
                   {isSavingAll ? "全部保存中..." : "全部保存"}
                 </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setIsTemplateManagerOpen((current) => !current)}
+                >
+                  {isTemplateManagerOpen ? "收起模板" : "模板管理"}
+                </button>
               </div>
               <div className="action-group">
                 <button type="button" className="secondary-button" onClick={handleValidate} disabled={isValidating || isSavingAny}>
@@ -555,6 +635,21 @@ export function ProjectPage() {
           {validation ? <ValidationPanel validation={validation} /> : null}
           {renderJob ? <PreviewPanel job={renderJob} /> : null}
 
+          {profile && activeCode && isTemplateManagerOpen ? (
+            <TemplateManagerPanel
+              profile={profile}
+              activeSectionCode={activeCode}
+              templates={recordTemplates}
+              currentRows={activeRows}
+              onClose={() => setIsTemplateManagerOpen(false)}
+              onCreate={handleCreateRecordTemplate}
+              onUpdate={handleUpdateRecordTemplate}
+              onDelete={handleDeleteRecordTemplate}
+              onCopy={handleCopyRecordTemplate}
+              onSaveRowAsTemplate={handleSaveRowAsTemplate}
+            />
+          ) : null}
+
           {profile && activeCode && activeDetail ? (
             <AssessmentTable
               sectionCode={activeCode}
@@ -566,6 +661,7 @@ export function ProjectPage() {
               recordTemplates={activeRecordTemplates}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSave={handleSaveSection}
+              onSaveRowAsTemplate={handleSaveRowAsTemplate}
             />
           ) : null}
 

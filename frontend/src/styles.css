@@ -312,6 +312,10 @@ a:hover {
 .project-list-header button,
 .project-list-actions button,
 .toolbar-actions button,
+.template-manager-actions button,
+.template-form-actions button,
+.template-row-actions button,
+.template-list-actions button,
 .empty-table button,
 .inline-action,
 .upload-panel button,
@@ -331,6 +335,10 @@ a:hover {
 .project-list-header button:not(:disabled):hover,
 .project-list-actions button:not(:disabled):hover,
 .toolbar-actions button:not(:disabled):hover,
+.template-manager-actions button:not(:disabled):hover,
+.template-form-actions button:not(:disabled):hover,
+.template-row-actions button:not(:disabled):hover,
+.template-list-actions button:not(:disabled):hover,
 .empty-table button:not(:disabled):hover,
 .inline-action:not(:disabled):hover,
 .upload-panel button:not(:disabled):hover,
@@ -716,6 +724,212 @@ a:hover {
 .preview-panel.failed,
 .preview-panel.timeout {
   border-left-color: var(--color-danger);
+}
+
+.template-manager-panel {
+  border-left-color: #687f45;
+}
+
+.template-manager-heading,
+.template-manager-actions,
+.template-side-heading,
+.template-list-heading,
+.template-item-heading,
+.template-list-actions,
+.template-form-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.template-manager-actions,
+.template-list-actions,
+.template-form-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.template-manager-tools {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.8fr) minmax(190px, 1fr) minmax(240px, 1.4fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.template-manager-tools label,
+.template-manager-form label,
+.template-record-field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.template-manager-tools span,
+.template-manager-form label span,
+.template-record-field span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.template-manager-tools input,
+.template-manager-tools select,
+.template-manager-form input,
+.template-manager-form select,
+.template-manager-form textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.template-manager-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(0, 1.35fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.template-manager-form,
+.template-side-block,
+.template-list-item {
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.template-manager-form {
+  display: grid;
+  gap: var(--space-3);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.template-manager-form h4,
+.template-side-heading h4,
+.template-list-heading h4 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.template-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.template-tags-field,
+.template-record-field {
+  grid-column: 1 / -1;
+}
+
+.template-record-field textarea {
+  min-height: 170px;
+}
+
+.template-manager-side,
+.template-list {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.template-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.template-row-actions button {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-primary);
+  text-overflow: ellipsis;
+  background: var(--color-primary-soft);
+  border-color: #b9d7df;
+}
+
+.template-list-heading {
+  padding-top: var(--space-1);
+}
+
+.template-list-item {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.template-item-heading {
+  align-items: flex-start;
+}
+
+.template-item-heading div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.template-item-heading strong,
+.template-item-heading span {
+  overflow-wrap: anywhere;
+}
+
+.template-item-heading span,
+.template-item-meta,
+.readonly-note {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.template-list-item p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.template-source {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: var(--radius-xs);
+}
+
+.template-source.system {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border: 1px solid #b9d7df;
+}
+
+.template-source.user {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+  border: 1px solid #b9dfc6;
+}
+
+.template-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.template-empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
 }
 
 .severity,
@@ -1181,6 +1395,10 @@ a:hover {
   min-height: 34px;
 }
 
+.template-save-button {
+  min-height: 34px;
+}
+
 .record-template-select:disabled {
   color: var(--color-text-muted);
   background: #eef2f4;
@@ -1486,7 +1704,10 @@ a:hover {
   .placeholder-grid,
   .evidence-grid,
   .upload-panel,
-  .home-grid {
+  .home-grid,
+  .template-manager-tools,
+  .template-manager-grid,
+  .template-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1584,6 +1805,24 @@ a:hover {
 
   .section-summary-meta {
     grid-column: 1 / -1;
+  }
+
+  .template-manager-heading,
+  .template-side-heading,
+  .template-list-heading,
+  .template-item-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .template-manager-actions,
+  .template-list-actions,
+  .template-form-actions {
+    justify-content: flex-start;
+  }
+
+  .template-manager-form {
+    position: static;
   }
 
   .action-group {
