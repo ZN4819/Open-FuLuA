@@ -48,7 +48,7 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertEqual(analysis.ref_fields, 1)
         self.assertEqual(analysis.images, 1)
         self.assertEqual(analysis.missing_ref_targets, [])
-        self.assertIn("3x8", analysis.table_shapes)
+        self.assertIn("4x8", analysis.table_shapes)
         self.assertTrue(_all_tables_have_grid(path))
         paragraph_texts = _nonempty_paragraph_texts(path)
         self.assertEqual(paragraph_texts[:3], ["附录A测评结果记录", "物理和环境安全", "表A-1物理和环境安全测评结果记录"])
@@ -57,6 +57,15 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertEqual(
             _first_table_border_sizes(path),
             {"top": "18", "left": "18", "bottom": "18", "right": "18", "insideH": "4", "insideV": "4"},
+        )
+        self.assertEqual(
+            _first_table_unit_column_format(path),
+            {
+                "text": "身份鉴别",
+                "fills": ["E7E6E6", "E7E6E6"],
+                "alignment": "center",
+                "vertical_alignment": "center",
+            },
         )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
         self.assertIn("A5.row1.compliance", _dropdown_tags(path))
@@ -98,7 +107,19 @@ class DocxGeneratorTest(unittest.TestCase):
                             "display_text": "图A-1-1",
                         }
                     ],
-                }
+                },
+                {
+                    "unit": "身份鉴别",
+                    "object_name": "备用服务器",
+                    "record_text": "查看备用登录策略。",
+                    "metric_result": {
+                        "d": "√",
+                        "a": "√",
+                        "k": "/",
+                        "object_score": "1.0000",
+                        "unit_score": "1.0000",
+                    },
+                },
             ],
         )
         database.replace_section_rows(
@@ -198,6 +219,33 @@ def _first_table_border_sizes(path: Path) -> dict[str, str | None]:
         node = borders.find(f"w:{side}", NS)
         sizes[side] = node.get(f"{{{NS['w']}}}sz") if node is not None else None
     return sizes
+
+
+def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | None]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    table = document.find(".//w:tbl", NS)
+    if table is None:
+        return {}
+    rows = table.findall("w:tr", NS)
+    body_rows = rows[2:4]
+    cells = [row.findall("w:tc", NS)[0] for row in body_rows]
+    first_cell = cells[0]
+    paragraph = first_cell.find("w:p", NS)
+    paragraph_properties = paragraph.find("w:pPr", NS) if paragraph is not None else None
+    cell_properties = first_cell.find("w:tcPr", NS)
+    alignment = paragraph_properties.find("w:jc", NS) if paragraph_properties is not None else None
+    vertical_alignment = cell_properties.find("w:vAlign", NS) if cell_properties is not None else None
+    fills = []
+    for cell in cells:
+        shading = cell.find("w:tcPr/w:shd", NS)
+        fills.append(shading.get(f"{{{NS['w']}}}fill") if shading is not None else None)
+    return {
+        "text": _cell_text(first_cell),
+        "fills": fills,
+        "alignment": alignment.get(f"{{{NS['w']}}}val") if alignment is not None else None,
+        "vertical_alignment": vertical_alignment.get(f"{{{NS['w']}}}val") if vertical_alignment is not None else None,
+    }
 
 
 def _dropdown_tags(path: Path) -> set[str]:

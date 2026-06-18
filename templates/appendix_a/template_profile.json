@@ -66,6 +66,7 @@
   },
   "colors": {
     "table_header_fill": "E7E6E6",
+    "table_unit_fill": "E7E6E6",
     "table_body_fill": "FFFFFF",
     "border": "000000",
     "text": "000000",

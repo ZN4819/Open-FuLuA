@@ -60,7 +60,7 @@ def add_assessment_table(
             )
 
     configure_table_geometry(table, [float(column["width_in"]) for column in columns], profile)
-    _merge_repeated_unit_cells(table, output_rows, header_row_count)
+    _merge_repeated_unit_cells(table, output_rows, header_row_count, profile)
     return table
 
 
@@ -114,6 +114,10 @@ def _fill_body_cell(
         _set_record_cell(cell, _value(row, key), profile, figure_refs)
         return
 
+    if key == "unit":
+        _set_unit_cell(cell, _value(row, key), profile)
+        return
+
     if key in {"d", "a", "k"}:
         value = _value(row, key) or profile["content_controls"]["technical_metric"]["default"]
         _set_metric_cell(
@@ -138,8 +142,13 @@ def _fill_body_cell(
         )
         return
 
-    alignment = "center" if key in {"object_score", "unit_score"} else "left"
+    alignment = "center" if key in {"object_name", "object_score", "unit_score"} else "left"
     set_cell_text(cell, _value(row, key), profile, "body", alignment)
+
+
+def _set_unit_cell(cell: _Cell, text: str, profile: dict[str, Any]) -> None:
+    set_cell_text(cell, text, profile, "body", "center")
+    shade_cell(cell, profile["colors"].get("table_unit_fill", profile["colors"]["table_header_fill"]))
 
 
 def _set_metric_cell(
@@ -223,7 +232,12 @@ def _mark_repeat_header(row) -> None:
     tr_pr.append(header)
 
 
-def _merge_repeated_unit_cells(table: Table, rows: list[Any], header_row_count: int) -> None:
+def _merge_repeated_unit_cells(
+    table: Table,
+    rows: list[Any],
+    header_row_count: int,
+    profile: dict[str, Any],
+) -> None:
     start_index = header_row_count
     previous_unit = None
     for offset, row in enumerate(rows + [None], start=header_row_count):
@@ -235,6 +249,7 @@ def _merge_repeated_unit_cells(table: Table, rows: list[Any], header_row_count: 
         if unit != previous_unit:
             end_index = offset - 1
             if previous_unit and end_index > start_index:
-                table.cell(start_index, 0).merge(table.cell(end_index, 0))
+                merged_cell = table.cell(start_index, 0).merge(table.cell(end_index, 0))
+                _set_unit_cell(merged_cell, previous_unit, profile)
             start_index = offset
             previous_unit = unit
