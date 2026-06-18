@@ -48,8 +48,16 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertEqual(analysis.ref_fields, 1)
         self.assertEqual(analysis.images, 1)
         self.assertEqual(analysis.missing_ref_targets, [])
-        self.assertIn("2x8", analysis.table_shapes)
+        self.assertIn("3x8", analysis.table_shapes)
         self.assertTrue(_all_tables_have_grid(path))
+        paragraph_texts = _nonempty_paragraph_texts(path)
+        self.assertEqual(paragraph_texts[:3], ["附录A测评结果记录", "物理和环境安全", "表A-1物理和环境安全测评结果记录"])
+        self.assertNotIn("A-1 物理和环境安全", paragraph_texts[:3])
+        self.assertTrue(_first_table_uses_template_header(path))
+        self.assertEqual(
+            _first_table_border_sizes(path),
+            {"top": "18", "left": "18", "bottom": "18", "right": "18", "insideH": "4", "insideV": "4"},
+        )
         self.assertIn("A1.row1.D", _dropdown_tags(path))
         self.assertIn("A5.row1.compliance", _dropdown_tags(path))
 
@@ -142,6 +150,54 @@ def _all_tables_have_grid(path: Path) -> bool:
         if grid is None or not grid.findall("w:gridCol", NS):
             return False
     return True
+
+
+def _nonempty_paragraph_texts(path: Path) -> list[str]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    texts: list[str] = []
+    for paragraph in document.findall(".//w:p", NS):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", NS)).strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _first_table_uses_template_header(path: Path) -> bool:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    table = document.find(".//w:tbl", NS)
+    if table is None:
+        return False
+    rows = table.findall("w:tr", NS)
+    if len(rows) < 2:
+        return False
+    first_row = [_cell_text(cell) for cell in rows[0].findall("w:tc", NS)]
+    second_row = [_cell_text(cell) for cell in rows[1].findall("w:tc", NS)]
+    first_spans = [cell.find("w:tcPr/w:gridSpan", NS) for cell in rows[0].findall("w:tc", NS)]
+    return (
+        first_row == ["测评单元", "测评对象", "结果记录", "量化指标", "测评单元得分"]
+        and second_row[3:7] == ["密码使用有效性D", "密码算法/技术合规性A", "密钥管理安全K", "测评对象评分Si,j,k"]
+        and first_spans[3] is not None
+        and first_spans[3].get(f"{{{NS['w']}}}val") == "4"
+    )
+
+
+def _cell_text(cell: ET.Element) -> str:
+    return "".join(node.text or "" for node in cell.findall(".//w:t", NS)).strip()
+
+
+def _first_table_border_sizes(path: Path) -> dict[str, str | None]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    borders = document.find(".//w:tbl/w:tblPr/w:tblBorders", NS)
+    if borders is None:
+        return {}
+    sizes: dict[str, str | None] = {}
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        node = borders.find(f"w:{side}", NS)
+        sizes[side] = node.get(f"{{{NS['w']}}}sz") if node is not None else None
+    return sizes
 
 
 def _dropdown_tags(path: Path) -> set[str]:

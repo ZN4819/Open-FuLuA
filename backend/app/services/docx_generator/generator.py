@@ -45,6 +45,7 @@ def generate_project_docx(project_id: int, mode: ExportMode = "editable") -> Pat
     for index, section in enumerate(sections):
         if index == 0:
             configure_section(document.sections[0], profile)
+            _add_appendix_title(document, profile)
         else:
             configure_section(document.add_section(WD_SECTION.NEW_PAGE), profile)
 
@@ -76,11 +77,18 @@ def _configure_document(document: Document, profile: dict[str, Any]) -> None:
     settings_element.append(update_fields)
 
 
+def _add_appendix_title(document: Document, profile: dict[str, Any]) -> None:
+    paragraph = document.add_paragraph()
+    set_paragraph_format(paragraph, profile, "appendix_title")
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = paragraph.add_run("附录A测评结果记录")
+    apply_run_font(run, profile, "appendix_title")
+
+
 def _add_section_title(document: Document, section: Any, profile: dict[str, Any]) -> None:
     paragraph = document.add_paragraph()
     set_paragraph_format(paragraph, profile, "section_title")
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = paragraph.add_run(f"{section['code']} {section['title']}")
+    run = paragraph.add_run(section["title"])
     apply_run_font(run, profile, "section_title")
 
 

@@ -32,24 +32,45 @@
       "bold": true,
       "alignment": "center"
     },
-    "section_title": {
+    "appendix_title": {
+      "ascii_font": "黑体",
       "east_asia_font": "黑体",
-      "size_pt": 12,
+      "size_pt": 18,
       "bold": true,
-      "alignment": "center"
+      "alignment": "center",
+      "spacing_before_twips": 480,
+      "spacing_after_twips": 0,
+      "line_twips": 276,
+      "outline_level": 0
+    },
+    "section_title": {
+      "ascii_font": "Cambria",
+      "east_asia_font": "黑体",
+      "size_pt": 14,
+      "bold": true,
+      "alignment": "both",
+      "spacing_after_twips": 0,
+      "line_twips": 276,
+      "outline_level": 1
     },
     "caption": {
       "ascii_font": "Times New Roman",
-      "east_asia_font": "宋体",
-      "size_pt": 10.5,
-      "alignment": "center"
+      "east_asia_font": "黑体",
+      "size_pt": 12,
+      "bold": true,
+      "alignment": "center",
+      "spacing_before_twips": 163,
+      "spacing_after_twips": 80,
+      "line_twips": 276
     }
   },
   "colors": {
     "table_header_fill": "E7E6E6",
     "table_body_fill": "FFFFFF",
     "border": "000000",
-    "text": "000000"
+    "text": "000000",
+    "table_outer_border_size": 18,
+    "table_inner_border_size": 4
   },
   "tables": {
     "technical": {

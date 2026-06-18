@@ -37,16 +37,11 @@ def add_assessment_table(
     table_profile = profile["tables"][section_profile["table_type"]]
     columns = table_profile["columns"]
     output_rows = rows or [_empty_row(section_profile["table_type"])]
+    header_row_count = 2 if section_profile["table_type"] == "technical" else 1
 
-    table = document.add_table(rows=1, cols=len(columns))
+    table = document.add_table(rows=header_row_count, cols=len(columns))
     table.style = None
-
-    header = table.rows[0]
-    _mark_repeat_header(header)
-    for index, column in enumerate(columns):
-        cell = header.cells[index]
-        set_cell_text(cell, column["label"], profile, "table_header", "center")
-        shade_cell(cell, profile["colors"]["table_header_fill"])
+    _add_header_rows(table, columns, section_profile["table_type"], profile)
 
     for row_index, row in enumerate(output_rows, start=1):
         table_row = table.add_row()
@@ -65,8 +60,44 @@ def add_assessment_table(
             )
 
     configure_table_geometry(table, [float(column["width_in"]) for column in columns], profile)
-    _merge_repeated_unit_cells(table, output_rows)
+    _merge_repeated_unit_cells(table, output_rows, header_row_count)
     return table
+
+
+def _add_header_rows(table: Table, columns: list[Any], table_type: str, profile: dict[str, Any]) -> None:
+    if table_type == "technical":
+        _add_technical_header_rows(table, columns, profile)
+        return
+    _add_management_header_row(table, columns, profile)
+
+
+def _add_management_header_row(table: Table, columns: list[Any], profile: dict[str, Any]) -> None:
+    header = table.rows[0]
+    _mark_repeat_header(header)
+    for index, column in enumerate(columns):
+        _set_header_cell(header.cells[index], column["label"], profile)
+
+
+def _add_technical_header_rows(table: Table, columns: list[Any], profile: dict[str, Any]) -> None:
+    for row in table.rows[:2]:
+        _mark_repeat_header(row)
+        for cell in row.cells:
+            shade_cell(cell, profile["colors"]["table_header_fill"])
+            set_cell_margins(cell)
+
+    _set_header_cell(table.cell(0, 0).merge(table.cell(1, 0)), columns[0]["label"], profile)
+    _set_header_cell(table.cell(0, 1).merge(table.cell(1, 1)), columns[1]["label"], profile)
+    _set_header_cell(table.cell(0, 2).merge(table.cell(1, 2)), columns[2]["label"], profile)
+    _set_header_cell(table.cell(0, 3).merge(table.cell(0, 6)), "量化指标", profile)
+    _set_header_cell(table.cell(0, 7).merge(table.cell(1, 7)), columns[7]["label"], profile)
+
+    for index in range(3, 7):
+        _set_header_cell(table.cell(1, index), columns[index]["label"].replace(" ", ""), profile)
+
+
+def _set_header_cell(cell: _Cell, text: str, profile: dict[str, Any]) -> None:
+    set_cell_text(cell, text, profile, "table_header", "center")
+    shade_cell(cell, profile["colors"]["table_header_fill"])
 
 
 def _fill_body_cell(
@@ -192,14 +223,14 @@ def _mark_repeat_header(row) -> None:
     tr_pr.append(header)
 
 
-def _merge_repeated_unit_cells(table: Table, rows: list[Any]) -> None:
-    start_index = 1
+def _merge_repeated_unit_cells(table: Table, rows: list[Any], header_row_count: int) -> None:
+    start_index = header_row_count
     previous_unit = None
-    for offset, row in enumerate(rows + [None], start=1):
+    for offset, row in enumerate(rows + [None], start=header_row_count):
         unit = _value(row, "unit") if row is not None else None
-        if offset == 1:
+        if offset == header_row_count:
             previous_unit = unit
-            start_index = 1
+            start_index = header_row_count
             continue
         if unit != previous_unit:
             end_index = offset - 1

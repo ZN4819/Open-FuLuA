@@ -47,13 +47,19 @@ def set_paragraph_format(paragraph: Paragraph, profile: dict[str, Any], role: st
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     elif alignment == "right":
         paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    elif alignment == "both":
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     else:
         paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     paragraph_format = paragraph.paragraph_format
+    paragraph_format.space_before = Pt(float(token.get("spacing_before_twips", 0)) / 20)
     paragraph_format.space_after = Pt(float(token.get("spacing_after_twips", 0)) / 20)
     if token.get("line_twips"):
         paragraph_format.line_spacing = float(token["line_twips"]) / 240
+
+    if "outline_level" in token:
+        set_paragraph_outline_level(paragraph, int(token["outline_level"]))
 
 
 def set_paragraph_text(
@@ -147,7 +153,13 @@ def configure_table_geometry(table: Table, column_widths_in: list[float], profil
         tbl_pr.append(tbl_layout)
     tbl_layout.set(qn("w:type"), "fixed")
 
-    set_table_borders(table, profile["colors"]["border"])
+    colors = profile["colors"]
+    set_table_borders(
+        table,
+        colors["border"],
+        outer_size=int(colors.get("table_outer_border_size", 18)),
+        inner_size=int(colors.get("table_inner_border_size", 4)),
+    )
 
     for old_grid in tbl.findall(qn("w:tblGrid")):
         tbl.remove(old_grid)
@@ -166,7 +178,7 @@ def configure_table_geometry(table: Table, column_widths_in: list[float], profil
                 set_cell_width(cell, width_dxa)
 
 
-def set_table_borders(table: Table, color: str) -> None:
+def set_table_borders(table: Table, color: str, outer_size: int = 18, inner_size: int = 4) -> None:
     tbl_pr = table._tbl.tblPr
     borders = tbl_pr.first_child_found_in("w:tblBorders")
     if borders is None:
@@ -178,9 +190,18 @@ def set_table_borders(table: Table, color: str) -> None:
             node = OxmlElement(f"w:{side}")
             borders.append(node)
         node.set(qn("w:val"), "single")
-        node.set(qn("w:sz"), "4")
+        node.set(qn("w:sz"), str(outer_size if side in {"top", "left", "bottom", "right"} else inner_size))
         node.set(qn("w:space"), "0")
         node.set(qn("w:color"), color)
+
+
+def set_paragraph_outline_level(paragraph: Paragraph, level: int) -> None:
+    p_pr = paragraph._p.get_or_add_pPr()
+    outline = p_pr.first_child_found_in("w:outlineLvl")
+    if outline is None:
+        outline = OxmlElement("w:outlineLvl")
+        p_pr.append(outline)
+    outline.set(qn("w:val"), str(level))
 
 
 def _inches_to_dxa(width: float) -> int:
