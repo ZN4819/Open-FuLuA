@@ -70,7 +70,7 @@ class ValidationServiceTest(unittest.TestCase):
         self.assertIn("BROKEN_IMAGE_REFERENCE", codes)
         self.assertIn("BROKEN_STORED_REFERENCE", codes)
         self.assertIn("LOW_IMAGE_DPI", codes)
-        self.assertIn("IMAGE_ALT_MISSING", codes)
+        self.assertNotIn("IMAGE_ALT_MISSING", codes)
         self.assertIn("IMAGE_UNUSED", codes)
         self.assertEqual(len(database.list_validation_issues(project["id"])), len(result.issues))
         self.assertEqual(unused_image["id"], int(database.list_evidence_images(project["id"], "A-1")[0]["id"]))

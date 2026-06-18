@@ -18,19 +18,23 @@ type EvidencePanelProps = {
 
 type ImageDraft = {
   caption: string;
-  alt_text: string;
 };
+
+function isAltTextWarning(warning: string): boolean {
+  return warning.toLowerCase().includes("alt");
+}
 
 export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, onError }: EvidencePanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
-  const [altText, setAltText] = useState("");
   const [drafts, setDrafts] = useState<Record<number, ImageDraft>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [busyImageId, setBusyImageId] = useState<number | null>(null);
   const [draggingImageId, setDraggingImageId] = useState<number | null>(null);
-  const warningCount = images.reduce((count, image) => count + image.warnings.length, 0);
-  const missingAltCount = images.filter((image) => !image.alt_text.trim()).length;
+  const warningCount = images.reduce(
+    (count, image) => count + image.warnings.filter((warning) => !isAltTextWarning(warning)).length,
+    0
+  );
 
   useEffect(() => {
     setDrafts(
@@ -38,8 +42,7 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
         images.map((image) => [
           image.id,
           {
-            caption: image.caption,
-            alt_text: image.alt_text
+            caption: image.caption
           }
         ])
       )
@@ -61,13 +64,11 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       const uploaded = await uploadEvidenceImage(projectId, {
         section_code: sectionCode,
         file,
-        caption,
-        alt_text: altText
+        caption
       });
       onImagesChange([...images, uploaded]);
       setFile(null);
       setCaption("");
-      setAltText("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "上传图片失败");
     } finally {
@@ -80,8 +81,7 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
     setBusyImageId(image.id);
     try {
       const updated = await updateEvidenceImage(image.id, {
-        caption: draft?.caption ?? "",
-        alt_text: draft?.alt_text ?? ""
+        caption: draft?.caption ?? ""
       });
       onImagesChange(images.map((item) => (item.id === updated.id ? updated : item)));
     } catch (err) {
@@ -159,7 +159,6 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       ...current,
       [imageId]: {
         caption: current[imageId]?.caption ?? "",
-        alt_text: current[imageId]?.alt_text ?? "",
         ...patch
       }
     }));
@@ -174,7 +173,6 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
           <div className="editor-toolbar-meta">
             <span className="status-chip">图片 {images.length}</span>
             <span className={warningCount > 0 ? "dirty-chip" : "clean-chip"}>提示 {warningCount}</span>
-            <span className={missingAltCount > 0 ? "dirty-chip" : "clean-chip"}>缺少 alt {missingAltCount}</span>
           </div>
         </div>
       </div>
@@ -187,10 +185,6 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
         <label className="upload-field">
           <span>题注</span>
           <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="例如：机房门禁照片" />
-        </label>
-        <label className="upload-field">
-          <span>alt 文本</span>
-          <input value={altText} onChange={(event) => setAltText(event.target.value)} placeholder="例如：机房门禁设备现场照片" />
         </label>
         <div className="upload-actions">
           {file ? <span className="status-chip">{file.name}</span> : null}
@@ -205,7 +199,8 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
       ) : (
         <div className="evidence-grid">
           {images.map((image, index) => {
-            const draft = drafts[image.id] ?? { caption: image.caption, alt_text: image.alt_text };
+            const draft = drafts[image.id] ?? { caption: image.caption };
+            const visibleWarnings = image.warnings.filter((warning) => !isAltTextWarning(warning));
             return (
               <article
                 className={`evidence-card${draggingImageId === image.id ? " dragging" : ""}`}
@@ -241,8 +236,8 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                   </div>
                 </dl>
                 <div className="quality-row">
-                  {image.warnings.length > 0 ? (
-                    image.warnings.map((warning) => (
+                  {visibleWarnings.length > 0 ? (
+                    visibleWarnings.map((warning) => (
                       <span className="dirty-chip" key={warning}>{warning}</span>
                     ))
                   ) : (
@@ -255,14 +250,6 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                     <textarea
                       value={draft.caption}
                       onChange={(event) => updateDraft(image.id, { caption: event.target.value })}
-                      rows={2}
-                    />
-                  </label>
-                  <label>
-                    alt 文本
-                    <textarea
-                      value={draft.alt_text}
-                      onChange={(event) => updateDraft(image.id, { alt_text: event.target.value })}
                       rows={2}
                     />
                   </label>

@@ -179,9 +179,8 @@ def _validate_images(section: Any, images: list[Any]) -> list[dict[str, Any]]:
         if not _text(image["caption"]):
             issues.append(_issue("info", "IMAGE_CAPTION_MISSING", f"{image_label} 缺少题注。", "image", image_id))
         for warning in image_warnings(dict(image)):
-            code = "LOW_IMAGE_DPI" if "DPI" in warning else "IMAGE_ALT_MISSING" if "alt" in warning else "IMAGE_WIDTH_AUTOSCALED"
-            severity = "warning" if code in {"LOW_IMAGE_DPI", "IMAGE_WIDTH_AUTOSCALED"} else "info"
-            issues.append(_issue(severity, code, f"{image_label}：{warning}", "image", image_id))
+            code = "LOW_IMAGE_DPI" if "DPI" in warning else "IMAGE_WIDTH_AUTOSCALED"
+            issues.append(_issue("warning", code, f"{image_label}：{warning}", "image", image_id))
     return issues
 
 

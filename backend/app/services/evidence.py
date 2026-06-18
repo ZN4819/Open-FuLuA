@@ -93,9 +93,6 @@ def image_warnings(image: dict[str, object]) -> list[str]:
     ):
         warnings.append(f"DPI 低于 {int(threshold)}，导出后可能不清晰。")
 
-    if not image.get("alt_text"):
-        warnings.append("缺少 alt 文本。")
-
     max_width = float(profile["images"]["max_width_in"])
     pixel_width = image.get("pixel_width")
     effective_dpi_x = dpi_x if isinstance(dpi_x, (int, float)) and dpi_x > 1 else 144.0

@@ -82,7 +82,7 @@ class EvidenceImagesTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in reordered], [second["id"], first["id"]])
         self.assertEqual([row["sort_order"] for row in reordered], [1, 2])
 
-    def test_image_warnings_report_low_dpi_and_missing_alt_text(self) -> None:
+    def test_image_warnings_report_low_dpi_without_requiring_alt_text(self) -> None:
         warnings = image_warnings(
             {
                 "pixel_width": 1200,
@@ -94,7 +94,7 @@ class EvidenceImagesTest(unittest.TestCase):
         )
 
         self.assertTrue(any("DPI" in warning for warning in warnings))
-        self.assertTrue(any("alt" in warning for warning in warnings))
+        self.assertFalse(any("alt" in warning for warning in warnings))
 
     def test_image_warnings_report_auto_scaled_width(self) -> None:
         warnings = image_warnings(
