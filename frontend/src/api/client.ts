@@ -175,6 +175,16 @@ export type RecordTemplate = {
   updated_at?: string | null;
 };
 
+export type RecordTemplateInput = {
+  section_code: string;
+  table_type: "technical" | "management";
+  unit?: string;
+  object_name?: string;
+  title?: string;
+  record_text: string;
+  tags?: string[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -246,6 +256,35 @@ export function getTemplateProfile(): Promise<TemplateProfile> {
 export function getRecordTemplates(sectionCode?: string): Promise<RecordTemplate[]> {
   const query = sectionCode ? `?section_code=${encodeURIComponent(sectionCode)}` : "";
   return request<RecordTemplate[]>(`/api/record-templates${query}`);
+}
+
+export function createRecordTemplate(payload: RecordTemplateInput): Promise<RecordTemplate> {
+  return request<RecordTemplate>("/api/record-templates", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateRecordTemplate(
+  templateId: string,
+  payload: Partial<RecordTemplateInput>
+): Promise<RecordTemplate> {
+  return request<RecordTemplate>(`/api/record-templates/${encodeURIComponent(templateId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteRecordTemplate(templateId: string): Promise<RecordTemplate> {
+  return request<RecordTemplate>(`/api/record-templates/${encodeURIComponent(templateId)}`, {
+    method: "DELETE"
+  });
+}
+
+export function copyRecordTemplate(templateId: string): Promise<RecordTemplate> {
+  return request<RecordTemplate>(`/api/record-templates/${encodeURIComponent(templateId)}/copy`, {
+    method: "POST"
+  });
 }
 
 export function resolveFileUrl(fileUrl?: string | null): string {

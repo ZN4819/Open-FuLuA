@@ -353,6 +353,124 @@ def list_record_template_rows(section_code: str | None = None) -> list[sqlite3.R
         ).fetchall()
 
 
+def get_record_template_row(
+    template_key: str,
+    include_deleted: bool = False,
+    db: sqlite3.Connection | None = None,
+) -> sqlite3.Row | None:
+    conditions = ["template_key = ?"]
+    if not include_deleted:
+        conditions.append("deleted_at IS NULL")
+    query = f"""
+        SELECT
+            template_key,
+            source_type,
+            section_code,
+            table_type,
+            unit,
+            object_name,
+            title,
+            record_text,
+            tags,
+            source_row,
+            is_enabled,
+            created_at,
+            updated_at,
+            deleted_at
+        FROM record_templates
+        WHERE {" AND ".join(conditions)}
+    """
+    if db is not None:
+        return db.execute(query, (template_key,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (template_key,)).fetchone()
+
+
+def create_user_record_template(template_key: str, template: dict[str, Any]) -> sqlite3.Row:
+    timestamp = utc_now()
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO record_templates (
+                template_key,
+                source_type,
+                section_code,
+                table_type,
+                unit,
+                object_name,
+                title,
+                record_text,
+                tags,
+                source_row,
+                is_enabled,
+                deleted_at,
+                created_at,
+                updated_at
+            )
+            VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, NULL, 1, NULL, ?, ?)
+            """,
+            (
+                template_key,
+                template["section_code"],
+                template["table_type"],
+                template["unit"],
+                template["object_name"],
+                template["title"],
+                template["record_text"],
+                json.dumps(template.get("tags", []), ensure_ascii=False),
+                timestamp,
+                timestamp,
+            ),
+        )
+        row = get_record_template_row(template_key, db=db)
+        if row is None:
+            raise RuntimeError("用户模板创建失败。")
+        return row
+
+
+def update_record_template_row(template_key: str, fields: dict[str, Any]) -> sqlite3.Row | None:
+    allowed = {
+        "section_code",
+        "table_type",
+        "unit",
+        "object_name",
+        "title",
+        "record_text",
+        "tags",
+        "is_enabled",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if "tags" in updates:
+        updates["tags"] = json.dumps(updates["tags"], ensure_ascii=False)
+    updates["updated_at"] = utc_now()
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = list(updates.values()) + [template_key]
+    with connect() as db:
+        if get_record_template_row(template_key, db=db) is None:
+            return None
+        db.execute(f"UPDATE record_templates SET {assignments} WHERE template_key = ?", values)
+        return get_record_template_row(template_key, db=db)
+
+
+def soft_delete_record_template_row(template_key: str) -> sqlite3.Row | None:
+    timestamp = utc_now()
+    with connect() as db:
+        if get_record_template_row(template_key, db=db) is None:
+            return None
+        db.execute(
+            """
+            UPDATE record_templates
+            SET is_enabled = 0,
+                deleted_at = ?,
+                updated_at = ?
+            WHERE template_key = ?
+            """,
+            (timestamp, timestamp, template_key),
+        )
+        return get_record_template_row(template_key, include_deleted=True, db=db)
+
+
 def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
     if db is not None:
         return db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()

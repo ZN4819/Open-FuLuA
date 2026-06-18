@@ -42,6 +42,7 @@
 - 2026-06-18：已优化 DOCX 图片导出版式，每张证据图片单独分页，按页面可用宽高等比最大化，并通过 Word 段落分页属性保持图片与题注同页。
 - 2026-06-18：已对齐 DOCX 图片题注字体格式，图片题注不再复用表题样式，改为样本文档中的 9pt、中文宋体、西文 Cambria、不加粗、居中和 `SEQ 图A-x-` 字段。
 - 2026-06-18：已启动结果记录模板知识库专项，新增专项实施方案和计划，并完成 KB-1：系统模板由 JSON 种子同步到 SQLite `record_templates` 运行时知识库，现有模板套用接口保持兼容。
+- 2026-06-18：已完成 KB-2 用户模板 CRUD API，支持新增用户模板、编辑用户模板、软删除用户模板和复制系统模板，并限制系统模板不能直接修改或删除。
 
 ## 2. 样本文档分析结论
 
@@ -284,7 +285,9 @@ Profile 至少包含：
 
 结果记录模板作为独立模板资产管理，不与版式 profile 混合。`templates/appendix_a/record_templates.json` 是系统模板种子，由 `scripts/extract_record_templates.py` 从样本文档只读抽取生成，固定样本文档图号会替换为 `[插入图片引用]`，避免新项目误用旧图号。
 
-应用运行时会将系统模板种子同步到 SQLite `record_templates` 表，并由 `GET /api/record-templates` 返回给前端。前端会从模板接口中按章节提取去重后的测评单元清单，用作 A-1 至 A-8 的固定测评单元分组。测评单元不再需要用户手动填写，测评对象、结果记录和评分仍按测评行保存，导出时继续由后端合并相同测评单元的 Word 表格首列。
+应用运行时会将系统模板种子同步到 SQLite `record_templates` 表，并由 `GET /api/record-templates` 返回给前端。用户模板通过 `POST /api/record-templates`、`PUT /api/record-templates/{template_key}`、`DELETE /api/record-templates/{template_key}` 和 `POST /api/record-templates/{template_key}/copy` 维护。系统模板不可直接修改或删除，需复制为用户模板后再编辑；用户模板删除采用软删除。
+
+前端会从模板接口中按章节提取去重后的测评单元清单，用作 A-1 至 A-8 的固定测评单元分组。测评单元不再需要用户手动填写，测评对象、结果记录和评分仍按测评行保存，导出时继续由后端合并相同测评单元的 Word 表格首列。
 
 结果记录模板知识库专项详见：
 

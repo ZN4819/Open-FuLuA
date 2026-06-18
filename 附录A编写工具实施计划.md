@@ -898,6 +898,11 @@ docs/结果记录模板知识库实施计划.md
 - 已将 JSON 系统模板同步为 SQLite 种子，使用 `template_key` 防止重复导入。
 - 已将模板读取服务改为从 SQLite 返回，同时保留现有 API 响应字段。
 - 已补充模板知识库种子导入和幂等测试。
+- 已完成 KB-2：新增 `RecordTemplateCreate`、`RecordTemplateUpdate` 和 `RecordTemplateDelete` schema。
+- 已开放 `POST /api/record-templates`、`PUT /api/record-templates/{template_key}`、`DELETE /api/record-templates/{template_key}` 和 `POST /api/record-templates/{template_key}/copy`。
+- 已实现用户模板新增、编辑、软删除和复制模板能力。
+- 已限制系统模板不能直接编辑或删除，必须复制为用户模板后再维护。
+- 已补充用户模板 CRUD、系统模板保护、复制系统模板和输入校验测试。
 
 ## 15. 开发验收清单
 

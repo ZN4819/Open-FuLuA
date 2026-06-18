@@ -5,11 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import HTTPException
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app import database  # noqa: E402
+from app.api.record_templates import copy_record_template_endpoint as api_copy_record_template  # noqa: E402
+from app.api.record_templates import create_record_template as api_create_record_template  # noqa: E402
+from app.api.record_templates import delete_record_template as api_delete_record_template  # noqa: E402
+from app.api.record_templates import update_record_template as api_update_record_template  # noqa: E402
+from app.schemas import RecordTemplateCreate, RecordTemplateUpdate  # noqa: E402
 from app.services.record_templates import list_record_templates, load_record_template_library  # noqa: E402
 
 
@@ -86,6 +93,99 @@ class RecordTemplatesTest(unittest.TestCase):
 
         self.assertEqual(len(first), len(second))
         self.assertEqual(row["total"], len(first))
+
+    def test_user_record_template_can_be_created_updated_and_deleted(self) -> None:
+        created = api_create_record_template(
+            RecordTemplateCreate(
+                section_code="A-1",
+                table_type="technical",
+                unit="身份鉴别",
+                object_name="测试机房",
+                record_text="测评验证记录：用户新增模板。",
+                tags=["机房", " 身份鉴别 ", "机房"],
+            )
+        )
+
+        self.assertTrue(created.id.startswith("user-"))
+        self.assertEqual(created.source_type, "user")
+        self.assertEqual(created.title, "身份鉴别 / 测试机房")
+        self.assertEqual(created.tags, ["机房", "身份鉴别"])
+        self.assertTrue(any(template["id"] == created.id for template in list_record_templates("A-1")))
+
+        updated = api_update_record_template(
+            created.id,
+            RecordTemplateUpdate(
+                title="用户模板标题",
+                record_text="测评验证记录：用户模板已修改。",
+                tags=["已修改"],
+            ),
+        )
+
+        self.assertEqual(updated.title, "用户模板标题")
+        self.assertEqual(updated.record_text, "测评验证记录：用户模板已修改。")
+        self.assertEqual(updated.tags, ["已修改"])
+
+        deleted = api_delete_record_template(created.id)
+
+        self.assertEqual(deleted.id, created.id)
+        self.assertFalse(deleted.is_enabled)
+        self.assertFalse(any(template["id"] == created.id for template in list_record_templates("A-1")))
+
+    def test_user_record_template_validation_rejects_invalid_payload(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            api_create_record_template(
+                RecordTemplateCreate(
+                    section_code="B-1",
+                    table_type="technical",
+                    unit="身份鉴别",
+                    object_name="测试机房",
+                    record_text="无效章节。",
+                )
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("A-1 至 A-8", context.exception.detail)
+
+        with self.assertRaises(HTTPException) as context:
+            api_create_record_template(
+                RecordTemplateCreate(
+                    section_code="A-1",
+                    table_type="technical",
+                    unit="身份鉴别",
+                    object_name="测试机房",
+                    record_text="",
+                )
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("正文不能为空", context.exception.detail)
+
+    def test_system_record_template_cannot_be_updated_or_deleted(self) -> None:
+        system_template = list_record_templates("A-1")[0]
+
+        with self.assertRaises(HTTPException) as update_context:
+            api_update_record_template(system_template["id"], RecordTemplateUpdate(title="不应允许修改"))
+
+        self.assertEqual(update_context.exception.status_code, 403)
+        self.assertIn("系统模板不能直接修改或删除", update_context.exception.detail)
+
+        with self.assertRaises(HTTPException) as delete_context:
+            api_delete_record_template(system_template["id"])
+
+        self.assertEqual(delete_context.exception.status_code, 403)
+        self.assertIn("系统模板不能直接修改或删除", delete_context.exception.detail)
+
+    def test_system_record_template_can_be_copied_to_user_template(self) -> None:
+        system_template = list_record_templates("A-5")[0]
+
+        copied = api_copy_record_template(system_template["id"])
+
+        self.assertTrue(copied.id.startswith("user-"))
+        self.assertEqual(copied.source_type, "user")
+        self.assertEqual(copied.section_code, system_template["section_code"])
+        self.assertEqual(copied.table_type, system_template["table_type"])
+        self.assertEqual(copied.record_text, system_template["record_text"])
+        self.assertTrue(any(template["id"] == copied.id for template in list_record_templates("A-5")))
 
 
 if __name__ == "__main__":

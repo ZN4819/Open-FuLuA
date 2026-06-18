@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,18 @@ class RecordTemplateError(RuntimeError):
     """结果记录模板库无法读取或结构不符合预期。"""
 
 
+class RecordTemplateValidationError(RecordTemplateError):
+    """结果记录模板输入不符合业务规则。"""
+
+
+class RecordTemplateNotFoundError(RecordTemplateError):
+    """结果记录模板不存在。"""
+
+
+class RecordTemplatePermissionError(RecordTemplateError):
+    """结果记录模板当前不允许执行该操作。"""
+
+
 @lru_cache(maxsize=1)
 def load_record_template_library() -> dict[str, Any]:
     if not RECORD_TEMPLATES_PATH.exists():
@@ -35,6 +49,68 @@ def load_record_template_library() -> dict[str, Any]:
 def list_record_templates(section_code: str | None = None) -> list[dict[str, Any]]:
     ensure_system_record_templates_seeded()
     return [_row_to_template(row) for row in database.list_record_template_rows(section_code)]
+
+
+def create_user_record_template(payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    template = _normalize_template_payload(payload, require_all=True)
+    for _ in range(5):
+        template_key = f"user-{uuid.uuid4().hex[:12]}"
+        try:
+            row = database.create_user_record_template(template_key, template)
+        except sqlite3.IntegrityError:
+            continue
+        return _row_to_template(row)
+    raise RecordTemplateError("用户模板编号生成失败，请重试。")
+
+
+def update_user_record_template(template_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    existing = _get_existing_template(template_key)
+    _ensure_user_template(existing)
+
+    merged = {
+        "section_code": existing["section_code"],
+        "table_type": existing["table_type"],
+        "unit": existing["unit"],
+        "object_name": existing["object_name"],
+        "title": existing["title"],
+        "record_text": existing["record_text"],
+        "tags": _parse_tags(existing["tags"]),
+    }
+    for key, value in payload.items():
+        if value is not None:
+            merged[key] = value
+    updates = _normalize_template_payload(merged, require_all=True)
+    row = database.update_record_template_row(template_key, updates)
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    return _row_to_template(row)
+
+
+def delete_user_record_template(template_key: str) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    existing = _get_existing_template(template_key)
+    _ensure_user_template(existing)
+    row = database.soft_delete_record_template_row(template_key)
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    return _row_to_template(row)
+
+
+def copy_record_template(template_key: str) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    existing = _get_existing_template(template_key)
+    payload = {
+        "section_code": existing["section_code"],
+        "table_type": existing["table_type"],
+        "unit": existing["unit"],
+        "object_name": existing["object_name"],
+        "title": existing["title"],
+        "record_text": existing["record_text"],
+        "tags": _parse_tags(existing["tags"]),
+    }
+    return create_user_record_template(payload)
 
 
 def ensure_system_record_templates_seeded() -> None:
@@ -74,6 +150,72 @@ def _require(template: dict[str, Any], key: str, expected_type: type, index: int
     value = template.get(key)
     if not isinstance(value, expected_type):
         raise RecordTemplateError(f"第 {index} 条结果记录模板缺少 {key}。")
+
+
+def _get_existing_template(template_key: str) -> Any:
+    row = database.get_record_template_row(template_key)
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    return row
+
+
+def _ensure_user_template(row: Any) -> None:
+    if row["source_type"] != "user":
+        raise RecordTemplatePermissionError("系统模板不能直接修改或删除，请先复制为用户模板。")
+
+
+def _normalize_template_payload(payload: dict[str, Any], require_all: bool) -> dict[str, Any]:
+    section_code = _clean_text(payload.get("section_code"))
+    table_type = _clean_text(payload.get("table_type"))
+    unit = _clean_text(payload.get("unit"))
+    object_name = _clean_text(payload.get("object_name"))
+    title = _clean_text(payload.get("title"))
+    record_text = _clean_text(payload.get("record_text"))
+    tags = _normalize_tags(payload.get("tags"))
+
+    if require_all:
+        if section_code not in {f"A-{number}" for number in range(1, 9)}:
+            raise RecordTemplateValidationError("结果记录模板章节必须为 A-1 至 A-8。")
+        if table_type not in {"technical", "management"}:
+            raise RecordTemplateValidationError("结果记录模板表格类型必须为 technical 或 management。")
+        if not record_text:
+            raise RecordTemplateValidationError("结果记录模板正文不能为空。")
+
+    if not title:
+        title = _default_title(unit, object_name)
+
+    return {
+        "section_code": section_code,
+        "table_type": table_type,
+        "unit": unit,
+        "object_name": object_name,
+        "title": title,
+        "record_text": record_text,
+        "tags": tags,
+    }
+
+
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _default_title(unit: str, object_name: str) -> str:
+    if unit and object_name:
+        return f"{unit} / {object_name}"
+    return unit or object_name or "自定义结果记录模板"
+
+
+def _normalize_tags(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    tags: list[str] = []
+    for item in value:
+        tag = _clean_text(item)
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags
 
 
 def _row_to_template(row: Any) -> dict[str, Any]:
