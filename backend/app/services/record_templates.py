@@ -18,6 +18,27 @@ RECORD_TEMPLATES_PATH = (
 )
 EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
 
+TEMPLATE_SLOT_TYPES = ("compliant", "non_compliant", "not_applicable")
+TEMPLATE_SLOT_TYPE_LABELS = {
+    "compliant": "符合/部分符合模板",
+    "non_compliant": "不符合模板",
+    "not_applicable": "不适用模板",
+}
+TEMPLATE_SLOT_TYPE_TAGS = {
+    "compliant": ["符合", "部分符合"],
+    "non_compliant": ["不符合"],
+    "not_applicable": ["不适用"],
+}
+NON_COMPLIANT_DEFAULT_TEXT = (
+    "测评验证记录：经核查，{测评对象}未满足本测评单元相关要求，"
+    "具体不符合情况为[请补充不符合事实、依据和影响]。"
+    "测评对象评分计算依据：根据量化评估规则，该测评对象评分为0。"
+)
+NOT_APPLICABLE_DEFAULT_TEXT = (
+    "测评验证记录：经核查，{测评对象}不适用于本测评单元，"
+    "原因是[请补充不适用原因、范围和依据]。"
+    "本测评单元不参与该测评对象评分。"
+)
 
 class RecordTemplateError(RuntimeError):
     """结果记录模板库无法读取或结构不符合预期。"""
@@ -51,6 +72,16 @@ def list_record_templates(section_code: str | None = None, keyword: str | None =
     ensure_system_record_templates_seeded()
     return [_row_to_template(row) for row in database.list_record_template_rows(section_code, keyword)]
 
+
+def list_record_template_slots(
+    section_code: str | None = None,
+    unit: str | None = None,
+) -> list[dict[str, Any]]:
+    ensure_record_template_slots_seeded()
+    return [
+        _row_to_template_slot(row)
+        for row in database.list_record_template_slot_rows(section_code=section_code, unit=unit)
+    ]
 
 def create_user_record_template(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_system_record_templates_seeded()
@@ -173,6 +204,52 @@ def ensure_system_record_templates_seeded() -> None:
     templates = load_record_template_library()["templates"]
     database.upsert_system_record_templates(templates)
 
+
+def ensure_record_template_slots_seeded() -> None:
+    ensure_system_record_templates_seeded()
+    database.upsert_record_template_slots(_build_template_slot_seed())
+
+
+def _build_template_slot_seed() -> list[dict[str, Any]]:
+    system_rows = database.list_record_template_rows(source_type="system")
+    representative_by_unit: dict[tuple[str, str], Any] = {}
+    for row in system_rows:
+        key = (row["section_code"], row["unit"])
+        representative_by_unit.setdefault(key, row)
+
+    slots: list[dict[str, Any]] = []
+    for (section_code, unit), row in sorted(
+        representative_by_unit.items(),
+        key=lambda item: (int(item[0][0].split("-")[1]), item[0][1]),
+    ):
+        for template_type in TEMPLATE_SLOT_TYPES:
+            default_record_text = _default_slot_record_text(template_type, row)
+            slots.append(
+                {
+                    "section_code": section_code,
+                    "table_type": row["table_type"],
+                    "unit": unit,
+                    "template_type": template_type,
+                    "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
+                    "record_text": default_record_text,
+                    "default_record_text": default_record_text,
+                    "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
+                }
+            )
+    return slots
+
+
+def _default_slot_record_text(template_type: str, representative: Any) -> str:
+    if template_type == "compliant":
+        text = _clean_text(representative["record_text"])
+        if text:
+            return text
+        return "测评验证记录：经核查，{测评对象}满足本测评单元相关要求，详见[插入图片引用]。"
+    if template_type == "non_compliant":
+        return NON_COMPLIANT_DEFAULT_TEXT
+    if template_type == "not_applicable":
+        return NOT_APPLICABLE_DEFAULT_TEXT
+    raise RecordTemplateValidationError(f"未知结果记录模板类型：{template_type}")
 
 def validate_record_template_library(library: dict[str, Any]) -> None:
     templates = library.get("templates")
@@ -431,6 +508,23 @@ def _row_to_template(row: Any) -> dict[str, Any]:
         "updated_at": row["updated_at"],
     }
 
+
+def _row_to_template_slot(row: Any) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "section_code": row["section_code"],
+        "table_type": row["table_type"],
+        "unit": row["unit"],
+        "template_type": row["template_type"],
+        "template_type_label": TEMPLATE_SLOT_TYPE_LABELS.get(row["template_type"], row["template_type"]),
+        "title": row["title"],
+        "record_text": row["record_text"],
+        "default_record_text": row["default_record_text"],
+        "tags": _parse_tags(row["tags"]),
+        "is_customized": bool(row["is_customized"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
 def _parse_tags(value: str | None) -> list[str]:
     if not value:

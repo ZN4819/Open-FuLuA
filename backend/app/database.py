@@ -204,6 +204,37 @@ def init_db() -> None:
             ON record_templates(is_enabled, deleted_at)
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS record_template_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_code TEXT NOT NULL,
+                table_type TEXT NOT NULL,
+                unit TEXT NOT NULL DEFAULT '',
+                template_type TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                record_text TEXT NOT NULL DEFAULT '',
+                default_record_text TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '[]',
+                is_customized INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(section_code, unit, template_type)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_template_slots_section_unit
+            ON record_template_slots(section_code, unit)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_template_slots_type
+            ON record_template_slots(template_type)
+            """
+        )
         _ensure_column(db, "render_jobs", "page_count", "INTEGER")
         _ensure_column(db, "render_jobs", "log_path", "TEXT")
         db.execute(
@@ -377,6 +408,119 @@ def list_record_template_rows(
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
+    timestamp = utc_now()
+    with connect() as db:
+        for slot in slots:
+            tags = slot.get("tags", [])
+            db.execute(
+                """
+                INSERT INTO record_template_slots (
+                    section_code,
+                    table_type,
+                    unit,
+                    template_type,
+                    title,
+                    record_text,
+                    default_record_text,
+                    tags,
+                    is_customized,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(section_code, unit, template_type) DO UPDATE SET
+                    table_type = excluded.table_type,
+                    title = CASE
+                        WHEN record_template_slots.is_customized = 0 THEN excluded.title
+                        ELSE record_template_slots.title
+                    END,
+                    record_text = CASE
+                        WHEN record_template_slots.is_customized = 0 THEN excluded.record_text
+                        ELSE record_template_slots.record_text
+                    END,
+                    default_record_text = excluded.default_record_text,
+                    tags = CASE
+                        WHEN record_template_slots.is_customized = 0 THEN excluded.tags
+                        ELSE record_template_slots.tags
+                    END,
+                    updated_at = CASE
+                        WHEN record_template_slots.table_type != excluded.table_type
+                            OR record_template_slots.default_record_text != excluded.default_record_text
+                            OR (
+                                record_template_slots.is_customized = 0
+                                AND (
+                                    record_template_slots.title != excluded.title
+                                    OR record_template_slots.record_text != excluded.record_text
+                                    OR record_template_slots.tags != excluded.tags
+                                )
+                            )
+                        THEN excluded.updated_at
+                        ELSE record_template_slots.updated_at
+                    END
+                """,
+                (
+                    slot["section_code"],
+                    slot["table_type"],
+                    slot["unit"],
+                    slot["template_type"],
+                    slot["title"],
+                    slot["record_text"],
+                    slot["default_record_text"],
+                    json.dumps(tags, ensure_ascii=False),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+
+def list_record_template_slot_rows(
+    section_code: str | None = None,
+    unit: str | None = None,
+) -> list[sqlite3.Row]:
+    conditions: list[str] = []
+    values: list[Any] = []
+    if section_code is not None:
+        conditions.append("section_code = ?")
+        values.append(section_code)
+    if unit is not None:
+        conditions.append("unit = ?")
+        values.append(unit)
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    with connect() as db:
+        return db.execute(
+            f"""
+            SELECT
+                id,
+                section_code,
+                table_type,
+                unit,
+                template_type,
+                title,
+                record_text,
+                default_record_text,
+                tags,
+                is_customized,
+                created_at,
+                updated_at
+            FROM record_template_slots
+            {where_sql}
+            ORDER BY
+                CAST(SUBSTR(section_code, 3) AS INTEGER),
+                unit,
+                CASE template_type
+                    WHEN 'compliant' THEN 1
+                    WHEN 'non_compliant' THEN 2
+                    WHEN 'not_applicable' THEN 3
+                    ELSE 4
+                END,
+                id
+            """,
+            values,
+        ).fetchall()
 
 
 def get_record_template_row(

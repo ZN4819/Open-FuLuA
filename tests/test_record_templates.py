@@ -20,7 +20,7 @@ from app.api.record_templates import import_record_templates as api_import_recor
 from app.api.record_templates import preview_record_template_import as api_preview_record_template_import  # noqa: E402
 from app.api.record_templates import update_record_template as api_update_record_template  # noqa: E402
 from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateUpdate  # noqa: E402
-from app.services.record_templates import list_record_templates, load_record_template_library  # noqa: E402
+from app.services.record_templates import TEMPLATE_SLOT_TYPES, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
 
 
 class RecordTemplatesTest(unittest.TestCase):
@@ -290,6 +290,53 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertEqual(copied.table_type, system_template["table_type"])
         self.assertEqual(copied.record_text, system_template["record_text"])
         self.assertTrue(any(template["id"] == copied.id for template in list_record_templates("A-5")))
+
+    def test_record_template_slots_are_seeded_for_every_fixed_unit(self) -> None:
+        source_templates = list_record_templates()
+        expected_units = {
+            (template["section_code"], template["unit"])
+            for template in source_templates
+        }
+
+        slots = list_record_template_slots()
+        slots_by_unit: dict[tuple[str, str], list[dict]] = {}
+        for slot in slots:
+            slots_by_unit.setdefault((slot["section_code"], slot["unit"]), []).append(slot)
+
+        self.assertEqual(set(slots_by_unit), expected_units)
+        self.assertEqual(len(slots), len(expected_units) * len(TEMPLATE_SLOT_TYPES))
+        for unit_slots in slots_by_unit.values():
+            self.assertEqual(
+                {slot["template_type"] for slot in unit_slots},
+                set(TEMPLATE_SLOT_TYPES),
+            )
+            self.assertTrue(all(slot["record_text"] for slot in unit_slots))
+            self.assertTrue(all(slot["default_record_text"] for slot in unit_slots))
+            self.assertTrue(all(slot["title"] for slot in unit_slots))
+
+    def test_record_template_slot_seed_is_idempotent_and_keeps_old_templates(self) -> None:
+        first = list_record_template_slots()
+        ensure_record_template_slots_seeded()
+        second = list_record_template_slots()
+
+        with database.connect() as db:
+            slot_count = db.execute("SELECT COUNT(*) AS total FROM record_template_slots").fetchone()["total"]
+            old_template_count = db.execute("SELECT COUNT(*) AS total FROM record_templates").fetchone()["total"]
+
+        self.assertEqual(len(first), len(second))
+        self.assertEqual(slot_count, len(first))
+        self.assertEqual(old_template_count, len(load_record_template_library()["templates"]))
+
+    def test_record_template_slots_can_be_filtered_by_section_and_unit(self) -> None:
+        all_slots = list_record_template_slots("A-1")
+        unit = all_slots[0]["unit"]
+
+        unit_slots = list_record_template_slots("A-1", unit)
+
+        self.assertEqual(len(unit_slots), len(TEMPLATE_SLOT_TYPES))
+        self.assertTrue(all(slot["section_code"] == "A-1" for slot in unit_slots))
+        self.assertTrue(all(slot["unit"] == unit for slot in unit_slots))
+        self.assertEqual([slot["template_type"] for slot in unit_slots], list(TEMPLATE_SLOT_TYPES))
 
 
 if __name__ == "__main__":
