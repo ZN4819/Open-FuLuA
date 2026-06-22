@@ -61,6 +61,7 @@ class DocxImportJobRead(BaseModel):
     sections: list[DocxImportSectionPreview] = []
     summary: dict[str, int] = Field(default_factory=dict)
     issues: list[DocxImportIssue] = []
+    can_create_project: bool = False
     error_message: str | None = None
     created_at: str
     started_at: str | None = None

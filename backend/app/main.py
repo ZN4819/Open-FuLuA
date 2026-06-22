@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .api.evidence import router as evidence_router
+from .api.imports import router as imports_router
 from .api.exports import router as exports_router
 from .api.projects import router as projects_router
 from .api.record_template_slots import router as record_template_slots_router
@@ -47,6 +48,7 @@ app.include_router(record_template_slots_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)
 app.include_router(evidence_router, prefix=settings.api_prefix)
+app.include_router(imports_router, prefix=settings.api_prefix)
 app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(templates_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
