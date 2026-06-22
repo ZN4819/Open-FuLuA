@@ -375,3 +375,7 @@ IMPORT_PARTIAL_CONTENT_DROPPED
 - 导入后项目可以保存、校验、预览和导出 editable/final DOCX。
 - 导入问题清单能够说明无法解析或疑似丢失的内容。
 - 原始上传 DOCX 和原始样本文档不会被覆盖或修改。
+
+## 13. 当前进度
+
+当前进度（2026-06-22）：DI-1 已完成。后端已新增 `docx_import_jobs` 导入任务表，用于记录上传文件、解析结果、导入摘要、问题清单和最终创建的项目 ID；已新增导入任务 CRUD 函数、导入预览 schema、`backend/app/services/docx_importer/` 服务包骨架和 `storage/imports/{job_id}/` 目录约定；统一检查脚本已通过，当前自动化测试为 63 项。当前尚未开始 DI-2 的 DOCX 包读取与文档结构扫描。

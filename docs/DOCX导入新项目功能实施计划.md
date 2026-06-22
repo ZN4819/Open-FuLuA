@@ -54,6 +54,15 @@
 - 导入任务 CRUD 测试。
 - 删除项目时不会误删导入任务目录的测试。
 
+### 2.5 完成记录（2026-06-22）
+
+- 已新增 `docx_import_jobs` 导入任务表，记录导入状态、源 DOCX 路径、解析 JSON 路径、创建后的项目 ID、摘要、问题和错误信息。
+- 已新增导入任务数据库函数：创建、读取、更新和删除导入任务。
+- 已新增导入预览相关 schema：`DocxImportIssue`、`DocxImportSectionPreview`、`DocxImportJobRead` 和 `DocxImportCreateProjectRequest`。
+- 已新增 `backend/app/services/docx_importer/` 服务包骨架，包含导入状态、解析结果 dataclass 和 `storage/imports/{job_id}/` 目录工具函数。
+- 已补充 5 项 DI-1 单元测试，覆盖表初始化、任务 CRUD、导入目录隔离、项目删除后的外键置空和 schema 契约。
+- 已通过统一检查脚本 `scripts/run_checks.ps1`，当前自动化测试为 63 项。
+
 ## 3. DI-2：DOCX 包读取与文档结构扫描
 
 ### 3.1 目标
@@ -299,6 +308,6 @@
 
 ## 11. 当前状态
 
-当前状态（2026-06-22）：已完成 DOCX 导入新项目功能的实施方案和实施计划。尚未开始 DI-1 代码实现。
+当前状态（2026-06-22）：DI-1 已完成。当前具备导入任务表、导入任务 CRUD、导入预览 schema、`docx_importer` 服务包骨架和导入运行时目录约定；尚未开始实际 DOCX 包读取和结构扫描。
 
-建议下一步进入 DI-1：数据模型、导入任务表和解析结果模型。
+建议下一步进入 DI-2：DOCX 包读取与文档结构扫描。

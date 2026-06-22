@@ -167,6 +167,25 @@ def init_db() -> None:
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS docx_import_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                status TEXT NOT NULL,
+                original_name TEXT NOT NULL DEFAULT '',
+                source_docx_path TEXT NOT NULL DEFAULT '',
+                parsed_json_path TEXT,
+                created_project_id INTEGER,
+                summary_json TEXT NOT NULL DEFAULT '{}',
+                issues_json TEXT NOT NULL DEFAULT '[]',
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                finished_at TEXT,
+                FOREIGN KEY(created_project_id) REFERENCES projects(id) ON DELETE SET NULL
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS record_templates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 template_key TEXT NOT NULL UNIQUE,
@@ -279,6 +298,107 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def create_docx_import_job(
+    original_name: str,
+    source_docx_path: str,
+    status: str = "uploaded",
+    summary: dict[str, Any] | None = None,
+    issues: list[dict[str, Any]] | None = None,
+) -> sqlite3.Row:
+    timestamp = utc_now()
+    with connect() as db:
+        cursor = db.execute(
+            """
+            INSERT INTO docx_import_jobs (
+                status,
+                original_name,
+                source_docx_path,
+                summary_json,
+                issues_json,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                status,
+                original_name,
+                source_docx_path,
+                _dump_json(summary or {}),
+                _dump_json(issues or []),
+                timestamp,
+            ),
+        )
+        return get_docx_import_job(int(cursor.lastrowid), db)
+
+
+def get_docx_import_job(job_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = """
+        SELECT
+            id,
+            status,
+            original_name,
+            source_docx_path,
+            parsed_json_path,
+            created_project_id,
+            summary_json,
+            issues_json,
+            error_message,
+            created_at,
+            started_at,
+            finished_at
+        FROM docx_import_jobs
+        WHERE id = ?
+    """
+    if db is not None:
+        return db.execute(query, (job_id,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (job_id,)).fetchone()
+
+
+def update_docx_import_job(job_id: int, fields: dict[str, Any]) -> sqlite3.Row | None:
+    allowed = {
+        "status",
+        "original_name",
+        "source_docx_path",
+        "parsed_json_path",
+        "created_project_id",
+        "summary_json",
+        "issues_json",
+        "error_message",
+        "started_at",
+        "finished_at",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if "summary" in fields:
+        updates["summary_json"] = _dump_json(fields["summary"] or {})
+    if "issues" in fields:
+        updates["issues_json"] = _dump_json(fields["issues"] or [])
+    if not updates:
+        return get_docx_import_job(job_id)
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = list(updates.values()) + [job_id]
+    with connect() as db:
+        existing = get_docx_import_job(job_id, db)
+        if existing is None:
+            return None
+        db.execute(f"UPDATE docx_import_jobs SET {assignments} WHERE id = ?", values)
+        return get_docx_import_job(job_id, db)
+
+
+def delete_docx_import_job(job_id: int) -> sqlite3.Row | None:
+    with connect() as db:
+        existing = get_docx_import_job(job_id, db)
+        if existing is None:
+            return None
+        db.execute("DELETE FROM docx_import_jobs WHERE id = ?", (job_id,))
+        return existing
+
+
+def _dump_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
 
 
 def upsert_system_record_templates(templates: list[dict[str, Any]]) -> None:

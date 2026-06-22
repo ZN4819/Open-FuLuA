@@ -32,6 +32,45 @@ class ProjectRead(BaseModel):
     sections: list[SectionRead] = []
 
 
+class DocxImportIssue(BaseModel):
+    severity: str = Field(default="info", max_length=20)
+    code: str = Field(min_length=1, max_length=80)
+    message: str
+    section_code: str | None = Field(default=None, max_length=20)
+    target: str | None = Field(default=None, max_length=120)
+
+
+class DocxImportSectionPreview(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+    title: str = Field(default="", max_length=120)
+    table_title: str = Field(default="", max_length=200)
+    table_type: str = Field(default="", max_length=30)
+    row_count: int = 0
+    image_count: int = 0
+    reference_count: int = 0
+
+
+class DocxImportJobRead(BaseModel):
+    id: int
+    status: str
+    original_name: str
+    source_docx_path: str = ""
+    parsed_json_path: str | None = None
+    suggested_project_name: str = ""
+    created_project_id: int | None = None
+    sections: list[DocxImportSectionPreview] = []
+    summary: dict[str, int] = Field(default_factory=dict)
+    issues: list[DocxImportIssue] = []
+    error_message: str | None = None
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class DocxImportCreateProjectRequest(BaseModel):
+    project_name: str | None = Field(default=None, max_length=120)
+
+
 class MetricResultRead(BaseModel):
     d: str | None = None
     a: str | None = None
