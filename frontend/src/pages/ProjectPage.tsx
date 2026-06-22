@@ -11,6 +11,7 @@ import {
   getProject,
   getRenderJob,
   getRecordTemplates,
+  getRecordTemplateSlots,
   getSectionDetail,
   getTemplateProfile,
   importRecordTemplates,
@@ -26,6 +27,7 @@ import {
   type RenderJob,
   type RecordTemplate,
   type RecordTemplateImportPayload,
+  type RecordTemplateSlot,
   type RecordTemplateInput,
   type SectionDetail,
   type TemplateProfile,
@@ -62,6 +64,7 @@ export function ProjectPage() {
   const [activeCode, setActiveCode] = useState<string>();
   const [profile, setProfile] = useState<TemplateProfile | null>(null);
   const [recordTemplates, setRecordTemplates] = useState<RecordTemplate[]>([]);
+  const [recordTemplateSlots, setRecordTemplateSlots] = useState<RecordTemplateSlot[]>([]);
   const [sectionDetails, setSectionDetails] = useState<Record<string, SectionDetail>>({});
   const [draftRows, setDraftRows] = useState<Record<string, AssessmentRowInput[]>>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
@@ -92,6 +95,10 @@ export function ProjectPage() {
     () => recordTemplates.filter((template) => template.section_code === activeCode),
     [activeCode, recordTemplates]
   );
+  const activeRecordTemplateSlots = useMemo(
+    () => recordTemplateSlots.filter((slot) => slot.section_code === activeCode),
+    [activeCode, recordTemplateSlots]
+  );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
   const dirtyCount = dirtySections.size;
   const isSavingAny = isSaving || isSavingAll;
@@ -105,6 +112,15 @@ export function ProjectPage() {
     refreshProjects();
   }, []);
 
+  useEffect(() => {
+    if (!activeCode) {
+      return;
+    }
+
+    refreshRecordTemplateSlots(activeCode).catch((err) =>
+      setError(err instanceof Error ? err.message : "读取三类结果记录模板失败")
+    );
+  }, [activeCode]);
   useEffect(() => {
     if (!project || !activeCode || sectionDetails[activeCode]) {
       return;
@@ -151,6 +167,19 @@ export function ProjectPage() {
     const templates = await getRecordTemplates();
     setRecordTemplates(templates);
     return templates;
+  }
+  async function refreshRecordTemplateSlots(sectionCode?: string) {
+    const slots = await getRecordTemplateSlots(sectionCode);
+    setRecordTemplateSlots((current) => {
+      if (!sectionCode) {
+        return slots;
+      }
+      return [
+        ...current.filter((slot) => slot.section_code !== sectionCode),
+        ...slots
+      ];
+    });
+    return slots;
   }
 
   function openProject(projectToOpen: Project) {
@@ -680,10 +709,9 @@ export function ProjectPage() {
               isSaving={isSavingAny}
               isDirty={isDirty}
               evidenceImages={activeDetail.evidence_images}
-              recordTemplates={activeRecordTemplates}
+              recordTemplateSlots={activeRecordTemplateSlots}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSave={handleSaveSection}
-              onSaveRowAsTemplate={handleSaveRowAsTemplate}
             />
           ) : null}
 

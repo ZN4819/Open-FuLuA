@@ -175,6 +175,24 @@ export type RecordTemplate = {
   updated_at?: string | null;
 };
 
+
+export type RecordTemplateSlotType = "compliant" | "non_compliant" | "not_applicable";
+
+export type RecordTemplateSlot = {
+  id: number;
+  section_code: string;
+  table_type: "technical" | "management";
+  unit: string;
+  template_type: RecordTemplateSlotType;
+  template_type_label: string;
+  title: string;
+  record_text: string;
+  default_record_text: string;
+  tags?: string[];
+  is_customized: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 export type RecordTemplateInput = {
   section_code: string;
   table_type: "technical" | "management";
@@ -299,6 +317,25 @@ export function getRecordTemplates(sectionCode?: string, keyword?: string): Prom
   return request<RecordTemplate[]>(`/api/record-templates${query}`);
 }
 
+
+export function getRecordTemplateSlots(
+  sectionCode?: string,
+  unit?: string,
+  templateType?: RecordTemplateSlotType
+): Promise<RecordTemplateSlot[]> {
+  const params = new URLSearchParams();
+  if (sectionCode) {
+    params.set("section_code", sectionCode);
+  }
+  if (unit) {
+    params.set("unit", unit);
+  }
+  if (templateType) {
+    params.set("template_type", templateType);
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<RecordTemplateSlot[]>(`/api/record-template-slots${query}`);
+}
 export function createRecordTemplate(payload: RecordTemplateInput): Promise<RecordTemplate> {
   return request<RecordTemplate>("/api/record-templates", {
     method: "POST",
