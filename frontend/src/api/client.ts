@@ -660,8 +660,8 @@ export async function uploadDocxImport(file: File): Promise<DocxImportJob> {
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `导入失败：${response.status}`);
+    const message = await responseErrorMessage(response, `导入失败：${response.status}`);
+    throw new Error(message);
   }
 
   return response.json() as Promise<DocxImportJob>;
@@ -676,6 +676,22 @@ export function createProjectFromDocxImport(jobId: number, projectName?: string)
     method: "POST",
     body: JSON.stringify({ project_name: projectName || null })
   });
+}
+async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return fallback;
+  }
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown; message?: unknown };
+    const detail = payload.detail ?? payload.message;
+    if (typeof detail === "string" && detail.trim()) {
+      return detail;
+    }
+  } catch {
+    // Plain-text error bodies can be shown directly.
+  }
+  return text || fallback;
 }
 function _fileNameFromDisposition(disposition: string | null): string | null {
   if (!disposition) {

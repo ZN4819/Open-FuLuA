@@ -20,6 +20,8 @@ class FrontendDocxImportSourceTest(unittest.TestCase):
         self.assertIn("/api/imports/docx", client_source)
         self.assertIn("/api/imports/${jobId}", client_source)
         self.assertIn("/api/imports/${jobId}/project", client_source)
+        self.assertIn("responseErrorMessage", client_source)
+        self.assertIn("payload.detail", client_source)
 
     def test_project_home_wires_docx_import_wizard(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")

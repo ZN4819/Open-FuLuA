@@ -20,6 +20,7 @@ from app.api.imports import get_docx_import as api_get_docx_import  # noqa: E402
 from app.api.imports import upload_docx_import as api_upload_docx_import  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.services.docx_generator import generate_project_docx  # noqa: E402
+from app.services.docx_importer.preview import MAX_IMPORT_FILE_SIZE_MB  # noqa: E402
 
 
 class DocxImportPreviewApiTest(unittest.TestCase):
@@ -66,6 +67,8 @@ class DocxImportPreviewApiTest(unittest.TestCase):
         self.assertEqual(parsed_payload["sections"][0]["rows"][0]["record_text"], "查看登录策略，见 [[FIG:import:A-1-1]]。")
         self.assertEqual(parsed_payload["sections"][0]["images"][0]["figure_label"], "图A-1-1")
 
+    def test_import_size_limit_allows_image_heavy_appendix_docs(self) -> None:
+        self.assertGreaterEqual(MAX_IMPORT_FILE_SIZE_MB, 200)
     def test_non_docx_upload_is_rejected_without_creating_job(self) -> None:
         upload = self._upload("not-docx.txt", b"not a docx", "text/plain")
 

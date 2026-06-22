@@ -15,7 +15,8 @@ from .package import DocxImportPackageError
 from .storage import ensure_import_job_dir, import_job_dir, parsed_json_path, source_docx_path
 
 
-MAX_IMPORT_FILE_SIZE_BYTES = 50 * 1024 * 1024
+MAX_IMPORT_FILE_SIZE_MB = 200
+MAX_IMPORT_FILE_SIZE_BYTES = MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024
 
 
 class DocxImportPreviewError(RuntimeError):
@@ -174,7 +175,7 @@ def _save_upload(upload: UploadFile, destination: Path) -> None:
             if size > MAX_IMPORT_FILE_SIZE_BYTES:
                 output_file.close()
                 destination.unlink(missing_ok=True)
-                raise DocxImportPreviewError("DOCX 文件超过 50MB，无法导入。")
+                raise DocxImportPreviewError(f"DOCX 文件超过 {MAX_IMPORT_FILE_SIZE_MB}MB，无法导入。")
             output_file.write(chunk)
     if size <= 0:
         destination.unlink(missing_ok=True)
