@@ -378,4 +378,4 @@ IMPORT_PARTIAL_CONTENT_DROPPED
 
 ## 13. 当前进度
 
-当前进度（2026-06-22）：DI-1 已完成。后端已新增 `docx_import_jobs` 导入任务表，用于记录上传文件、解析结果、导入摘要、问题清单和最终创建的项目 ID；已新增导入任务 CRUD 函数、导入预览 schema、`backend/app/services/docx_importer/` 服务包骨架和 `storage/imports/{job_id}/` 目录约定；统一检查脚本已通过，当前自动化测试为 63 项。当前尚未开始 DI-2 的 DOCX 包读取与文档结构扫描。
+当前进度（2026-06-22）：DI-1 至 DI-2 已完成。后端已新增 `docx_import_jobs` 导入任务表，用于记录上传文件、解析结果、导入摘要、问题清单和最终创建的项目 ID；已新增导入任务 CRUD 函数、导入预览 schema、`backend/app/services/docx_importer/` 服务包骨架和 `storage/imports/{job_id}/` 目录约定。DI-2 已新增 DOCX 包读取与文档结构扫描能力，可安全读取 OpenXML 包、解析关系文件和媒体清单、按 body 顺序识别总标题、章节标题、表题和核心表候选，并对缺失章节/表格生成问题清单；统一检查脚本已通过，当前自动化测试为 69 项。当前尚未开始 DI-3 的核心表格数据行解析。

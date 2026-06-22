@@ -92,6 +92,14 @@
 - 缺少 `document.xml` 测试。
 - 章节标题和表题识别测试。
 
+### 3.5 完成记录（2026-06-22）
+
+- 已新增 `backend/app/services/docx_importer/package.py`，支持安全读取 `.docx` OpenXML 包、拒绝非 DOCX/损坏包/缺少 `word/document.xml` 的文件，并读取 `word/_rels/document.xml.rels` 与 `word/media/*` 清单。
+- 已新增 `backend/app/services/docx_importer/document.py`，支持按 Word body 顺序抽取段落和表格，识别“附录A测评结果记录”总标题、A-1 至 A-8 章节标题、表题和核心表候选。
+- 已新增结构扫描结果模型 `DocxStructureScan` 和核心表候选模型 `DocxTableCandidate`。
+- 已补充 6 项 DI-2 单元测试，覆盖 editable/final 导出 DOCX 扫描、关系和媒体读取、非 DOCX/损坏 DOCX、缺少 `document.xml`、部分章节缺失的问题报告。
+- 已通过统一检查脚本 `scripts/run_checks.ps1`，当前自动化测试为 69 项。
+
 ## 4. DI-3：核心表格解析
 
 ### 4.1 目标
@@ -308,6 +316,6 @@
 
 ## 11. 当前状态
 
-当前状态（2026-06-22）：DI-1 已完成。当前具备导入任务表、导入任务 CRUD、导入预览 schema、`docx_importer` 服务包骨架和导入运行时目录约定；尚未开始实际 DOCX 包读取和结构扫描。
+当前状态（2026-06-22）：DI-1 至 DI-2 已完成。当前具备导入任务表、导入任务 CRUD、导入预览 schema、`docx_importer` 服务包骨架、导入运行时目录约定、DOCX 包读取和文档结构扫描能力；尚未开始核心表格数据行解析。
 
-建议下一步进入 DI-2：DOCX 包读取与文档结构扫描。
+建议下一步进入 DI-3：核心表格解析。
