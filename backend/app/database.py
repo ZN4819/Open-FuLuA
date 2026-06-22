@@ -315,12 +315,34 @@ def upsert_system_record_templates(templates: list[dict[str, Any]]) -> None:
             )
 
 
-def list_record_template_rows(section_code: str | None = None) -> list[sqlite3.Row]:
+def list_record_template_rows(
+    section_code: str | None = None,
+    keyword: str | None = None,
+    source_type: str | None = None,
+) -> list[sqlite3.Row]:
     conditions = ["deleted_at IS NULL", "is_enabled = 1"]
     values: list[Any] = []
     if section_code is not None:
         conditions.append("section_code = ?")
         values.append(section_code)
+    if source_type is not None:
+        conditions.append("source_type = ?")
+        values.append(source_type)
+    if keyword:
+        conditions.append(
+            """
+            (
+                section_code LIKE ? ESCAPE '\\'
+                OR unit LIKE ? ESCAPE '\\'
+                OR object_name LIKE ? ESCAPE '\\'
+                OR title LIKE ? ESCAPE '\\'
+                OR record_text LIKE ? ESCAPE '\\'
+                OR tags LIKE ? ESCAPE '\\'
+            )
+            """
+        )
+        keyword_value = f"%{_escape_like(keyword)}%"
+        values.extend([keyword_value] * 6)
     where_sql = " AND ".join(conditions)
 
     with connect() as db:
@@ -351,6 +373,10 @@ def list_record_template_rows(section_code: str | None = None) -> list[sqlite3.R
             """,
             values,
         ).fetchall()
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def get_record_template_row(

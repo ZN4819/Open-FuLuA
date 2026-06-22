@@ -170,6 +170,51 @@ class RecordTemplateUpdate(BaseModel):
 class RecordTemplateDelete(BaseModel):
     id: str
 
+class RecordTemplateImportItem(BaseModel):
+    id: str | None = None
+    template_key: str | None = None
+    section_code: str = Field(min_length=1, max_length=20)
+    table_type: str = Field(min_length=1, max_length=30)
+    unit: str = Field(default="", max_length=500)
+    object_name: str = Field(default="", max_length=500)
+    title: str = Field(default="", max_length=500)
+    record_text: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class RecordTemplateImportPayload(BaseModel):
+    profile_id: str | None = None
+    exported_at: str | None = None
+    templates: list[RecordTemplateImportItem]
+
+
+class RecordTemplateImportSummary(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: int = 0
+
+
+class RecordTemplateImportResultItem(BaseModel):
+    index: int
+    action: str
+    message: str
+    template_id: str | None = None
+    section_code: str = ""
+    unit: str = ""
+    object_name: str = ""
+    title: str = ""
+
+
+class RecordTemplateImportResult(BaseModel):
+    summary: RecordTemplateImportSummary
+    items: list[RecordTemplateImportResultItem] = []
+
+
+class RecordTemplateExport(BaseModel):
+    profile_id: str
+    exported_at: str
+    templates: list[RecordTemplateImportItem] = []
 
 class ValidationSummary(BaseModel):
     errors: int = 0

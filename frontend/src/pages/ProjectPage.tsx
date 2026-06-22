@@ -7,12 +7,15 @@ import {
   deleteRecordTemplate,
   deleteProject,
   exportProjectDocx,
+  exportRecordTemplates,
   getProject,
   getRenderJob,
   getRecordTemplates,
   getSectionDetail,
   getTemplateProfile,
+  importRecordTemplates,
   listProjects,
+  previewRecordTemplateImport,
   resolveFileUrl,
   updateRecordTemplate,
   updateSectionDetail,
@@ -22,6 +25,7 @@ import {
   type Project,
   type RenderJob,
   type RecordTemplate,
+  type RecordTemplateImportPayload,
   type RecordTemplateInput,
   type SectionDetail,
   type TemplateProfile,
@@ -266,6 +270,21 @@ export function ProjectPage() {
     return copied;
   }
 
+
+  async function handleExportRecordTemplates() {
+    return exportRecordTemplates();
+  }
+
+  async function handlePreviewRecordTemplateImport(payload: RecordTemplateImportPayload) {
+    return previewRecordTemplateImport(payload);
+  }
+
+  async function handleImportRecordTemplates(payload: RecordTemplateImportPayload) {
+    const result = await importRecordTemplates(payload);
+    await refreshRecordTemplates();
+    setSaveMessage(`模板导入完成：新增 ${result.summary.created}，更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
+    return result;
+  }
   async function handleSaveRowAsTemplate(row: AssessmentRowInput) {
     if (!activeCode) {
       return undefined;
@@ -646,6 +665,9 @@ export function ProjectPage() {
               onUpdate={handleUpdateRecordTemplate}
               onDelete={handleDeleteRecordTemplate}
               onCopy={handleCopyRecordTemplate}
+              onExportUserTemplates={handleExportRecordTemplates}
+              onPreviewImport={handlePreviewRecordTemplateImport}
+              onImportTemplates={handleImportRecordTemplates}
               onSaveRowAsTemplate={handleSaveRowAsTemplate}
             />
           ) : null}

@@ -184,6 +184,40 @@ export type RecordTemplateInput = {
   record_text: string;
   tags?: string[];
 };
+export type RecordTemplateExport = {
+  profile_id: string;
+  exported_at: string;
+  templates: Array<RecordTemplateInput & { id?: string | null; template_key?: string | null }>;
+};
+
+export type RecordTemplateImportPayload = {
+  profile_id?: string | null;
+  exported_at?: string | null;
+  templates: Array<RecordTemplateInput & { id?: string | null; template_key?: string | null }>;
+};
+
+export type RecordTemplateImportSummary = {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+};
+
+export type RecordTemplateImportItem = {
+  index: number;
+  action: "create" | "update" | "skip" | "error";
+  message: string;
+  template_id?: string | null;
+  section_code: string;
+  unit: string;
+  object_name: string;
+  title: string;
+};
+
+export type RecordTemplateImportResult = {
+  summary: RecordTemplateImportSummary;
+  items: RecordTemplateImportItem[];
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -253,8 +287,15 @@ export function getTemplateProfile(): Promise<TemplateProfile> {
   return request<TemplateProfile>("/api/template-profile");
 }
 
-export function getRecordTemplates(sectionCode?: string): Promise<RecordTemplate[]> {
-  const query = sectionCode ? `?section_code=${encodeURIComponent(sectionCode)}` : "";
+export function getRecordTemplates(sectionCode?: string, keyword?: string): Promise<RecordTemplate[]> {
+  const params = new URLSearchParams();
+  if (sectionCode) {
+    params.set("section_code", sectionCode);
+  }
+  if (keyword) {
+    params.set("keyword", keyword);
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
   return request<RecordTemplate[]>(`/api/record-templates${query}`);
 }
 
@@ -284,6 +325,24 @@ export function deleteRecordTemplate(templateId: string): Promise<RecordTemplate
 export function copyRecordTemplate(templateId: string): Promise<RecordTemplate> {
   return request<RecordTemplate>(`/api/record-templates/${encodeURIComponent(templateId)}/copy`, {
     method: "POST"
+  });
+}
+
+export function exportRecordTemplates(): Promise<RecordTemplateExport> {
+  return request<RecordTemplateExport>("/api/record-templates/export");
+}
+
+export function previewRecordTemplateImport(payload: RecordTemplateImportPayload): Promise<RecordTemplateImportResult> {
+  return request<RecordTemplateImportResult>("/api/record-templates/import-preview", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function importRecordTemplates(payload: RecordTemplateImportPayload): Promise<RecordTemplateImportResult> {
+  return request<RecordTemplateImportResult>("/api/record-templates/import", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 

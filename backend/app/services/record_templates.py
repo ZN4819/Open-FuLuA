@@ -16,6 +16,7 @@ RECORD_TEMPLATES_PATH = (
     / "appendix_a"
     / "record_templates.json"
 )
+EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
 
 
 class RecordTemplateError(RuntimeError):
@@ -46,9 +47,9 @@ def load_record_template_library() -> dict[str, Any]:
     return library
 
 
-def list_record_templates(section_code: str | None = None) -> list[dict[str, Any]]:
+def list_record_templates(section_code: str | None = None, keyword: str | None = None) -> list[dict[str, Any]]:
     ensure_system_record_templates_seeded()
-    return [_row_to_template(row) for row in database.list_record_template_rows(section_code)]
+    return [_row_to_template(row) for row in database.list_record_template_rows(section_code, keyword)]
 
 
 def create_user_record_template(payload: dict[str, Any]) -> dict[str, Any]:
@@ -112,6 +113,61 @@ def copy_record_template(template_key: str) -> dict[str, Any]:
     }
     return create_user_record_template(payload)
 
+
+
+
+def export_user_record_templates() -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    templates = [
+        _export_template(_row_to_template(row))
+        for row in database.list_record_template_rows(source_type="user")
+    ]
+    return {
+        "profile_id": EXPORT_PROFILE_ID,
+        "exported_at": database.utc_now(),
+        "templates": templates,
+    }
+
+
+def preview_import_record_templates(payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    plan = _build_import_plan(payload)
+    return {
+        "summary": plan["summary"],
+        "items": [_public_import_item(item) for item in plan["items"]],
+    }
+
+
+def import_user_record_templates(payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_system_record_templates_seeded()
+    plan = _build_import_plan(payload)
+    if plan["summary"]["errors"] > 0:
+        raise RecordTemplateValidationError("导入文件存在错误，请先根据预览结果修正后再导入。")
+
+    imported_items: list[dict[str, Any]] = []
+    for item in plan["items"]:
+        action = item["action"]
+        template_payload = item.get("payload")
+        if not template_payload:
+            imported_items.append(item)
+            continue
+        if action == "create":
+            created = create_user_record_template(template_payload)
+            imported_items.append({**item, "template_id": created["id"]})
+        elif action == "update":
+            template_id = item.get("template_id")
+            if not template_id:
+                imported_items.append({**item, "action": "error", "message": "缺少待更新的用户模板编号。"})
+                continue
+            update_user_record_template(template_id, template_payload)
+            imported_items.append(item)
+        else:
+            imported_items.append(item)
+
+    return {
+        "summary": plan["summary"],
+        "items": [_public_import_item(item) for item in imported_items],
+    }
 
 def ensure_system_record_templates_seeded() -> None:
     templates = load_record_template_library()["templates"]
@@ -217,6 +273,145 @@ def _normalize_tags(value: Any) -> list[str]:
             tags.append(tag)
     return tags
 
+
+
+
+def _build_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_templates = payload.get("templates")
+    if not isinstance(raw_templates, list):
+        raise RecordTemplateValidationError("导入文件必须包含 templates 列表。")
+
+    existing_templates = [_row_to_template(row) for row in database.list_record_template_rows()]
+    user_by_id = {template["id"]: template for template in existing_templates if template["source_type"] == "user"}
+    user_by_key = {_natural_key(template): template for template in user_by_id.values()}
+    seen_keys: dict[tuple[str, str, str, str, str], int] = {}
+    items: list[dict[str, Any]] = []
+
+    for index, raw_template in enumerate(raw_templates, start=1):
+        if not isinstance(raw_template, dict):
+            items.append(_import_item(index, "error", "模板条目必须是对象。"))
+            continue
+
+        try:
+            normalized = _normalize_template_payload(raw_template, require_all=True)
+        except RecordTemplateValidationError as exc:
+            items.append(_import_item(index, "error", str(exc)))
+            continue
+
+        natural_key = _natural_key(normalized)
+        if natural_key in seen_keys:
+            items.append(
+                _import_item(
+                    index,
+                    "skip",
+                    f"与本次导入第 {seen_keys[natural_key]} 条模板重复，已跳过。",
+                    normalized,
+                )
+            )
+            continue
+        seen_keys[natural_key] = index
+
+        imported_id = _clean_text(raw_template.get("id") or raw_template.get("template_key"))
+        existing_user = user_by_id.get(imported_id) if imported_id else None
+        if existing_user is None:
+            existing_user = user_by_key.get(natural_key)
+
+        if existing_user is None:
+            items.append(_import_item(index, "create", "将新增为用户模板。", normalized))
+            continue
+
+        if _template_payload_matches(existing_user, normalized):
+            items.append(
+                _import_item(
+                    index,
+                    "skip",
+                    "已存在相同用户模板，已跳过。",
+                    normalized,
+                    existing_user["id"],
+                )
+            )
+            continue
+
+        items.append(
+            _import_item(
+                index,
+                "update",
+                "将更新已有用户模板。",
+                normalized,
+                existing_user["id"],
+            )
+        )
+
+    summary = {
+        "created": sum(1 for item in items if item["action"] == "create"),
+        "updated": sum(1 for item in items if item["action"] == "update"),
+        "skipped": sum(1 for item in items if item["action"] == "skip"),
+        "errors": sum(1 for item in items if item["action"] == "error"),
+    }
+    return {
+        "summary": summary,
+        "items": items,
+    }
+
+
+def _import_item(
+    index: int,
+    action: str,
+    message: str,
+    payload: dict[str, Any] | None = None,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "index": index,
+        "action": action,
+        "message": message,
+        "template_id": template_id,
+        "payload": payload,
+    }
+
+
+def _public_import_item(item: dict[str, Any]) -> dict[str, Any]:
+    payload = item.get("payload") or {}
+    return {
+        "index": item["index"],
+        "action": item["action"],
+        "message": item["message"],
+        "template_id": item.get("template_id"),
+        "section_code": payload.get("section_code", ""),
+        "unit": payload.get("unit", ""),
+        "object_name": payload.get("object_name", ""),
+        "title": payload.get("title", ""),
+    }
+
+
+def _export_template(template: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": template["id"],
+        "section_code": template["section_code"],
+        "table_type": template["table_type"],
+        "unit": template["unit"],
+        "object_name": template["object_name"],
+        "title": template["title"],
+        "record_text": template["record_text"],
+        "tags": template["tags"],
+    }
+
+
+def _natural_key(template: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        template["section_code"],
+        template["table_type"],
+        template["unit"],
+        template["object_name"],
+        template["title"],
+    )
+
+
+def _template_payload_matches(existing: dict[str, Any], payload: dict[str, Any]) -> bool:
+    return all(
+        existing[key] == payload[key]
+        for key in ["section_code", "table_type", "unit", "object_name", "title", "record_text", "tags"]
+    )
 
 def _row_to_template(row: Any) -> dict[str, Any]:
     tags = _parse_tags(row["tags"])

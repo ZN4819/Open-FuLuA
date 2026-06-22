@@ -45,6 +45,7 @@
 - 2026-06-18：已完成 KB-2 用户模板 CRUD API，支持新增用户模板、编辑用户模板、软删除用户模板和复制系统模板，并限制系统模板不能直接修改或删除。
 - 2026-06-18：已完成 KB-3 录入区模板筛选与分组优化，模板下拉按“系统模板 / 我的模板”分组，选项展示测评对象和标题，无模板时显示禁用空态，固定测评单元继续优先来自系统模板。
 - 2026-06-18：已完成 KB-4 模板管理 UI，项目工作台新增结果记录模板管理面板，支持按章节、测评单元和关键词筛选，支持用户模板新增、编辑、删除、系统模板复制，以及将当前测评行保存为模板。
+- 2026-06-22：已完成 KB-5 模板搜索、导入导出与备份，模板接口支持关键词 LIKE 查询，用户模板可导出为 JSON，导入前可预览新增、更新、跳过和错误数量，正式导入不会覆盖系统模板。
 
 ## 2. 样本文档分析结论
 
@@ -287,7 +288,7 @@ Profile 至少包含：
 
 结果记录模板作为独立模板资产管理，不与版式 profile 混合。`templates/appendix_a/record_templates.json` 是系统模板种子，由 `scripts/extract_record_templates.py` 从样本文档只读抽取生成，固定样本文档图号会替换为 `[插入图片引用]`，避免新项目误用旧图号。
 
-应用运行时会将系统模板种子同步到 SQLite `record_templates` 表，并由 `GET /api/record-templates` 返回给前端。用户模板通过 `POST /api/record-templates`、`PUT /api/record-templates/{template_key}`、`DELETE /api/record-templates/{template_key}` 和 `POST /api/record-templates/{template_key}/copy` 维护。系统模板不可直接修改或删除，需复制为用户模板后再编辑；用户模板删除采用软删除。前端已在项目工作台提供结果记录模板管理面板，用户可在界面中完成模板筛选、新增、编辑、删除、复制和当前测评行存为模板。
+应用运行时会将系统模板种子同步到 SQLite `record_templates` 表，并由 `GET /api/record-templates` 返回给前端。用户模板通过 `POST /api/record-templates`、`PUT /api/record-templates/{template_key}`、`DELETE /api/record-templates/{template_key}` 和 `POST /api/record-templates/{template_key}/copy` 维护。系统模板不可直接修改或删除，需复制为用户模板后再编辑；用户模板删除采用软删除。前端已在项目工作台提供结果记录模板管理面板，用户可在界面中完成模板筛选、新增、编辑、删除、复制和当前测评行存为模板；KB-5 后同一面板还支持导出我的模板 JSON、选择备份 JSON、导入预览和确认导入。
 
 前端会从模板接口中按章节提取去重后的测评单元清单，用作 A-1 至 A-8 的固定测评单元分组。固定测评单元优先来自系统模板，用户模板用于补充同一测评单元下的测评对象和结果记录正文；已有测评行中的自定义测评单元仍会保留展示。测评单元不再需要用户手动填写，测评对象、结果记录和评分仍按测评行保存，导出时继续由后端合并相同测评单元的 Word 表格首列。
 
@@ -580,7 +581,7 @@ POST   /api/projects/{project_id}/exports/docx?mode=final
 - 已新增 `tests/test_end_to_end_workflow.py`，覆盖创建项目、填写 A-1/A-5、创建证据图片、插入引用、执行校验、导出 editable/final DOCX、重新解析 DOCX 和模拟预览任务成功路径。
 - 已新增 `scripts/run_checks.ps1`，统一执行后端测试、Python 编译、前端构建和高风险依赖审计。
 - 已新增 `docs/本地运行与打包说明.md`，记录本地启动、完整检查、预览渲染器和交付清单。
-- 当前自动化测试共 33 项，覆盖模板、样本文档、结构化数据、图片、批量上传、批量失败回滚、图片替换、替换失败保护、DOCX 图片分页缩放、DOCX 生成、校验、预览、端到端流程和导出模板格式对齐。
+- 当前自动化测试共 43 项，覆盖模板、样本文档、结构化数据、图片、批量上传、批量失败回滚、图片替换、替换失败保护、DOCX 图片分页缩放、DOCX 生成、校验、预览、端到端流程和导出模板格式对齐。
 
 回归测试：
 

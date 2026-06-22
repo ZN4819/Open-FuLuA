@@ -1,6 +1,14 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
-import type { AssessmentRowInput, RecordTemplate, RecordTemplateInput, TemplateProfile } from "../api/client";
+import type {
+  AssessmentRowInput,
+  RecordTemplate,
+  RecordTemplateExport,
+  RecordTemplateImportPayload,
+  RecordTemplateImportResult,
+  RecordTemplateInput,
+  TemplateProfile
+} from "../api/client";
 
 type TemplateFormState = {
   section_code: string;
@@ -22,6 +30,9 @@ type TemplateManagerPanelProps = {
   onUpdate: (templateId: string, payload: Partial<RecordTemplateInput>) => Promise<RecordTemplate>;
   onDelete: (templateId: string) => Promise<RecordTemplate>;
   onCopy: (templateId: string) => Promise<RecordTemplate>;
+  onExportUserTemplates: () => Promise<RecordTemplateExport>;
+  onPreviewImport: (payload: RecordTemplateImportPayload) => Promise<RecordTemplateImportResult>;
+  onImportTemplates: (payload: RecordTemplateImportPayload) => Promise<RecordTemplateImportResult>;
   onSaveRowAsTemplate: (row: AssessmentRowInput) => Promise<RecordTemplate | undefined>;
 };
 
@@ -105,6 +116,31 @@ function rowLabel(row: AssessmentRowInput, index: number) {
   return objectName ? `${row.unit} / ${objectName}` : `${row.unit} / 对象 ${index + 1}`;
 }
 
+function downloadJsonFile(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importActionLabel(action: RecordTemplateImportResult["items"][number]["action"]) {
+  if (action === "create") {
+    return "新增";
+  }
+  if (action === "update") {
+    return "更新";
+  }
+  if (action === "error") {
+    return "错误";
+  }
+  return "跳过";
+}
+
 export function TemplateManagerPanel({
   profile,
   activeSectionCode,
@@ -115,6 +151,9 @@ export function TemplateManagerPanel({
   onUpdate,
   onDelete,
   onCopy,
+  onExportUserTemplates,
+  onPreviewImport,
+  onImportTemplates,
   onSaveRowAsTemplate
 }: TemplateManagerPanelProps) {
   const [sectionFilter, setSectionFilter] = useState(activeSectionCode);
@@ -126,6 +165,12 @@ export function TemplateManagerPanel({
   const [busyTemplateId, setBusyTemplateId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [importPayload, setImportPayload] = useState<RecordTemplateImportPayload>();
+  const [importFileName, setImportFileName] = useState<string>();
+  const [importPreview, setImportPreview] = useState<RecordTemplateImportResult>();
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [isPreviewingImport, setIsPreviewingImport] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     setSectionFilter(activeSectionCode);
@@ -284,6 +329,90 @@ export function TemplateManagerPanel({
     }
   }
 
+
+  async function handleExportTemplates() {
+    setIsExportingBackup(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const exported = await onExportUserTemplates();
+      downloadJsonFile(exported, `fulua-user-record-templates-${new Date().toISOString().slice(0, 10)}.json`);
+      setMessage(`已导出 ${exported.templates.length} 条我的模板。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导出模板失败。");
+    } finally {
+      setIsExportingBackup(false);
+    }
+  }
+
+  async function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setError(undefined);
+    setMessage(undefined);
+    setImportPreview(undefined);
+    try {
+      const parsed = JSON.parse(await file.text()) as RecordTemplateImportPayload;
+      if (!Array.isArray(parsed.templates)) {
+        throw new Error("导入文件必须包含 templates 列表。");
+      }
+      setImportPayload(parsed);
+      setImportFileName(file.name);
+      setMessage(`已读取 ${file.name}，请先预览导入结果。`);
+    } catch (err) {
+      setImportPayload(undefined);
+      setImportFileName(undefined);
+      setError(err instanceof Error ? err.message : "读取导入文件失败。");
+    }
+  }
+
+  async function handlePreviewImport() {
+    if (!importPayload) {
+      setError("请先选择模板备份 JSON 文件。");
+      return;
+    }
+
+    setIsPreviewingImport(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await onPreviewImport(importPayload);
+      setImportPreview(result);
+      setMessage("导入预览已生成。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成导入预览失败。");
+    } finally {
+      setIsPreviewingImport(false);
+    }
+  }
+
+  async function handleImportTemplates() {
+    if (!importPayload) {
+      setError("请先选择模板备份 JSON 文件。");
+      return;
+    }
+    if (importPreview?.summary.errors) {
+      setError("导入预览仍有错误，请修正文件后再导入。");
+      return;
+    }
+
+    setIsImporting(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await onImportTemplates(importPayload);
+      setImportPreview(result);
+      setMessage(`导入完成：新增 ${result.summary.created}，更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导入模板失败。");
+    } finally {
+      setIsImporting(false);
+    }
+  }
   async function handleSaveRow(row: AssessmentRowInput, index: number) {
     setBusyTemplateId(`row-${index}`);
     setError(undefined);
@@ -419,7 +548,52 @@ export function TemplateManagerPanel({
           </div>
         </form>
 
-        <div className="template-manager-side">
+        <div className="template-manager-side">          <div className="template-side-block template-backup-block">
+            <div className="template-side-heading">
+              <div>
+                <p className="eyebrow">备份与恢复</p>
+                <h4>用户模板导入导出</h4>
+              </div>
+              <span className="status-chip">JSON</span>
+            </div>
+            <div className="template-backup-actions">
+              <button type="button" className="secondary-button" onClick={handleExportTemplates} disabled={isExportingBackup}>
+                {isExportingBackup ? "导出中..." : "导出我的模板"}
+              </button>
+              <label className="secondary-button template-file-button">
+                选择备份 JSON
+                <input type="file" accept="application/json,.json" onChange={handleImportFileChange} />
+              </label>
+              <button type="button" className="secondary-button" onClick={handlePreviewImport} disabled={!importPayload || isPreviewingImport}>
+                {isPreviewingImport ? "预览中..." : "预览导入"}
+              </button>
+              <button type="button" onClick={handleImportTemplates} disabled={!importPayload || isImporting || Boolean(importPreview?.summary.errors)}>
+                {isImporting ? "导入中..." : "确认导入"}
+              </button>
+            </div>
+            {importFileName ? <p className="template-import-file">当前文件：{importFileName}</p> : null}
+            {importPreview ? (
+              <div className="template-import-preview">
+                <div className="template-import-summary">
+                  <span className="status-chip">新增 {importPreview.summary.created}</span>
+                  <span className="status-chip">更新 {importPreview.summary.updated}</span>
+                  <span className="status-chip">跳过 {importPreview.summary.skipped}</span>
+                  <span className={importPreview.summary.errors > 0 ? "dirty-chip" : "clean-chip"}>错误 {importPreview.summary.errors}</span>
+                </div>
+                <div className="template-import-list">
+                  {importPreview.items.map((item) => (
+                    <div className={`template-import-item ${item.action}`} key={`${item.index}-${item.action}-${item.title}`}>
+                      <span className={`import-action ${item.action}`}>{importActionLabel(item.action)}</span>
+                      <div>
+                        <strong>{item.title || item.unit || `第 ${item.index} 条`}</strong>
+                        <p>{item.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="template-side-block">
             <div className="template-side-heading">
               <div>

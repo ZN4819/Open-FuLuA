@@ -1,6 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from ..schemas import RecordTemplateCreate, RecordTemplateRead, RecordTemplateUpdate
+from ..schemas import (
+    RecordTemplateCreate,
+    RecordTemplateExport,
+    RecordTemplateImportPayload,
+    RecordTemplateImportResult,
+    RecordTemplateRead,
+    RecordTemplateUpdate,
+)
 from ..services.record_templates import (
     RecordTemplateNotFoundError,
     RecordTemplatePermissionError,
@@ -8,7 +15,10 @@ from ..services.record_templates import (
     copy_record_template,
     create_user_record_template,
     delete_user_record_template,
+    export_user_record_templates,
+    import_user_record_templates,
     list_record_templates,
+    preview_import_record_templates,
     update_user_record_template,
 )
 
@@ -16,8 +26,34 @@ router = APIRouter(prefix="/record-templates", tags=["record-templates"])
 
 
 @router.get("", response_model=list[RecordTemplateRead])
-def get_record_templates(section_code: str | None = Query(default=None)) -> list[RecordTemplateRead]:
-    return [RecordTemplateRead(**template) for template in list_record_templates(section_code)]
+def get_record_templates(
+    section_code: str | None = Query(default=None),
+    keyword: str | None = Query(default=None),
+) -> list[RecordTemplateRead]:
+    return [RecordTemplateRead(**template) for template in list_record_templates(section_code, keyword)]
+
+
+@router.get("/export", response_model=RecordTemplateExport)
+def export_record_templates() -> RecordTemplateExport:
+    return RecordTemplateExport(**export_user_record_templates())
+
+
+@router.post("/import-preview", response_model=RecordTemplateImportResult)
+def preview_record_template_import(payload: RecordTemplateImportPayload) -> RecordTemplateImportResult:
+    try:
+        result = preview_import_record_templates(payload.model_dump())
+    except RecordTemplateValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RecordTemplateImportResult(**result)
+
+
+@router.post("/import", response_model=RecordTemplateImportResult)
+def import_record_templates(payload: RecordTemplateImportPayload) -> RecordTemplateImportResult:
+    try:
+        result = import_user_record_templates(payload.model_dump())
+    except RecordTemplateValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RecordTemplateImportResult(**result)
 
 
 @router.post("", response_model=RecordTemplateRead, status_code=201)

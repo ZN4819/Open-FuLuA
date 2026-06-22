@@ -15,8 +15,11 @@ from app import database  # noqa: E402
 from app.api.record_templates import copy_record_template_endpoint as api_copy_record_template  # noqa: E402
 from app.api.record_templates import create_record_template as api_create_record_template  # noqa: E402
 from app.api.record_templates import delete_record_template as api_delete_record_template  # noqa: E402
+from app.api.record_templates import export_record_templates as api_export_record_templates  # noqa: E402
+from app.api.record_templates import import_record_templates as api_import_record_templates  # noqa: E402
+from app.api.record_templates import preview_record_template_import as api_preview_record_template_import  # noqa: E402
 from app.api.record_templates import update_record_template as api_update_record_template  # noqa: E402
-from app.schemas import RecordTemplateCreate, RecordTemplateUpdate  # noqa: E402
+from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateUpdate  # noqa: E402
 from app.services.record_templates import list_record_templates, load_record_template_library  # noqa: E402
 
 
@@ -160,6 +163,107 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 400)
         self.assertIn("正文不能为空", context.exception.detail)
 
+
+    def test_record_templates_can_be_searched_by_keyword(self) -> None:
+        created = api_create_record_template(
+            RecordTemplateCreate(
+                section_code="A-2",
+                table_type="technical",
+                unit="KB5 搜索单元",
+                object_name="KB5 搜索对象",
+                title="KB5 keyword marker",
+                record_text="这是一条用于 LIKE 搜索的用户模板。",
+                tags=["KB5Search"],
+            )
+        )
+
+        results = list_record_templates(keyword="KB5Search")
+
+        self.assertEqual([template["id"] for template in results], [created.id])
+
+    def test_user_record_templates_can_be_exported_previewed_and_imported(self) -> None:
+        created = api_create_record_template(
+            RecordTemplateCreate(
+                section_code="A-3",
+                table_type="technical",
+                unit="KB5 备份单元",
+                object_name="KB5 备份对象",
+                title="KB5 备份模板",
+                record_text="导出前正文。",
+                tags=["backup"],
+            )
+        )
+        exported = api_export_record_templates()
+
+        self.assertEqual(exported.profile_id, "appendix_a_user_record_templates_v1")
+        self.assertEqual(len(exported.templates), 1)
+        self.assertEqual(exported.templates[0].id, created.id)
+
+        same_preview = api_preview_record_template_import(
+            RecordTemplateImportPayload(templates=exported.templates)
+        )
+        self.assertEqual(same_preview.summary.skipped, 1)
+        self.assertEqual(same_preview.summary.errors, 0)
+
+        changed_template = exported.templates[0].model_copy(update={"record_text": "导入后正文。"})
+        changed_payload = RecordTemplateImportPayload(templates=[changed_template])
+        changed_preview = api_preview_record_template_import(changed_payload)
+        self.assertEqual(changed_preview.summary.updated, 1)
+
+        imported = api_import_record_templates(changed_payload)
+        self.assertEqual(imported.summary.updated, 1)
+        updated = [template for template in list_record_templates("A-3") if template["id"] == created.id][0]
+        self.assertEqual(updated["record_text"], "导入后正文。")
+
+    def test_import_preview_reports_invalid_templates(self) -> None:
+        preview = api_preview_record_template_import(
+            RecordTemplateImportPayload(
+                templates=[
+                    RecordTemplateImportItem(
+                        section_code="B-1",
+                        table_type="technical",
+                        unit="无效单元",
+                        object_name="无效对象",
+                        title="无效模板",
+                        record_text="无效章节。",
+                    )
+                ]
+            )
+        )
+
+        self.assertEqual(preview.summary.errors, 1)
+        self.assertEqual(preview.items[0].action, "error")
+
+    def test_import_does_not_overwrite_system_templates(self) -> None:
+        system_template = list_record_templates("A-1")[0]
+        payload = RecordTemplateImportPayload(
+            templates=[
+                RecordTemplateImportItem(
+                    id=system_template["id"],
+                    section_code=system_template["section_code"],
+                    table_type=system_template["table_type"],
+                    unit=system_template["unit"],
+                    object_name=system_template["object_name"],
+                    title=system_template["title"],
+                    record_text="不应覆盖系统模板。",
+                    tags=["restore"],
+                )
+            ]
+        )
+
+        preview = api_preview_record_template_import(payload)
+        self.assertEqual(preview.summary.created, 1)
+        imported = api_import_record_templates(payload)
+        self.assertEqual(imported.summary.created, 1)
+
+        refreshed_system = [template for template in list_record_templates("A-1") if template["id"] == system_template["id"]][0]
+        self.assertEqual(refreshed_system["record_text"], system_template["record_text"])
+        self.assertTrue(
+            any(
+                template["source_type"] == "user" and template["record_text"] == "不应覆盖系统模板。"
+                for template in list_record_templates("A-1")
+            )
+        )
     def test_system_record_template_cannot_be_updated_or_deleted(self) -> None:
         system_template = list_record_templates("A-1")[0]
 
