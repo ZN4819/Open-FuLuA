@@ -4,12 +4,15 @@ import {
   createProject,
   deleteProject,
   exportProjectDocx,
+  exportRecordTemplateSlots,
   getProject,
   getRenderJob,
   getRecordTemplateSlots,
   getSectionDetail,
   getTemplateProfile,
+  importRecordTemplateSlots,
   listProjects,
+  previewRecordTemplateSlotImport,
   resolveFileUrl,
   resetRecordTemplateSlot,
   updateRecordTemplateSlot,
@@ -20,6 +23,7 @@ import {
   type Project,
   type RenderJob,
   type RecordTemplateSlot,
+  type RecordTemplateSlotImportPayload,
   type RecordTemplateSlotUpdateInput,
   type SectionDetail,
   type TemplateProfile,
@@ -261,6 +265,21 @@ export function ProjectPage() {
     await refreshRecordTemplateSlots(reset.section_code);
     setSaveMessage("三类结果记录模板已恢复默认。");
     return reset;
+  }
+
+  async function handleExportRecordTemplateSlots() {
+    return exportRecordTemplateSlots();
+  }
+
+  async function handlePreviewRecordTemplateSlotImport(payload: RecordTemplateSlotImportPayload) {
+    return previewRecordTemplateSlotImport(payload);
+  }
+
+  async function handleImportRecordTemplateSlots(payload: RecordTemplateSlotImportPayload) {
+    const result = await importRecordTemplateSlots(payload);
+    await refreshRecordTemplateSlots();
+    setSaveMessage(`三类模板配置导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
+    return result;
   }
   function applySavedSectionDetail(code: string, detail: SectionDetail) {
     setSectionDetails((current) => ({ ...current, [code]: detail }));
@@ -609,6 +628,9 @@ export function ProjectPage() {
               onClose={() => setIsTemplateManagerOpen(false)}
               onUpdateSlot={handleUpdateRecordTemplateSlot}
               onResetSlot={handleResetRecordTemplateSlot}
+              onExportSlots={handleExportRecordTemplateSlots}
+              onPreviewImportSlots={handlePreviewRecordTemplateSlotImport}
+              onImportSlots={handleImportRecordTemplateSlots}
             />
           ) : null}
 

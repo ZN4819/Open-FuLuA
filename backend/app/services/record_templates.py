@@ -17,6 +17,7 @@ RECORD_TEMPLATES_PATH = (
     / "record_templates.json"
 )
 EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
+SLOT_EXPORT_PROFILE_ID = "appendix_a_record_template_slots_v1"
 
 TEMPLATE_SLOT_TYPES = ("compliant", "non_compliant", "not_applicable")
 TEMPLATE_SLOT_TYPE_LABELS = {
@@ -124,6 +125,62 @@ def reset_record_template_slot(slot_id: int) -> dict[str, Any]:
     if row is None:
         raise RecordTemplateNotFoundError("结果记录模板不存在。")
     return _row_to_template_slot(row)
+
+
+def export_record_template_slots() -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    return {
+        "profile_id": SLOT_EXPORT_PROFILE_ID,
+        "exported_at": database.utc_now(),
+        "templates": [_export_template_slot(slot) for slot in list_record_template_slots()],
+    }
+
+
+def preview_import_record_template_slots(payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    plan = _build_slot_import_plan(payload)
+    return {
+        "summary": plan["summary"],
+        "items": [_public_slot_import_item(item) for item in plan["items"]],
+    }
+
+
+def import_record_template_slots(payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    plan = _build_slot_import_plan(payload)
+    if plan["summary"]["errors"] > 0:
+        raise RecordTemplateValidationError("导入文件存在错误，请先根据预览结果修正后再导入。")
+
+    imported_items: list[dict[str, Any]] = []
+    for item in plan["items"]:
+        if item["action"] != "update":
+            imported_items.append(item)
+            continue
+        slot_id = item.get("slot_id")
+        payload_to_update = item.get("payload")
+        if not slot_id or not payload_to_update:
+            imported_items.append({**item, "action": "error", "message": "缺少待更新的三类模板槽位。"})
+            continue
+        update_record_template_slot(
+            slot_id,
+            {
+                "title": payload_to_update["title"],
+                "record_text": payload_to_update["record_text"],
+                "tags": payload_to_update["tags"],
+            },
+        )
+        imported_items.append(item)
+
+    summary = {
+        "created": 0,
+        "updated": sum(1 for item in imported_items if item["action"] == "update"),
+        "skipped": sum(1 for item in imported_items if item["action"] == "skip"),
+        "errors": sum(1 for item in imported_items if item["action"] == "error"),
+    }
+    return {
+        "summary": summary,
+        "items": [_public_slot_import_item(item) for item in imported_items],
+    }
 
 def create_user_record_template(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_system_record_templates_seeded()
@@ -417,6 +474,186 @@ def _normalize_tags(value: Any) -> list[str]:
 
 
 
+
+def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_templates = payload.get("templates")
+    if not isinstance(raw_templates, list):
+        raise RecordTemplateValidationError("导入文件必须包含 templates 列表。")
+
+    existing_slots = list_record_template_slots()
+    slots_by_key = {_slot_key(slot): slot for slot in existing_slots}
+    seen_keys: dict[tuple[str, str, str], int] = {}
+    items: list[dict[str, Any]] = []
+
+    for index, raw_template in enumerate(raw_templates, start=1):
+        if not isinstance(raw_template, dict):
+            items.append(_slot_import_item(index, "error", "模板槽位条目必须是对象。"))
+            continue
+
+        try:
+            normalized = _normalize_template_slot_import_item(raw_template)
+        except RecordTemplateValidationError as exc:
+            items.append(_slot_import_item(index, "error", str(exc)))
+            continue
+
+        natural_key = _slot_key(normalized)
+        if natural_key in seen_keys:
+            items.append(
+                _slot_import_item(
+                    index,
+                    "skip",
+                    f"与本次导入第 {seen_keys[natural_key]} 条三类模板重复，已跳过。",
+                    normalized,
+                )
+            )
+            continue
+        seen_keys[natural_key] = index
+
+        existing = slots_by_key.get(natural_key)
+        if existing is None:
+            items.append(
+                _slot_import_item(
+                    index,
+                    "error",
+                    "未找到对应的三类模板槽位，导入不会创建新的测评单元或第四类模板。",
+                    normalized,
+                )
+            )
+            continue
+
+        if normalized["table_type"] != existing["table_type"]:
+            items.append(
+                _slot_import_item(
+                    index,
+                    "error",
+                    f"表格类型不匹配，当前槽位为 {existing['table_type']}。",
+                    normalized,
+                    existing["id"],
+                )
+            )
+            continue
+
+        if _slot_payload_matches(existing, normalized):
+            items.append(
+                _slot_import_item(
+                    index,
+                    "skip",
+                    "三类模板内容未变化，已跳过。",
+                    normalized,
+                    existing["id"],
+                )
+            )
+            continue
+
+        items.append(
+            _slot_import_item(
+                index,
+                "update",
+                "将更新已有三类模板槽位。",
+                normalized,
+                existing["id"],
+            )
+        )
+
+    summary = {
+        "created": 0,
+        "updated": sum(1 for item in items if item["action"] == "update"),
+        "skipped": sum(1 for item in items if item["action"] == "skip"),
+        "errors": sum(1 for item in items if item["action"] == "error"),
+    }
+    return {
+        "summary": summary,
+        "items": items,
+    }
+
+
+def _normalize_template_slot_import_item(raw_template: dict[str, Any]) -> dict[str, Any]:
+    section_code = _clean_text(raw_template.get("section_code"))
+    table_type = _clean_text(raw_template.get("table_type"))
+    unit = _clean_text(raw_template.get("unit"))
+    template_type = _clean_text(raw_template.get("template_type"))
+    title = _clean_text(raw_template.get("title"))
+    record_text = _clean_text(raw_template.get("record_text"))
+    tags = _normalize_tags(raw_template.get("tags"))
+
+    if section_code not in {f"A-{number}" for number in range(1, 9)}:
+        raise RecordTemplateValidationError("三类模板章节必须为 A-1 至 A-8。")
+    if table_type not in {"technical", "management"}:
+        raise RecordTemplateValidationError("三类模板表格类型必须为 technical 或 management。")
+    if not unit:
+        raise RecordTemplateValidationError("三类模板测评单元不能为空。")
+    _validate_template_slot_type(template_type)
+    if not title:
+        title = TEMPLATE_SLOT_TYPE_LABELS[template_type]
+    if not record_text:
+        raise RecordTemplateValidationError("三类模板正文不能为空。")
+
+    return {
+        "section_code": section_code,
+        "table_type": table_type,
+        "unit": unit,
+        "template_type": template_type,
+        "title": title,
+        "record_text": record_text,
+        "tags": tags,
+    }
+
+
+def _slot_import_item(
+    index: int,
+    action: str,
+    message: str,
+    payload: dict[str, Any] | None = None,
+    slot_id: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "index": index,
+        "action": action,
+        "message": message,
+        "slot_id": slot_id,
+        "payload": payload,
+    }
+
+
+def _public_slot_import_item(item: dict[str, Any]) -> dict[str, Any]:
+    payload = item.get("payload") or {}
+    return {
+        "index": item["index"],
+        "action": item["action"],
+        "message": item["message"],
+        "slot_id": item.get("slot_id"),
+        "section_code": payload.get("section_code", ""),
+        "unit": payload.get("unit", ""),
+        "template_type": payload.get("template_type", ""),
+        "title": payload.get("title", ""),
+    }
+
+
+def _export_template_slot(slot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "section_code": slot["section_code"],
+        "table_type": slot["table_type"],
+        "unit": slot["unit"],
+        "template_type": slot["template_type"],
+        "title": slot["title"],
+        "record_text": slot["record_text"],
+        "tags": slot["tags"],
+    }
+
+
+def _slot_key(slot: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        slot["section_code"],
+        slot["unit"],
+        slot["template_type"],
+    )
+
+
+def _slot_payload_matches(existing: dict[str, Any], payload: dict[str, Any]) -> bool:
+    return all(
+        existing[key] == payload[key]
+        for key in ["section_code", "table_type", "unit", "template_type", "title", "record_text", "tags"]
+    )
 
 def _build_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
     raw_templates = payload.get("templates")

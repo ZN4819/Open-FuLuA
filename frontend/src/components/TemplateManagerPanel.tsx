@@ -1,7 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 import type {
   RecordTemplateSlot,
+  RecordTemplateSlotExport,
+  RecordTemplateSlotImportPayload,
+  RecordTemplateSlotImportResult,
   RecordTemplateSlotUpdateInput,
   TemplateProfile
 } from "../api/client";
@@ -19,6 +22,9 @@ type TemplateManagerPanelProps = {
   onClose: () => void;
   onUpdateSlot: (slotId: number, payload: RecordTemplateSlotUpdateInput) => Promise<RecordTemplateSlot>;
   onResetSlot: (slotId: number) => Promise<RecordTemplateSlot>;
+  onExportSlots: () => Promise<RecordTemplateSlotExport>;
+  onPreviewImportSlots: (payload: RecordTemplateSlotImportPayload) => Promise<RecordTemplateSlotImportResult>;
+  onImportSlots: (payload: RecordTemplateSlotImportPayload) => Promise<RecordTemplateSlotImportResult>;
 };
 
 const TEMPLATE_TYPE_ORDER: Record<RecordTemplateSlot["template_type"], number> = {
@@ -120,13 +126,41 @@ function sectionLabel(profile: TemplateProfile, sectionCode: string) {
   return section ? `${section.code} ${section.title}` : sectionCode;
 }
 
+function downloadJsonFile(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importActionLabel(action: RecordTemplateSlotImportResult["items"][number]["action"]) {
+  if (action === "update") {
+    return "更新";
+  }
+  if (action === "error") {
+    return "错误";
+  }
+  if (action === "create") {
+    return "新增";
+  }
+  return "跳过";
+}
+
 export function TemplateManagerPanel({
   profile,
   activeSectionCode,
   recordTemplateSlots,
   onClose,
   onUpdateSlot,
-  onResetSlot
+  onResetSlot,
+  onExportSlots,
+  onPreviewImportSlots,
+  onImportSlots
 }: TemplateManagerPanelProps) {
   const [sectionFilter, setSectionFilter] = useState(activeSectionCode);
   const [unitFilter, setUnitFilter] = useState("");
@@ -136,6 +170,12 @@ export function TemplateManagerPanel({
   const [resettingSlotId, setResettingSlotId] = useState<number | null>(null);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [importPayload, setImportPayload] = useState<RecordTemplateSlotImportPayload>();
+  const [importFileName, setImportFileName] = useState<string>();
+  const [importPreview, setImportPreview] = useState<RecordTemplateSlotImportResult>();
+  const [isExportingConfig, setIsExportingConfig] = useState(false);
+  const [isPreviewingImport, setIsPreviewingImport] = useState(false);
+  const [isImportingConfig, setIsImportingConfig] = useState(false);
 
   useEffect(() => {
     setSectionFilter(activeSectionCode);
@@ -245,6 +285,90 @@ export function TemplateManagerPanel({
     }
   }
 
+  async function handleExportTemplateSlots() {
+    setIsExportingConfig(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const exported = await onExportSlots();
+      downloadJsonFile(exported, `fulua-record-template-slots-${new Date().toISOString().slice(0, 10)}.json`);
+      setMessage(`已导出 ${exported.templates.length} 条三类模板配置。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导出三类模板配置失败。");
+    } finally {
+      setIsExportingConfig(false);
+    }
+  }
+
+  async function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setError(undefined);
+    setMessage(undefined);
+    setImportPreview(undefined);
+    try {
+      const parsed = JSON.parse(await file.text()) as RecordTemplateSlotImportPayload;
+      if (!Array.isArray(parsed.templates)) {
+        throw new Error("导入文件必须包含 templates 列表。");
+      }
+      setImportPayload(parsed);
+      setImportFileName(file.name);
+      setMessage(`已读取 ${file.name}，请先预览导入结果。`);
+    } catch (err) {
+      setImportPayload(undefined);
+      setImportFileName(undefined);
+      setError(err instanceof Error ? err.message : "读取三类模板配置文件失败。");
+    }
+  }
+
+  async function handlePreviewImport() {
+    if (!importPayload) {
+      setError("请先选择三类模板配置 JSON 文件。");
+      return;
+    }
+
+    setIsPreviewingImport(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await onPreviewImportSlots(importPayload);
+      setImportPreview(result);
+      setMessage("导入预览已生成。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成导入预览失败。");
+    } finally {
+      setIsPreviewingImport(false);
+    }
+  }
+
+  async function handleImportTemplateSlots() {
+    if (!importPayload) {
+      setError("请先选择三类模板配置 JSON 文件。");
+      return;
+    }
+    if (importPreview?.summary.errors) {
+      setError("导入预览仍有错误，请修正文件后再导入。");
+      return;
+    }
+
+    setIsImportingConfig(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await onImportSlots(importPayload);
+      setImportPreview(result);
+      setMessage(`导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导入三类模板配置失败。");
+    } finally {
+      setIsImportingConfig(false);
+    }
+  }
+
   return (
     <section className="feedback-panel template-manager-panel" aria-label="三类结果记录模板管理">
       <div className="feedback-heading template-manager-heading">
@@ -304,6 +428,52 @@ export function TemplateManagerPanel({
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
+
+      <div className="template-side-block template-backup-block">
+        <div className="template-side-heading">
+          <div>
+            <p className="eyebrow">备份与恢复</p>
+            <h4>三类模板配置导入导出</h4>
+          </div>
+          <span className="status-chip">JSON</span>
+        </div>
+        <div className="template-backup-actions">
+          <button type="button" className="secondary-button" onClick={handleExportTemplateSlots} disabled={isExportingConfig}>
+            {isExportingConfig ? "导出中..." : "导出模板配置"}
+          </button>
+          <label className="secondary-button template-file-button">
+            选择配置 JSON
+            <input type="file" accept="application/json,.json" onChange={handleImportFileChange} />
+          </label>
+          <button type="button" className="secondary-button" onClick={handlePreviewImport} disabled={!importPayload || isPreviewingImport}>
+            {isPreviewingImport ? "预览中..." : "预览导入"}
+          </button>
+          <button type="button" onClick={handleImportTemplateSlots} disabled={!importPayload || isImportingConfig || Boolean(importPreview?.summary.errors)}>
+            {isImportingConfig ? "导入中..." : "确认导入"}
+          </button>
+        </div>
+        {importFileName ? <p className="template-import-file">当前文件：{importFileName}</p> : null}
+        {importPreview ? (
+          <div className="template-import-preview">
+            <div className="template-import-summary">
+              <span className="status-chip">更新 {importPreview.summary.updated}</span>
+              <span className="status-chip">跳过 {importPreview.summary.skipped}</span>
+              <span className={importPreview.summary.errors > 0 ? "dirty-chip" : "clean-chip"}>错误 {importPreview.summary.errors}</span>
+            </div>
+            <div className="template-import-list">
+              {importPreview.items.map((item) => (
+                <div className={`template-import-item ${item.action}`} key={`${item.index}-${item.action}-${item.unit}-${item.template_type}`}>
+                  <span className={`import-action ${item.action}`}>{importActionLabel(item.action)}</span>
+                  <div>
+                    <strong>{item.title || item.unit || `第 ${item.index} 条`}</strong>
+                    <p>{item.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <div className="template-slot-board">
         <div className="template-list-heading">

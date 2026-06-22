@@ -19,10 +19,13 @@ from app.api.record_templates import export_record_templates as api_export_recor
 from app.api.record_templates import import_record_templates as api_import_record_templates  # noqa: E402
 from app.api.record_templates import preview_record_template_import as api_preview_record_template_import  # noqa: E402
 from app.api.record_templates import update_record_template as api_update_record_template  # noqa: E402
+from app.api.record_template_slots import export_record_template_slots_endpoint as api_export_record_template_slots  # noqa: E402
 from app.api.record_template_slots import get_record_template_slots as api_get_record_template_slots  # noqa: E402
+from app.api.record_template_slots import import_record_template_slot_config as api_import_record_template_slots  # noqa: E402
+from app.api.record_template_slots import preview_record_template_slot_import as api_preview_record_template_slot_import  # noqa: E402
 from app.api.record_template_slots import reset_record_template_slot_endpoint as api_reset_record_template_slot  # noqa: E402
 from app.api.record_template_slots import update_record_template_slot_endpoint as api_update_record_template_slot  # noqa: E402
-from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateSlotUpdate, RecordTemplateUpdate  # noqa: E402
+from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateSlotImportItem, RecordTemplateSlotImportPayload, RecordTemplateSlotUpdate, RecordTemplateUpdate  # noqa: E402
 from app.services.record_templates import TEMPLATE_SLOT_TYPES, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
 
 
@@ -405,6 +408,120 @@ class RecordTemplatesTest(unittest.TestCase):
         ]
 
         self.assertEqual(matching_delete_routes, [])
+    def test_record_template_slot_export_contains_all_fixed_slots(self) -> None:
+        exported = api_export_record_template_slots()
+        slots = list_record_template_slots()
+
+        self.assertEqual(exported.profile_id, "appendix_a_record_template_slots_v1")
+        self.assertEqual(len(exported.templates), len(slots))
+        first = exported.templates[0]
+        self.assertIn(first.template_type, TEMPLATE_SLOT_TYPES)
+        self.assertTrue(first.section_code.startswith("A-"))
+        self.assertTrue(first.unit)
+        self.assertTrue(first.record_text)
+
+    def test_record_template_slot_import_preview_reports_update_skip_and_error(self) -> None:
+        slots = api_get_record_template_slots(section_code="A-1")
+        update_slot = slots[0]
+        unchanged_slot = slots[1]
+        payload = RecordTemplateSlotImportPayload(
+            profile_id="appendix_a_record_template_slots_v1",
+            templates=[
+                RecordTemplateSlotImportItem(
+                    section_code=update_slot.section_code,
+                    table_type=update_slot.table_type,
+                    unit=update_slot.unit,
+                    template_type=update_slot.template_type,
+                    title="T3-5 导入预览标题",
+                    record_text="T3-5 导入预览正文。",
+                    tags=["T3-5"],
+                ),
+                RecordTemplateSlotImportItem(
+                    section_code=unchanged_slot.section_code,
+                    table_type=unchanged_slot.table_type,
+                    unit=unchanged_slot.unit,
+                    template_type=unchanged_slot.template_type,
+                    title=unchanged_slot.title,
+                    record_text=unchanged_slot.record_text,
+                    tags=unchanged_slot.tags,
+                ),
+                RecordTemplateSlotImportItem(
+                    section_code="A-1",
+                    table_type="technical",
+                    unit=update_slot.unit,
+                    template_type="extra_type",
+                    title="非法类型",
+                    record_text="非法类型正文。",
+                    tags=[],
+                ),
+            ],
+        )
+
+        preview = api_preview_record_template_slot_import(payload)
+
+        self.assertEqual(preview.summary.created, 0)
+        self.assertEqual(preview.summary.updated, 1)
+        self.assertEqual(preview.summary.skipped, 1)
+        self.assertEqual(preview.summary.errors, 1)
+        self.assertEqual([item.action for item in preview.items], ["update", "skip", "error"])
+
+        with self.assertRaises(HTTPException) as import_context:
+            api_import_record_template_slots(payload)
+        self.assertEqual(import_context.exception.status_code, 400)
+
+    def test_record_template_slot_import_updates_existing_slots_without_creating_new_ones(self) -> None:
+        before_count = len(list_record_template_slots())
+        slot = api_get_record_template_slots(section_code="A-1", template_type="not_applicable")[0]
+        payload = RecordTemplateSlotImportPayload(
+            profile_id="appendix_a_record_template_slots_v1",
+            templates=[
+                RecordTemplateSlotImportItem(
+                    section_code=slot.section_code,
+                    table_type=slot.table_type,
+                    unit=slot.unit,
+                    template_type=slot.template_type,
+                    title="T3-5 不适用导入标题",
+                    record_text="T3-5 不适用导入正文。",
+                    tags=["T3-5", "导入"],
+                )
+            ],
+        )
+
+        result = api_import_record_template_slots(payload)
+        updated = api_get_record_template_slots(
+            section_code=slot.section_code,
+            unit=slot.unit,
+            template_type=slot.template_type,
+        )[0]
+
+        self.assertEqual(result.summary.created, 0)
+        self.assertEqual(result.summary.updated, 1)
+        self.assertEqual(result.summary.errors, 0)
+        self.assertEqual(updated.title, "T3-5 不适用导入标题")
+        self.assertEqual(updated.record_text, "T3-5 不适用导入正文。")
+        self.assertEqual(updated.tags, ["T3-5", "导入"])
+        self.assertTrue(updated.is_customized)
+        self.assertEqual(len(list_record_template_slots()), before_count)
+
+        missing_payload = RecordTemplateSlotImportPayload(
+            templates=[
+                RecordTemplateSlotImportItem(
+                    section_code="A-1",
+                    table_type="technical",
+                    unit="不存在的测评单元",
+                    template_type="compliant",
+                    title="不会创建",
+                    record_text="不会创建新槽位。",
+                    tags=[],
+                )
+            ]
+        )
+        missing_preview = api_preview_record_template_slot_import(missing_payload)
+
+        self.assertEqual(missing_preview.summary.errors, 1)
+        self.assertIn("不会创建", missing_preview.items[0].message)
+        self.assertEqual(len(list_record_template_slots()), before_count)
+
 
 if __name__ == "__main__":
     unittest.main()

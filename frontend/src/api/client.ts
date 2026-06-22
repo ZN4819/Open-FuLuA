@@ -199,6 +199,42 @@ export type RecordTemplateSlotUpdateInput = {
   record_text?: string;
   tags?: string[];
 };
+
+export type RecordTemplateSlotImportItem = {
+  section_code: string;
+  table_type: "technical" | "management";
+  unit: string;
+  template_type: RecordTemplateSlotType;
+  title: string;
+  record_text: string;
+  tags?: string[];
+};
+
+export type RecordTemplateSlotExport = {
+  profile_id: string;
+  exported_at: string;
+  templates: RecordTemplateSlotImportItem[];
+};
+
+export type RecordTemplateSlotImportPayload = {
+  profile_id?: string | null;
+  exported_at?: string | null;
+  templates: RecordTemplateSlotImportItem[];
+};
+
+export type RecordTemplateSlotImportResult = {
+  summary: RecordTemplateImportSummary;
+  items: Array<{
+    index: number;
+    action: "update" | "skip" | "error" | "create";
+    message: string;
+    slot_id?: number | null;
+    section_code: string;
+    unit: string;
+    template_type: string;
+    title: string;
+  }>;
+};
 export type RecordTemplateInput = {
   section_code: string;
   table_type: "technical" | "management";
@@ -356,6 +392,28 @@ export function updateRecordTemplateSlot(
 export function resetRecordTemplateSlot(slotId: number): Promise<RecordTemplateSlot> {
   return request<RecordTemplateSlot>(`/api/record-template-slots/${slotId}/reset`, {
     method: "POST"
+  });
+}
+
+export function exportRecordTemplateSlots(): Promise<RecordTemplateSlotExport> {
+  return request<RecordTemplateSlotExport>("/api/record-template-slots/export");
+}
+
+export function previewRecordTemplateSlotImport(
+  payload: RecordTemplateSlotImportPayload
+): Promise<RecordTemplateSlotImportResult> {
+  return request<RecordTemplateSlotImportResult>("/api/record-template-slots/import-preview", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function importRecordTemplateSlots(
+  payload: RecordTemplateSlotImportPayload
+): Promise<RecordTemplateSlotImportResult> {
+  return request<RecordTemplateSlotImportResult>("/api/record-template-slots/import", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 export function createRecordTemplate(payload: RecordTemplateInput): Promise<RecordTemplate> {

@@ -254,6 +254,12 @@ class RecordTemplateSlotImportPayload(BaseModel):
     templates: list[RecordTemplateSlotImportItem]
 
 
+class RecordTemplateSlotExport(BaseModel):
+    profile_id: str
+    exported_at: str
+    templates: list[RecordTemplateSlotImportItem] = []
+
+
 class RecordTemplateSlotImportPreviewItem(BaseModel):
     index: int
     action: str
