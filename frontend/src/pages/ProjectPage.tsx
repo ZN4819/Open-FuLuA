@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  createProjectFromDocxImport,
   createRenderJob,
   createProject,
   deleteProject,
@@ -18,7 +19,9 @@ import {
   updateRecordTemplateSlot,
   updateSectionDetail,
   validateProject,
+  uploadDocxImport,
   type AssessmentRowInput,
+  type DocxImportJob,
   type EvidenceImage,
   type Project,
   type RenderJob,
@@ -78,6 +81,11 @@ export function ProjectPage() {
   const [validation, setValidation] = useState<ValidationResponse>();
   const [saveMessage, setSaveMessage] = useState<string>();
   const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importJob, setImportJob] = useState<DocxImportJob>();
+  const [importProjectName, setImportProjectName] = useState("");
+  const [isUploadingImport, setIsUploadingImport] = useState(false);
+  const [isConfirmingImport, setIsConfirmingImport] = useState(false);
 
   const activeSection = useMemo(
     () => project?.sections.find((section) => section.code === activeCode),
@@ -225,6 +233,75 @@ export function ProjectPage() {
     setRenderJob(undefined);
     setSaveMessage(undefined);
     refreshProjects();
+  }
+
+  function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setError(undefined);
+    setImportJob(undefined);
+    setImportFile(null);
+    if (!file) {
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      setError("请选择 .docx 文件。");
+      return;
+    }
+    setImportFile(file);
+    setImportProjectName(projectNameFromFile(file.name));
+  }
+
+  async function handleUploadDocxImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(undefined);
+    setSaveMessage(undefined);
+    if (!importFile) {
+      setError("请选择要导入的 DOCX 文件。");
+      return;
+    }
+
+    setIsUploadingImport(true);
+    try {
+      const job = await uploadDocxImport(importFile);
+      setImportJob(job);
+      setImportProjectName(job.suggested_project_name || projectNameFromFile(importFile.name));
+      if (job.status === "failed") {
+        setError(job.error_message || "DOCX 导入解析失败。");
+      } else {
+        setSaveMessage("DOCX 导入预览已生成。");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传并解析 DOCX 失败");
+    } finally {
+      setIsUploadingImport(false);
+    }
+  }
+
+  async function handleConfirmDocxImport() {
+    if (!importJob) {
+      return;
+    }
+
+    setIsConfirmingImport(true);
+    setError(undefined);
+    setSaveMessage(undefined);
+    try {
+      const confirmed = await createProjectFromDocxImport(importJob.id, importProjectName.trim() || importJob.suggested_project_name);
+      setImportJob(confirmed);
+      if (!confirmed.created_project_id) {
+        setError("导入任务未返回新项目 ID。");
+        return;
+      }
+      const loaded = await getProject(confirmed.created_project_id);
+      setProjects((current) => [loaded, ...current.filter((item) => item.id !== loaded.id)]);
+      setImportFile(null);
+      openProject(loaded);
+      setSaveMessage(`已导入 ${loaded.name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "确认导入失败");
+    } finally {
+      setIsConfirmingImport(false);
+    }
   }
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
@@ -489,6 +566,37 @@ export function ProjectPage() {
               </form>
             </section>
 
+            <section className="home-import-panel">
+              <div>
+                <p className="eyebrow">导入项目</p>
+                <h3>导入 DOCX 创建项目</h3>
+              </div>
+              <form className="import-form" onSubmit={handleUploadDocxImport}>
+                <label className="import-file-field" htmlFor="docxImportFile">
+                  <span>DOCX 文件</span>
+                  <input
+                    id="docxImportFile"
+                    type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleImportFileChange}
+                  />
+                </label>
+                {importFile ? <p className="import-file-name">{importFile.name}</p> : null}
+                <button type="submit" disabled={!importFile || isUploadingImport}>
+                  {isUploadingImport ? "解析中..." : "上传并解析"}
+                </button>
+              </form>
+              {importJob ? (
+                <ImportPreviewPanel
+                  job={importJob}
+                  projectName={importProjectName}
+                  isConfirming={isConfirmingImport}
+                  onProjectNameChange={setImportProjectName}
+                  onConfirm={handleConfirmDocxImport}
+                />
+              ) : null}
+            </section>
+
             <section className="home-projects-panel">
               <div className="project-list-header">
                 <div>
@@ -663,6 +771,134 @@ export function ProjectPage() {
   );
 }
 
+
+type ImportPreviewPanelProps = {
+  job: DocxImportJob;
+  projectName: string;
+  isConfirming: boolean;
+  onProjectNameChange: (value: string) => void;
+  onConfirm: () => void;
+};
+
+function ImportPreviewPanel({ job, projectName, isConfirming, onProjectNameChange, onConfirm }: ImportPreviewPanelProps) {
+  const summary = job.summary ?? {};
+  const canConfirm = job.status === "preview_ready" && job.can_create_project && projectName.trim().length > 0;
+  const visibleIssues = job.issues.slice(0, 8);
+
+  return (
+    <div className={`import-preview-panel ${importStatusClass(job)}`} aria-live="polite">
+      <div className="import-status-row">
+        <span className={`preview-status ${importStatusClass(job)}`}>{importStatusLabel(job.status)}</span>
+        <span>{job.can_create_project ? "可创建项目" : "需处理后创建"}</span>
+      </div>
+
+      <div className="import-summary-grid" aria-label="导入解析摘要">
+        <ImportSummaryMetric label="章节" value={summary.sections ?? job.sections.length} />
+        <ImportSummaryMetric label="测评行" value={summary.assessment_rows ?? 0} />
+        <ImportSummaryMetric label="图片" value={summary.images ?? 0} />
+        <ImportSummaryMetric label="引用" value={summary.references ?? 0} />
+        <ImportSummaryMetric label="错误" value={summary.errors ?? 0} />
+        <ImportSummaryMetric label="警告" value={summary.warnings ?? 0} />
+      </div>
+
+      {job.sections.length > 0 ? (
+        <div className="import-section-list" aria-label="导入章节预览">
+          {job.sections.map((section) => (
+            <div className="import-section-item" key={section.code}>
+              <strong>{section.code}</strong>
+              <span>{section.title}</span>
+              <small>{section.row_count} 行 / {section.image_count} 图 / {section.reference_count} 引用</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {visibleIssues.length > 0 ? (
+        <ul className="import-issue-list" aria-label="导入问题清单">
+          {visibleIssues.map((issue, index) => (
+            <li className={issue.severity} key={`${issue.code}-${issue.section_code ?? "all"}-${index}`}>
+              <span>{importIssueSeverityLabel(issue.severity)}</span>
+              <div>
+                <strong>{issue.message}</strong>
+                <small>{[issue.section_code, issue.code, issue.target].filter(Boolean).join(" / ")}</small>
+              </div>
+            </li>
+          ))}
+          {job.issues.length > visibleIssues.length ? <li className="info">还有 {job.issues.length - visibleIssues.length} 项未显示</li> : null}
+        </ul>
+      ) : null}
+
+      {job.error_message ? <p className="import-error-text">{job.error_message}</p> : null}
+
+      {job.status === "preview_ready" ? (
+        <div className="import-project-field">
+          <label htmlFor="importProjectName">新项目名称</label>
+          <input
+            id="importProjectName"
+            value={projectName}
+            onChange={(event) => onProjectNameChange(event.target.value)}
+            maxLength={120}
+          />
+          <button className="import-confirm-button" type="button" onClick={onConfirm} disabled={!canConfirm || isConfirming}>
+            {isConfirming ? "创建中..." : "确认创建项目"}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ImportSummaryMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function projectNameFromFile(fileName: string) {
+  return fileName.replace(/\.docx$/i, "").trim() || "导入项目";
+}
+
+function importStatusLabel(status: string) {
+  if (status === "preview_ready") {
+    return "预览完成";
+  }
+  if (status === "succeeded") {
+    return "已创建项目";
+  }
+  if (status === "failed") {
+    return "解析失败";
+  }
+  if (status === "importing") {
+    return "创建中";
+  }
+  if (status === "parsing") {
+    return "解析中";
+  }
+  return status || "已上传";
+}
+
+function importStatusClass(job: DocxImportJob) {
+  if (job.status === "failed" || !job.can_create_project) {
+    return "error";
+  }
+  if (job.status === "preview_ready" || job.status === "succeeded") {
+    return "success";
+  }
+  return "pending";
+}
+
+function importIssueSeverityLabel(severity: string) {
+  if (severity === "error") {
+    return "错误";
+  }
+  if (severity === "warning") {
+    return "警告";
+  }
+  return "提示";
+}
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {

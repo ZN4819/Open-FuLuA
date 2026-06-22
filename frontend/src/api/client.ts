@@ -159,6 +159,42 @@ export type RenderJob = {
   error_message?: string | null;
 };
 
+
+export type DocxImportIssue = {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  section_code?: string | null;
+  target?: string | null;
+};
+
+export type DocxImportSectionPreview = {
+  code: string;
+  title: string;
+  table_title: string;
+  table_type: "technical" | "management" | string;
+  row_count: number;
+  image_count: number;
+  reference_count: number;
+};
+
+export type DocxImportJob = {
+  id: number;
+  status: "uploaded" | "parsing" | "preview_ready" | "importing" | "succeeded" | "failed" | string;
+  original_name: string;
+  source_docx_path: string;
+  parsed_json_path?: string | null;
+  suggested_project_name: string;
+  created_project_id?: number | null;
+  sections: DocxImportSectionPreview[];
+  summary: Record<string, number>;
+  issues: DocxImportIssue[];
+  can_create_project: boolean;
+  error_message?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
 export type RecordTemplate = {
   id: string;
   source_type?: "system" | "user";
@@ -613,6 +649,34 @@ export function getRenderJob(jobId: number): Promise<RenderJob> {
   return request<RenderJob>(`/api/render-jobs/${jobId}`);
 }
 
+
+export async function uploadDocxImport(file: File): Promise<DocxImportJob> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/imports/docx`, {
+    method: "POST",
+    body: form
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `导入失败：${response.status}`);
+  }
+
+  return response.json() as Promise<DocxImportJob>;
+}
+
+export function getDocxImport(jobId: number): Promise<DocxImportJob> {
+  return request<DocxImportJob>(`/api/imports/${jobId}`);
+}
+
+export function createProjectFromDocxImport(jobId: number, projectName?: string): Promise<DocxImportJob> {
+  return request<DocxImportJob>(`/api/imports/${jobId}/project`, {
+    method: "POST",
+    body: JSON.stringify({ project_name: projectName || null })
+  });
+}
 function _fileNameFromDisposition(disposition: string | null): string | null {
   if (!disposition) {
     return null;
