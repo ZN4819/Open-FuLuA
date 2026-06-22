@@ -1,20 +1,12 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import type {
-  AssessmentRowInput,
-  RecordTemplate,
-  RecordTemplateExport,
-  RecordTemplateImportPayload,
-  RecordTemplateImportResult,
-  RecordTemplateInput,
+  RecordTemplateSlot,
+  RecordTemplateSlotUpdateInput,
   TemplateProfile
 } from "../api/client";
 
-type TemplateFormState = {
-  section_code: string;
-  table_type: "technical" | "management";
-  unit: string;
-  object_name: string;
+type SlotDraft = {
   title: string;
   record_text: string;
   tags: string;
@@ -23,34 +15,23 @@ type TemplateFormState = {
 type TemplateManagerPanelProps = {
   profile: TemplateProfile;
   activeSectionCode: string;
-  templates: RecordTemplate[];
-  currentRows: AssessmentRowInput[];
+  recordTemplateSlots: RecordTemplateSlot[];
   onClose: () => void;
-  onCreate: (payload: RecordTemplateInput) => Promise<RecordTemplate>;
-  onUpdate: (templateId: string, payload: Partial<RecordTemplateInput>) => Promise<RecordTemplate>;
-  onDelete: (templateId: string) => Promise<RecordTemplate>;
-  onCopy: (templateId: string) => Promise<RecordTemplate>;
-  onExportUserTemplates: () => Promise<RecordTemplateExport>;
-  onPreviewImport: (payload: RecordTemplateImportPayload) => Promise<RecordTemplateImportResult>;
-  onImportTemplates: (payload: RecordTemplateImportPayload) => Promise<RecordTemplateImportResult>;
-  onSaveRowAsTemplate: (row: AssessmentRowInput) => Promise<RecordTemplate | undefined>;
+  onUpdateSlot: (slotId: number, payload: RecordTemplateSlotUpdateInput) => Promise<RecordTemplateSlot>;
+  onResetSlot: (slotId: number) => Promise<RecordTemplateSlot>;
 };
 
-function tableTypeForSection(profile: TemplateProfile, sectionCode: string): "technical" | "management" {
-  return profile.sections.find((section) => section.code === sectionCode)?.table_type ?? "technical";
-}
+const TEMPLATE_TYPE_ORDER: Record<RecordTemplateSlot["template_type"], number> = {
+  compliant: 0,
+  non_compliant: 1,
+  not_applicable: 2
+};
 
-function emptyForm(profile: TemplateProfile, sectionCode: string, unit = ""): TemplateFormState {
-  return {
-    section_code: sectionCode,
-    table_type: tableTypeForSection(profile, sectionCode),
-    unit,
-    object_name: "",
-    title: "",
-    record_text: "",
-    tags: ""
-  };
-}
+const TEMPLATE_TYPE_CLASS: Record<RecordTemplateSlot["template_type"], string> = {
+  compliant: "compliant",
+  non_compliant: "non-compliant",
+  not_applicable: "not-applicable"
+};
 
 function tagsToText(tags?: string[]) {
   return tags?.join("，") ?? "";
@@ -58,17 +39,69 @@ function tagsToText(tags?: string[]) {
 
 function tagsFromText(value: string) {
   return value
-    .split(/[，,]/)
+    .split(/[，,;；\n]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
 }
 
-function templateSourceLabel(template: RecordTemplate) {
-  return template.source_type === "user" ? "我的模板" : "系统模板";
+function uniqueValues(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach((value) => {
+    const normalized = value.trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  });
+  return result;
 }
 
-function templateSourceClass(template: RecordTemplate) {
-  return template.source_type === "user" ? "user" : "system";
+function draftFromSlot(slot: RecordTemplateSlot): SlotDraft {
+  return {
+    title: slot.title,
+    record_text: slot.record_text,
+    tags: tagsToText(slot.tags)
+  };
+}
+
+function normalizedDraft(draft: SlotDraft) {
+  return {
+    title: draft.title.trim(),
+    record_text: draft.record_text.trim(),
+    tags: tagsFromText(draft.tags).join("，")
+  };
+}
+
+function normalizedSlot(slot: RecordTemplateSlot) {
+  return {
+    title: slot.title.trim(),
+    record_text: slot.record_text.trim(),
+    tags: tagsToText(slot.tags)
+  };
+}
+
+function slotDraftIsDirty(slot: RecordTemplateSlot, draft: SlotDraft) {
+  const current = normalizedDraft(draft);
+  const saved = normalizedSlot(slot);
+  return current.title !== saved.title || current.record_text !== saved.record_text || current.tags !== saved.tags;
+}
+
+function slotMatchesKeyword(slot: RecordTemplateSlot, draft: SlotDraft, keyword: string) {
+  if (!keyword.trim()) {
+    return true;
+  }
+  const content = [
+    slot.section_code,
+    slot.unit,
+    slot.template_type_label,
+    draft.title,
+    draft.record_text,
+    draft.tags
+  ]
+    .join(" ")
+    .toLowerCase();
+  return content.includes(keyword.trim().toLowerCase());
 }
 
 function formatTemplateDate(value?: string | null) {
@@ -82,368 +115,147 @@ function formatTemplateDate(value?: string | null) {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function templateMatchesKeyword(template: RecordTemplate, keyword: string) {
-  if (!keyword) {
-    return true;
-  }
-  const content = [
-    template.section_code,
-    template.unit,
-    template.object_name,
-    template.title,
-    template.record_text,
-    ...(template.tags ?? [])
-  ]
-    .join(" ")
-    .toLowerCase();
-  return content.includes(keyword.toLowerCase());
-}
-
-function payloadFromForm(form: TemplateFormState): RecordTemplateInput {
-  return {
-    section_code: form.section_code,
-    table_type: form.table_type,
-    unit: form.unit.trim(),
-    object_name: form.object_name.trim(),
-    title: form.title.trim(),
-    record_text: form.record_text.trim(),
-    tags: tagsFromText(form.tags)
-  };
-}
-
-function rowLabel(row: AssessmentRowInput, index: number) {
-  const objectName = row.object_name.trim();
-  return objectName ? `${row.unit} / ${objectName}` : `${row.unit} / 对象 ${index + 1}`;
-}
-
-function downloadJsonFile(data: unknown, fileName: string) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function importActionLabel(action: RecordTemplateImportResult["items"][number]["action"]) {
-  if (action === "create") {
-    return "新增";
-  }
-  if (action === "update") {
-    return "更新";
-  }
-  if (action === "error") {
-    return "错误";
-  }
-  return "跳过";
+function sectionLabel(profile: TemplateProfile, sectionCode: string) {
+  const section = profile.sections.find((item) => item.code === sectionCode);
+  return section ? `${section.code} ${section.title}` : sectionCode;
 }
 
 export function TemplateManagerPanel({
   profile,
   activeSectionCode,
-  templates,
-  currentRows,
+  recordTemplateSlots,
   onClose,
-  onCreate,
-  onUpdate,
-  onDelete,
-  onCopy,
-  onExportUserTemplates,
-  onPreviewImport,
-  onImportTemplates,
-  onSaveRowAsTemplate
+  onUpdateSlot,
+  onResetSlot
 }: TemplateManagerPanelProps) {
   const [sectionFilter, setSectionFilter] = useState(activeSectionCode);
   const [unitFilter, setUnitFilter] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [form, setForm] = useState(() => emptyForm(profile, activeSectionCode));
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [busyTemplateId, setBusyTemplateId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, SlotDraft>>({});
+  const [busySlotId, setBusySlotId] = useState<number | null>(null);
+  const [resettingSlotId, setResettingSlotId] = useState<number | null>(null);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
-  const [importPayload, setImportPayload] = useState<RecordTemplateImportPayload>();
-  const [importFileName, setImportFileName] = useState<string>();
-  const [importPreview, setImportPreview] = useState<RecordTemplateImportResult>();
-  const [isExportingBackup, setIsExportingBackup] = useState(false);
-  const [isPreviewingImport, setIsPreviewingImport] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     setSectionFilter(activeSectionCode);
     setUnitFilter("");
-    setForm(emptyForm(profile, activeSectionCode));
-    setEditingTemplateId(null);
+    setKeyword("");
     setMessage(undefined);
     setError(undefined);
-  }, [activeSectionCode, profile]);
+  }, [activeSectionCode]);
 
-  const sections = profile.sections;
-  const sectionTemplates = useMemo(
-    () => templates.filter((template) => template.section_code === sectionFilter),
-    [sectionFilter, templates]
-  );
-  const unitOptions = useMemo(
+  useEffect(() => {
+    setDrafts(Object.fromEntries(recordTemplateSlots.map((slot) => [slot.id, draftFromSlot(slot)])));
+  }, [recordTemplateSlots]);
+
+  const sectionSlots = useMemo(
     () =>
-      Array.from(new Set([
-        ...sectionTemplates.map((template) => template.unit.trim()).filter(Boolean),
-        ...currentRows
-          .filter((row) => row.unit.trim() && sectionFilter === activeSectionCode)
-          .map((row) => row.unit.trim())
-      ])).sort((first, second) => first.localeCompare(second, "zh-CN")),
-    [activeSectionCode, currentRows, sectionFilter, sectionTemplates]
-  );
-  const filteredTemplates = useMemo(
-    () =>
-      sectionTemplates
-        .filter((template) => !unitFilter || template.unit === unitFilter)
-        .filter((template) => templateMatchesKeyword(template, keyword))
+      recordTemplateSlots
+        .filter((slot) => slot.section_code === sectionFilter)
         .sort((first, second) => {
-          const sourceOrder = (first.source_type === "user" ? 0 : 1) - (second.source_type === "user" ? 0 : 1);
-          return sourceOrder || first.unit.localeCompare(second.unit, "zh-CN") || first.title.localeCompare(second.title, "zh-CN");
+          return (
+            first.unit.localeCompare(second.unit, "zh-CN") ||
+            TEMPLATE_TYPE_ORDER[first.template_type] - TEMPLATE_TYPE_ORDER[second.template_type]
+          );
         }),
-    [keyword, sectionTemplates, unitFilter]
+    [recordTemplateSlots, sectionFilter]
   );
-  const saveableRows = currentRows.filter((row) => row.unit.trim() && row.record_text.trim());
-  const activeEditingSection = sections.find((section) => section.code === activeSectionCode);
-  const userTemplateCount = templates.filter((template) => template.source_type === "user").length;
-  const systemTemplateCount = templates.length - userTemplateCount;
-  const canSubmit = Boolean(form.section_code && form.record_text.trim());
 
-  function updateForm(patch: Partial<TemplateFormState>) {
-    setForm((current) => ({ ...current, ...patch }));
-    setMessage(undefined);
-    setError(undefined);
-  }
+  const unitOptions = useMemo(() => uniqueValues(sectionSlots.map((slot) => slot.unit)), [sectionSlots]);
+  const customizedCount = sectionSlots.filter((slot) => slot.is_customized).length;
 
-  function handleSectionFilterChange(sectionCode: string) {
-    setSectionFilter(sectionCode);
-    setUnitFilter("");
-    setEditingTemplateId(null);
-    setForm(emptyForm(profile, sectionCode));
-    setMessage(undefined);
-    setError(undefined);
-  }
-
-  function handleFormSectionChange(sectionCode: string) {
-    updateForm({
-      section_code: sectionCode,
-      table_type: tableTypeForSection(profile, sectionCode)
+  const visibleUnits = useMemo(() => {
+    return unitOptions.filter((unit) => {
+      if (unitFilter && unit !== unitFilter) {
+        return false;
+      }
+      const slotsForUnit = sectionSlots.filter((slot) => slot.unit === unit);
+      return slotsForUnit.some((slot) => slotMatchesKeyword(slot, drafts[slot.id] ?? draftFromSlot(slot), keyword));
     });
-  }
+  }, [drafts, keyword, sectionSlots, unitFilter, unitOptions]);
 
-  function startCreate() {
-    setEditingTemplateId(null);
-    setForm(emptyForm(profile, sectionFilter, unitFilter));
+  const unitGroups = useMemo(
+    () =>
+      visibleUnits.map((unit) => ({
+        unit,
+        slots: sectionSlots
+          .filter((slot) => slot.unit === unit)
+          .sort((first, second) => TEMPLATE_TYPE_ORDER[first.template_type] - TEMPLATE_TYPE_ORDER[second.template_type])
+      })),
+    [sectionSlots, visibleUnits]
+  );
+
+  function updateDraft(slotId: number, patch: Partial<SlotDraft>) {
+    setDrafts((current) => ({
+      ...current,
+      [slotId]: {
+        ...(current[slotId] ?? { title: "", record_text: "", tags: "" }),
+        ...patch
+      }
+    }));
     setMessage(undefined);
     setError(undefined);
   }
 
-  function startEdit(template: RecordTemplate) {
-    if (template.source_type !== "user") {
-      setError("系统模板为只读模板，请先复制为我的模板后再编辑。");
-      return;
-    }
-    setEditingTemplateId(template.id);
-    setSectionFilter(template.section_code);
-    setUnitFilter(template.unit);
-    setForm({
-      section_code: template.section_code,
-      table_type: template.table_type,
-      unit: template.unit,
-      object_name: template.object_name,
-      title: template.title,
-      record_text: template.record_text,
-      tags: tagsToText(template.tags)
-    });
-    setMessage(undefined);
-    setError(undefined);
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveSlot(event: FormEvent<HTMLFormElement>, slot: RecordTemplateSlot) {
     event.preventDefault();
-    if (!canSubmit) {
+    const draft = drafts[slot.id] ?? draftFromSlot(slot);
+    const normalized = normalizedDraft(draft);
+    if (!normalized.record_text) {
       setError("模板正文不能为空。");
       return;
     }
 
-    setIsSubmitting(true);
+    setBusySlotId(slot.id);
     setError(undefined);
     setMessage(undefined);
     try {
-      const payload = payloadFromForm(form);
-      const saved = editingTemplateId
-        ? await onUpdate(editingTemplateId, payload)
-        : await onCreate(payload);
-      setMessage(editingTemplateId ? "模板已更新。" : "模板已新增。");
-      setSectionFilter(saved.section_code);
-      setUnitFilter(saved.unit);
-      setEditingTemplateId(null);
-      setForm(emptyForm(profile, saved.section_code, saved.unit));
+      const saved = await onUpdateSlot(slot.id, {
+        title: normalized.title || slot.template_type_label,
+        record_text: normalized.record_text,
+        tags: tagsFromText(draft.tags)
+      });
+      setDrafts((current) => ({ ...current, [saved.id]: draftFromSlot(saved) }));
+      setMessage(`${saved.unit} 的${saved.template_type_label}已保存。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存模板失败。");
+      setError(err instanceof Error ? err.message : "保存三类模板失败。");
     } finally {
-      setIsSubmitting(false);
+      setBusySlotId(null);
     }
   }
 
-  async function handleCopy(template: RecordTemplate) {
-    setBusyTemplateId(template.id);
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const copied = await onCopy(template.id);
-      setSectionFilter(copied.section_code);
-      setUnitFilter(copied.unit);
-      startEdit(copied);
-      setMessage("已复制为我的模板，可继续编辑。");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "复制模板失败。");
-    } finally {
-      setBusyTemplateId(null);
-    }
-  }
-
-  async function handleDelete(template: RecordTemplate) {
-    const confirmed = window.confirm(`确定删除“${template.title || template.unit}”吗？删除后不会再出现在模板下拉中。`);
+  async function handleResetSlot(slot: RecordTemplateSlot) {
+    const confirmed = window.confirm(`确定将“${slot.unit} / ${slot.template_type_label}”恢复为默认模板吗？当前修改会被覆盖。`);
     if (!confirmed) {
       return;
     }
 
-    setBusyTemplateId(template.id);
+    setResettingSlotId(slot.id);
     setError(undefined);
     setMessage(undefined);
     try {
-      await onDelete(template.id);
-      if (editingTemplateId === template.id) {
-        startCreate();
-      }
-      setMessage("模板已删除。");
+      const reset = await onResetSlot(slot.id);
+      setDrafts((current) => ({ ...current, [reset.id]: draftFromSlot(reset) }));
+      setMessage(`${reset.unit} 的${reset.template_type_label}已恢复默认。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除模板失败。");
+      setError(err instanceof Error ? err.message : "恢复默认模板失败。");
     } finally {
-      setBusyTemplateId(null);
-    }
-  }
-
-
-  async function handleExportTemplates() {
-    setIsExportingBackup(true);
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const exported = await onExportUserTemplates();
-      downloadJsonFile(exported, `fulua-user-record-templates-${new Date().toISOString().slice(0, 10)}.json`);
-      setMessage(`已导出 ${exported.templates.length} 条我的模板。`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "导出模板失败。");
-    } finally {
-      setIsExportingBackup(false);
-    }
-  }
-
-  async function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-
-    setError(undefined);
-    setMessage(undefined);
-    setImportPreview(undefined);
-    try {
-      const parsed = JSON.parse(await file.text()) as RecordTemplateImportPayload;
-      if (!Array.isArray(parsed.templates)) {
-        throw new Error("导入文件必须包含 templates 列表。");
-      }
-      setImportPayload(parsed);
-      setImportFileName(file.name);
-      setMessage(`已读取 ${file.name}，请先预览导入结果。`);
-    } catch (err) {
-      setImportPayload(undefined);
-      setImportFileName(undefined);
-      setError(err instanceof Error ? err.message : "读取导入文件失败。");
-    }
-  }
-
-  async function handlePreviewImport() {
-    if (!importPayload) {
-      setError("请先选择模板备份 JSON 文件。");
-      return;
-    }
-
-    setIsPreviewingImport(true);
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const result = await onPreviewImport(importPayload);
-      setImportPreview(result);
-      setMessage("导入预览已生成。");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "生成导入预览失败。");
-    } finally {
-      setIsPreviewingImport(false);
-    }
-  }
-
-  async function handleImportTemplates() {
-    if (!importPayload) {
-      setError("请先选择模板备份 JSON 文件。");
-      return;
-    }
-    if (importPreview?.summary.errors) {
-      setError("导入预览仍有错误，请修正文件后再导入。");
-      return;
-    }
-
-    setIsImporting(true);
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const result = await onImportTemplates(importPayload);
-      setImportPreview(result);
-      setMessage(`导入完成：新增 ${result.summary.created}，更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "导入模板失败。");
-    } finally {
-      setIsImporting(false);
-    }
-  }
-  async function handleSaveRow(row: AssessmentRowInput, index: number) {
-    setBusyTemplateId(`row-${index}`);
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const saved = await onSaveRowAsTemplate(row);
-      if (saved) {
-        setSectionFilter(saved.section_code);
-        setUnitFilter(saved.unit);
-        setMessage("当前测评行已保存为我的模板。");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存测评行为模板失败。");
-    } finally {
-      setBusyTemplateId(null);
+      setResettingSlotId(null);
     }
   }
 
   return (
-    <section className="feedback-panel template-manager-panel" aria-label="结果记录模板管理">
+    <section className="feedback-panel template-manager-panel" aria-label="三类结果记录模板管理">
       <div className="feedback-heading template-manager-heading">
         <div>
-          <p className="eyebrow">模板知识库</p>
+          <p className="eyebrow">三类模板</p>
           <h3>结果记录模板管理</h3>
         </div>
         <div className="template-manager-actions">
-          <span className="status-chip">系统 {systemTemplateCount}</span>
-          <span className="status-chip">我的 {userTemplateCount}</span>
-          <button type="button" className="secondary-button" onClick={startCreate}>
-            新建模板
-          </button>
+          <span className="status-chip">当前 {sectionLabel(profile, sectionFilter)}</span>
+          <span className="status-chip">单元 {unitOptions.length}</span>
+          <span className="status-chip">已修改 {customizedCount}</span>
           <button type="button" className="secondary-button" onClick={onClose}>
             收起
           </button>
@@ -453,8 +265,16 @@ export function TemplateManagerPanel({
       <div className="template-manager-tools">
         <label>
           <span>章节</span>
-          <select value={sectionFilter} onChange={(event) => handleSectionFilterChange(event.target.value)}>
-            {sections.map((section) => (
+          <select
+            value={sectionFilter}
+            onChange={(event) => {
+              setSectionFilter(event.target.value);
+              setUnitFilter("");
+              setMessage(undefined);
+              setError(undefined);
+            }}
+          >
+            {profile.sections.map((section) => (
               <option key={section.code} value={section.code}>
                 {section.code} {section.title}
               </option>
@@ -477,7 +297,7 @@ export function TemplateManagerPanel({
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索标题、对象、正文或标签"
+            placeholder="搜索单元、标题、正文或标签"
           />
         </label>
       </div>
@@ -485,201 +305,107 @@ export function TemplateManagerPanel({
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
 
-      <div className="template-manager-grid">
-        <form className="template-manager-form" onSubmit={handleSubmit}>
+      <div className="template-slot-board">
+        <div className="template-list-heading">
           <div>
-            <p className="eyebrow">{editingTemplateId ? "编辑我的模板" : "新增我的模板"}</p>
-            <h4>{editingTemplateId ? "修改模板内容" : "录入新模板"}</h4>
+            <p className="eyebrow">固定槽位</p>
+            <h4>{visibleUnits.length} 个测评单元</h4>
           </div>
-          <div className="template-form-grid">
-            <label>
-              <span>章节</span>
-              <select value={form.section_code} onChange={(event) => handleFormSectionChange(event.target.value)}>
-                {sections.map((section) => (
-                  <option key={section.code} value={section.code}>
-                    {section.code} {section.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>测评单元</span>
-              <input value={form.unit} onChange={(event) => updateForm({ unit: event.target.value })} />
-            </label>
-            <label>
-              <span>测评对象</span>
-              <input value={form.object_name} onChange={(event) => updateForm({ object_name: event.target.value })} />
-            </label>
-            <label>
-              <span>标题</span>
-              <input
-                value={form.title}
-                onChange={(event) => updateForm({ title: event.target.value })}
-                placeholder="为空时由单元和对象生成"
-              />
-            </label>
-            <label className="template-tags-field">
-              <span>标签</span>
-              <input
-                value={form.tags}
-                onChange={(event) => updateForm({ tags: event.target.value })}
-                placeholder="多个标签用逗号分隔"
-              />
-            </label>
-          </div>
-          <label className="template-record-field">
-            <span>结果记录正文</span>
-            <textarea
-              value={form.record_text}
-              onChange={(event) => updateForm({ record_text: event.target.value })}
-              rows={8}
-              required
-            />
-          </label>
-          <div className="template-form-actions">
-            <button type="submit" disabled={isSubmitting || !canSubmit}>
-              {isSubmitting ? "保存中..." : editingTemplateId ? "保存修改" : "新增模板"}
-            </button>
-            {editingTemplateId ? (
-              <button type="button" className="secondary-button" onClick={startCreate} disabled={isSubmitting}>
-                取消编辑
-              </button>
-            ) : null}
-          </div>
-        </form>
-
-        <div className="template-manager-side">          <div className="template-side-block template-backup-block">
-            <div className="template-side-heading">
-              <div>
-                <p className="eyebrow">备份与恢复</p>
-                <h4>用户模板导入导出</h4>
-              </div>
-              <span className="status-chip">JSON</span>
-            </div>
-            <div className="template-backup-actions">
-              <button type="button" className="secondary-button" onClick={handleExportTemplates} disabled={isExportingBackup}>
-                {isExportingBackup ? "导出中..." : "导出我的模板"}
-              </button>
-              <label className="secondary-button template-file-button">
-                选择备份 JSON
-                <input type="file" accept="application/json,.json" onChange={handleImportFileChange} />
-              </label>
-              <button type="button" className="secondary-button" onClick={handlePreviewImport} disabled={!importPayload || isPreviewingImport}>
-                {isPreviewingImport ? "预览中..." : "预览导入"}
-              </button>
-              <button type="button" onClick={handleImportTemplates} disabled={!importPayload || isImporting || Boolean(importPreview?.summary.errors)}>
-                {isImporting ? "导入中..." : "确认导入"}
-              </button>
-            </div>
-            {importFileName ? <p className="template-import-file">当前文件：{importFileName}</p> : null}
-            {importPreview ? (
-              <div className="template-import-preview">
-                <div className="template-import-summary">
-                  <span className="status-chip">新增 {importPreview.summary.created}</span>
-                  <span className="status-chip">更新 {importPreview.summary.updated}</span>
-                  <span className="status-chip">跳过 {importPreview.summary.skipped}</span>
-                  <span className={importPreview.summary.errors > 0 ? "dirty-chip" : "clean-chip"}>错误 {importPreview.summary.errors}</span>
-                </div>
-                <div className="template-import-list">
-                  {importPreview.items.map((item) => (
-                    <div className={`template-import-item ${item.action}`} key={`${item.index}-${item.action}-${item.title}`}>
-                      <span className={`import-action ${item.action}`}>{importActionLabel(item.action)}</span>
-                      <div>
-                        <strong>{item.title || item.unit || `第 ${item.index} 条`}</strong>
-                        <p>{item.message}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <div className="template-side-block">
-            <div className="template-side-heading">
-              <div>
-                <p className="eyebrow">当前编辑章节</p>
-                <h4>{activeEditingSection ? `${activeEditingSection.code} ${activeEditingSection.title}` : activeSectionCode}</h4>
-              </div>
-              <span className="status-chip">可保存 {saveableRows.length}</span>
-            </div>
-            {saveableRows.length === 0 ? (
-              <p className="template-empty">当前章节还没有可保存为模板的结果记录。</p>
-            ) : (
-              <div className="template-row-actions">
-                {saveableRows.map((row, index) => (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    key={`${row.unit}-${row.object_name}-${index}`}
-                    onClick={() => handleSaveRow(row, index)}
-                    disabled={busyTemplateId === `row-${index}`}
-                  >
-                    {busyTemplateId === `row-${index}` ? "保存中..." : rowLabel(row, index)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="template-list-heading">
-            <div>
-              <p className="eyebrow">模板列表</p>
-              <h4>{filteredTemplates.length} 条模板</h4>
-            </div>
-            <span className="status-chip">{unitFilter || "全部单元"}</span>
-          </div>
-          {filteredTemplates.length === 0 ? (
-            <p className="template-empty">没有匹配的模板，可调整筛选条件或新建模板。</p>
-          ) : (
-            <div className="template-list">
-              {filteredTemplates.map((template) => (
-                <article className="template-list-item" key={template.id}>
-                  <div className="template-item-heading">
-                    <div>
-                      <strong>{template.title || template.object_name || template.unit}</strong>
-                      <span>
-                        {template.section_code} / {template.unit || "未填写单元"} / {template.object_name || "未填写对象"}
-                      </span>
-                    </div>
-                    <span className={`template-source ${templateSourceClass(template)}`}>{templateSourceLabel(template)}</span>
-                  </div>
-                  <p>{template.record_text}</p>
-                  <div className="template-item-meta">
-                    <span>更新 {formatTemplateDate(template.updated_at)}</span>
-                    {template.tags?.length ? <span>标签 {template.tags.join("，")}</span> : null}
-                  </div>
-                  <div className="template-list-actions">
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => handleCopy(template)}
-                      disabled={busyTemplateId === template.id}
-                    >
-                      {busyTemplateId === template.id ? "复制中..." : "复制"}
-                    </button>
-                    {template.source_type === "user" ? (
-                      <>
-                        <button type="button" className="secondary-button" onClick={() => startEdit(template)}>
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="danger-button"
-                          onClick={() => handleDelete(template)}
-                          disabled={busyTemplateId === template.id}
-                        >
-                          删除
-                        </button>
-                      </>
-                    ) : (
-                      <span className="readonly-note">系统模板只读</span>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
+          <span className="status-chip">每个单元 3 类模板</span>
         </div>
+
+        {unitGroups.length === 0 ? (
+          <p className="template-empty">没有匹配的三类模板，可调整章节、测评单元或关键词。</p>
+        ) : (
+          <div className="template-unit-list">
+            {unitGroups.map((group) => (
+              <article className="template-unit-card" key={`${sectionFilter}-${group.unit}`}>
+                <div className="template-unit-heading">
+                  <div>
+                    <p className="eyebrow">测评单元</p>
+                    <h4>{group.unit}</h4>
+                  </div>
+                  <div className="template-unit-meta">
+                    <span className="status-chip">模板 {group.slots.length}</span>
+                    <span className="status-chip">已修改 {group.slots.filter((slot) => slot.is_customized).length}</span>
+                  </div>
+                </div>
+
+                <div className="template-slot-grid">
+                  {group.slots.map((slot) => {
+                    const draft = drafts[slot.id] ?? draftFromSlot(slot);
+                    const isDirty = slotDraftIsDirty(slot, draft);
+                    const isSaving = busySlotId === slot.id;
+                    const isResetting = resettingSlotId === slot.id;
+                    return (
+                      <form
+                        className={`template-slot-card ${TEMPLATE_TYPE_CLASS[slot.template_type]}`}
+                        key={slot.id}
+                        onSubmit={(event) => handleSaveSlot(event, slot)}
+                      >
+                        <div className="template-slot-heading">
+                          <div>
+                            <p className="eyebrow">{slot.template_type_label}</p>
+                            <h5>{draft.title.trim() || slot.template_type_label}</h5>
+                          </div>
+                          <span className={slot.is_customized ? "dirty-chip" : "clean-chip"}>
+                            {slot.is_customized ? "已修改" : "默认"}
+                          </span>
+                        </div>
+
+                        <label>
+                          <span>标题</span>
+                          <input
+                            value={draft.title}
+                            onChange={(event) => updateDraft(slot.id, { title: event.target.value })}
+                            maxLength={500}
+                            placeholder={slot.template_type_label}
+                          />
+                        </label>
+                        <label>
+                          <span>结果记录正文</span>
+                          <textarea
+                            value={draft.record_text}
+                            onChange={(event) => updateDraft(slot.id, { record_text: event.target.value })}
+                            rows={8}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>标签</span>
+                          <input
+                            value={draft.tags}
+                            onChange={(event) => updateDraft(slot.id, { tags: event.target.value })}
+                            placeholder="多个标签用逗号分隔"
+                          />
+                        </label>
+
+                        <div className="template-slot-meta">
+                          <span>更新 {formatTemplateDate(slot.updated_at)}</span>
+                          {isDirty ? <span>有未保存修改</span> : null}
+                        </div>
+
+                        <div className="template-slot-actions">
+                          <button type="submit" disabled={isSaving || isResetting || !isDirty || !draft.record_text.trim()}>
+                            {isSaving ? "保存中..." : "保存"}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleResetSlot(slot)}
+                            disabled={isSaving || isResetting}
+                          >
+                            {isResetting ? "恢复中..." : "恢复默认"}
+                          </button>
+                        </div>
+                      </form>
+                    );
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

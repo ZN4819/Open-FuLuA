@@ -193,6 +193,12 @@ export type RecordTemplateSlot = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+export type RecordTemplateSlotUpdateInput = {
+  title?: string;
+  record_text?: string;
+  tags?: string[];
+};
 export type RecordTemplateInput = {
   section_code: string;
   table_type: "technical" | "management";
@@ -335,6 +341,22 @@ export function getRecordTemplateSlots(
   }
   const query = params.toString() ? `?${params.toString()}` : "";
   return request<RecordTemplateSlot[]>(`/api/record-template-slots${query}`);
+}
+
+export function updateRecordTemplateSlot(
+  slotId: number,
+  payload: RecordTemplateSlotUpdateInput
+): Promise<RecordTemplateSlot> {
+  return request<RecordTemplateSlot>(`/api/record-template-slots/${slotId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function resetRecordTemplateSlot(slotId: number): Promise<RecordTemplateSlot> {
+  return request<RecordTemplateSlot>(`/api/record-template-slots/${slotId}/reset`, {
+    method: "POST"
+  });
 }
 export function createRecordTemplate(payload: RecordTemplateInput): Promise<RecordTemplate> {
   return request<RecordTemplate>("/api/record-templates", {

@@ -1,34 +1,26 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  copyRecordTemplate,
   createRenderJob,
   createProject,
-  createRecordTemplate,
-  deleteRecordTemplate,
   deleteProject,
   exportProjectDocx,
-  exportRecordTemplates,
   getProject,
   getRenderJob,
-  getRecordTemplates,
   getRecordTemplateSlots,
   getSectionDetail,
   getTemplateProfile,
-  importRecordTemplates,
   listProjects,
-  previewRecordTemplateImport,
   resolveFileUrl,
-  updateRecordTemplate,
+  resetRecordTemplateSlot,
+  updateRecordTemplateSlot,
   updateSectionDetail,
   validateProject,
   type AssessmentRowInput,
   type EvidenceImage,
   type Project,
   type RenderJob,
-  type RecordTemplate,
-  type RecordTemplateImportPayload,
   type RecordTemplateSlot,
-  type RecordTemplateInput,
+  type RecordTemplateSlotUpdateInput,
   type SectionDetail,
   type TemplateProfile,
   type ValidationIssue,
@@ -63,7 +55,6 @@ export function ProjectPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeCode, setActiveCode] = useState<string>();
   const [profile, setProfile] = useState<TemplateProfile | null>(null);
-  const [recordTemplates, setRecordTemplates] = useState<RecordTemplate[]>([]);
   const [recordTemplateSlots, setRecordTemplateSlots] = useState<RecordTemplateSlot[]>([]);
   const [sectionDetails, setSectionDetails] = useState<Record<string, SectionDetail>>({});
   const [draftRows, setDraftRows] = useState<Record<string, AssessmentRowInput[]>>({});
@@ -91,10 +82,6 @@ export function ProjectPage() {
 
   const activeDetail = activeCode ? sectionDetails[activeCode] : undefined;
   const activeRows = activeCode ? draftRows[activeCode] ?? [] : [];
-  const activeRecordTemplates = useMemo(
-    () => recordTemplates.filter((template) => template.section_code === activeCode),
-    [activeCode, recordTemplates]
-  );
   const activeRecordTemplateSlots = useMemo(
     () => recordTemplateSlots.filter((slot) => slot.section_code === activeCode),
     [activeCode, recordTemplateSlots]
@@ -108,7 +95,7 @@ export function ProjectPage() {
     getTemplateProfile()
       .then(setProfile)
       .catch((err) => setError(err instanceof Error ? err.message : "读取模板 profile 失败"));
-    refreshRecordTemplates().catch((err) => setError(err instanceof Error ? err.message : "读取结果记录模板失败"));
+    refreshRecordTemplateSlots().catch((err) => setError(err instanceof Error ? err.message : "读取三类结果记录模板失败"));
     refreshProjects();
   }, []);
 
@@ -163,11 +150,6 @@ export function ProjectPage() {
     }
   }
 
-  async function refreshRecordTemplates() {
-    const templates = await getRecordTemplates();
-    setRecordTemplates(templates);
-    return templates;
-  }
   async function refreshRecordTemplateSlots(sectionCode?: string) {
     const slots = await getRecordTemplateSlots(sectionCode);
     setRecordTemplateSlots((current) => {
@@ -267,83 +249,19 @@ export function ProjectPage() {
     setSaveMessage(undefined);
   }
 
-  function tableTypeForSection(code: string): RecordTemplateInput["table_type"] {
-    return profile?.sections.find((section) => section.code === code)?.table_type ?? "technical";
-  }
-
-  async function handleCreateRecordTemplate(payload: RecordTemplateInput) {
-    const created = await createRecordTemplate(payload);
-    await refreshRecordTemplates();
-    setSaveMessage("结果记录模板已新增。");
-    return created;
-  }
-
-  async function handleUpdateRecordTemplate(templateId: string, payload: Partial<RecordTemplateInput>) {
-    const updated = await updateRecordTemplate(templateId, payload);
-    await refreshRecordTemplates();
-    setSaveMessage("结果记录模板已更新。");
+  async function handleUpdateRecordTemplateSlot(slotId: number, payload: RecordTemplateSlotUpdateInput) {
+    const updated = await updateRecordTemplateSlot(slotId, payload);
+    await refreshRecordTemplateSlots(updated.section_code);
+    setSaveMessage("三类结果记录模板已保存。");
     return updated;
   }
 
-  async function handleDeleteRecordTemplate(templateId: string) {
-    const deleted = await deleteRecordTemplate(templateId);
-    await refreshRecordTemplates();
-    setSaveMessage("结果记录模板已删除。");
-    return deleted;
+  async function handleResetRecordTemplateSlot(slotId: number) {
+    const reset = await resetRecordTemplateSlot(slotId);
+    await refreshRecordTemplateSlots(reset.section_code);
+    setSaveMessage("三类结果记录模板已恢复默认。");
+    return reset;
   }
-
-  async function handleCopyRecordTemplate(templateId: string) {
-    const copied = await copyRecordTemplate(templateId);
-    await refreshRecordTemplates();
-    setSaveMessage("结果记录模板已复制为我的模板。");
-    return copied;
-  }
-
-
-  async function handleExportRecordTemplates() {
-    return exportRecordTemplates();
-  }
-
-  async function handlePreviewRecordTemplateImport(payload: RecordTemplateImportPayload) {
-    return previewRecordTemplateImport(payload);
-  }
-
-  async function handleImportRecordTemplates(payload: RecordTemplateImportPayload) {
-    const result = await importRecordTemplates(payload);
-    await refreshRecordTemplates();
-    setSaveMessage(`模板导入完成：新增 ${result.summary.created}，更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
-    return result;
-  }
-  async function handleSaveRowAsTemplate(row: AssessmentRowInput) {
-    if (!activeCode) {
-      return undefined;
-    }
-    const recordText = row.record_text.trim();
-    if (!recordText) {
-      setError("请先填写结果记录正文，再保存为模板。");
-      return undefined;
-    }
-
-    setError(undefined);
-    try {
-      const created = await createRecordTemplate({
-        section_code: activeCode,
-        table_type: tableTypeForSection(activeCode),
-        unit: row.unit.trim(),
-        object_name: row.object_name.trim(),
-        title: row.object_name.trim() || row.unit.trim(),
-        record_text: recordText,
-        tags: ["手动保存"]
-      });
-      await refreshRecordTemplates();
-      setSaveMessage("当前测评行已保存为我的模板。");
-      return created;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存测评行为模板失败。");
-      return undefined;
-    }
-  }
-
   function applySavedSectionDetail(code: string, detail: SectionDetail) {
     setSectionDetails((current) => ({ ...current, [code]: detail }));
     setDraftRows((current) => ({ ...current, [code]: rowsFromDetail(detail) }));
@@ -687,17 +605,10 @@ export function ProjectPage() {
             <TemplateManagerPanel
               profile={profile}
               activeSectionCode={activeCode}
-              templates={recordTemplates}
-              currentRows={activeRows}
+              recordTemplateSlots={recordTemplateSlots}
               onClose={() => setIsTemplateManagerOpen(false)}
-              onCreate={handleCreateRecordTemplate}
-              onUpdate={handleUpdateRecordTemplate}
-              onDelete={handleDeleteRecordTemplate}
-              onCopy={handleCopyRecordTemplate}
-              onExportUserTemplates={handleExportRecordTemplates}
-              onPreviewImport={handlePreviewRecordTemplateImport}
-              onImportTemplates={handleImportRecordTemplates}
-              onSaveRowAsTemplate={handleSaveRowAsTemplate}
+              onUpdateSlot={handleUpdateRecordTemplateSlot}
+              onResetSlot={handleResetRecordTemplateSlot}
             />
           ) : null}
 
