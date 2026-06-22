@@ -216,6 +216,59 @@ class RecordTemplateExport(BaseModel):
     exported_at: str
     templates: list[RecordTemplateImportItem] = []
 
+class RecordTemplateSlotRead(BaseModel):
+    id: int
+    section_code: str
+    table_type: str
+    unit: str
+    template_type: str
+    template_type_label: str
+    title: str
+    record_text: str
+    default_record_text: str
+    tags: list[str] = Field(default_factory=list)
+    is_customized: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class RecordTemplateSlotUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    record_text: str | None = None
+    tags: list[str] | None = None
+
+
+class RecordTemplateSlotImportItem(BaseModel):
+    section_code: str = Field(min_length=1, max_length=20)
+    table_type: str = Field(min_length=1, max_length=30)
+    unit: str = Field(default="", max_length=500)
+    template_type: str = Field(min_length=1, max_length=30)
+    title: str = Field(default="", max_length=500)
+    record_text: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class RecordTemplateSlotImportPayload(BaseModel):
+    profile_id: str | None = None
+    exported_at: str | None = None
+    templates: list[RecordTemplateSlotImportItem]
+
+
+class RecordTemplateSlotImportPreviewItem(BaseModel):
+    index: int
+    action: str
+    message: str
+    slot_id: int | None = None
+    section_code: str = ""
+    unit: str = ""
+    template_type: str = ""
+    title: str = ""
+
+
+class RecordTemplateSlotImportPreview(BaseModel):
+    summary: RecordTemplateImportSummary
+    items: list[RecordTemplateSlotImportPreviewItem] = []
+
 class ValidationSummary(BaseModel):
     errors: int = 0
     warnings: int = 0

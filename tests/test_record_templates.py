@@ -19,7 +19,10 @@ from app.api.record_templates import export_record_templates as api_export_recor
 from app.api.record_templates import import_record_templates as api_import_record_templates  # noqa: E402
 from app.api.record_templates import preview_record_template_import as api_preview_record_template_import  # noqa: E402
 from app.api.record_templates import update_record_template as api_update_record_template  # noqa: E402
-from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateUpdate  # noqa: E402
+from app.api.record_template_slots import get_record_template_slots as api_get_record_template_slots  # noqa: E402
+from app.api.record_template_slots import reset_record_template_slot_endpoint as api_reset_record_template_slot  # noqa: E402
+from app.api.record_template_slots import update_record_template_slot_endpoint as api_update_record_template_slot  # noqa: E402
+from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateSlotUpdate, RecordTemplateUpdate  # noqa: E402
 from app.services.record_templates import TEMPLATE_SLOT_TYPES, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
 
 
@@ -338,6 +341,70 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertTrue(all(slot["unit"] == unit for slot in unit_slots))
         self.assertEqual([slot["template_type"] for slot in unit_slots], list(TEMPLATE_SLOT_TYPES))
 
+    def test_record_template_slot_api_can_read_update_and_reset(self) -> None:
+        section_slots = api_get_record_template_slots(section_code="A-1")
+        unit = section_slots[0].unit
+        filtered = api_get_record_template_slots(
+            section_code="A-1",
+            unit=unit,
+            template_type="non_compliant",
+        )
+        slot = filtered[0]
+        default_tags = slot.tags
+
+        updated = api_update_record_template_slot(
+            slot.id,
+            RecordTemplateSlotUpdate(
+                title="T3-2 不符合模板",
+                record_text="T3-2 已修改的不符合模板正文。",
+                tags=["T3-2", " 不符合 ", "T3-2"],
+            ),
+        )
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(updated.title, "T3-2 不符合模板")
+        self.assertEqual(updated.record_text, "T3-2 已修改的不符合模板正文。")
+        self.assertEqual(updated.tags, ["T3-2", "不符合"])
+        self.assertTrue(updated.is_customized)
+
+        reset = api_reset_record_template_slot(slot.id)
+
+        self.assertEqual(reset.title, reset.template_type_label)
+        self.assertEqual(reset.record_text, slot.default_record_text)
+        self.assertEqual(reset.tags, default_tags)
+        self.assertFalse(reset.is_customized)
+
+    def test_record_template_slot_api_rejects_invalid_type_and_missing_slot(self) -> None:
+        with self.assertRaises(HTTPException) as invalid_type_context:
+            api_get_record_template_slots(template_type="extra_type")
+
+        self.assertEqual(invalid_type_context.exception.status_code, 400)
+        self.assertIn("compliant", invalid_type_context.exception.detail)
+
+        with self.assertRaises(HTTPException) as update_context:
+            api_update_record_template_slot(
+                999999,
+                RecordTemplateSlotUpdate(record_text="不存在的槽位。"),
+            )
+
+        self.assertEqual(update_context.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as reset_context:
+            api_reset_record_template_slot(999999)
+
+        self.assertEqual(reset_context.exception.status_code, 404)
+
+    def test_record_template_slot_api_has_no_delete_route(self) -> None:
+        from app.main import app  # noqa: E402
+
+        matching_delete_routes = [
+            route
+            for route in app.routes
+            if getattr(route, "path", "") == "/api/record-template-slots/{slot_id}"
+            and "DELETE" in getattr(route, "methods", set())
+        ]
+
+        self.assertEqual(matching_delete_routes, [])
 
 if __name__ == "__main__":
     unittest.main()

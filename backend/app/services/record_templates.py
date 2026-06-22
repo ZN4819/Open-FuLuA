@@ -76,12 +76,54 @@ def list_record_templates(section_code: str | None = None, keyword: str | None =
 def list_record_template_slots(
     section_code: str | None = None,
     unit: str | None = None,
+    template_type: str | None = None,
 ) -> list[dict[str, Any]]:
     ensure_record_template_slots_seeded()
+    if template_type is not None:
+        _validate_template_slot_type(template_type)
     return [
         _row_to_template_slot(row)
-        for row in database.list_record_template_slot_rows(section_code=section_code, unit=unit)
+        for row in database.list_record_template_slot_rows(
+            section_code=section_code,
+            unit=unit,
+            template_type=template_type,
+        )
     ]
+
+
+def get_record_template_slot(slot_id: int) -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    row = database.get_record_template_slot_row(slot_id)
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    _validate_template_slot_type(row["template_type"])
+    return _row_to_template_slot(row)
+
+
+def update_record_template_slot(slot_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    existing = get_record_template_slot(slot_id)
+    updates = _normalize_template_slot_update(payload, existing)
+    if not updates:
+        return existing
+    row = database.update_record_template_slot_row(slot_id, updates)
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    return _row_to_template_slot(row)
+
+
+def reset_record_template_slot(slot_id: int) -> dict[str, Any]:
+    ensure_record_template_slots_seeded()
+    existing = get_record_template_slot(slot_id)
+    template_type = existing["template_type"]
+    row = database.reset_record_template_slot_row(
+        slot_id,
+        TEMPLATE_SLOT_TYPE_LABELS[template_type],
+        TEMPLATE_SLOT_TYPE_TAGS[template_type],
+    )
+    if row is None:
+        raise RecordTemplateNotFoundError("结果记录模板不存在。")
+    return _row_to_template_slot(row)
 
 def create_user_record_template(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_system_record_templates_seeded()
@@ -297,6 +339,29 @@ def _ensure_user_template(row: Any) -> None:
         raise RecordTemplatePermissionError("系统模板不能直接修改或删除，请先复制为用户模板。")
 
 
+def _normalize_template_slot_update(payload: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    if "title" in payload and payload["title"] is not None:
+        title = _clean_text(payload["title"])
+        if not title:
+            raise RecordTemplateValidationError("三类结果记录模板标题不能为空。")
+        updates["title"] = title
+    if "record_text" in payload and payload["record_text"] is not None:
+        record_text = _clean_text(payload["record_text"])
+        if not record_text:
+            raise RecordTemplateValidationError("三类结果记录模板正文不能为空。")
+        updates["record_text"] = record_text
+    if "tags" in payload and payload["tags"] is not None:
+        updates["tags"] = _normalize_tags(payload["tags"])
+
+    _validate_template_slot_type(existing["template_type"])
+    return updates
+
+
+def _validate_template_slot_type(template_type: str) -> None:
+    if template_type not in TEMPLATE_SLOT_TYPES:
+        valid_types = "、".join(TEMPLATE_SLOT_TYPES)
+        raise RecordTemplateValidationError(f"结果记录模板类型必须为 {valid_types}。")
 def _normalize_template_payload(payload: dict[str, Any], require_all: bool) -> dict[str, Any]:
     section_code = _clean_text(payload.get("section_code"))
     table_type = _clean_text(payload.get("table_type"))

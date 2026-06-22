@@ -479,6 +479,7 @@ def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
 def list_record_template_slot_rows(
     section_code: str | None = None,
     unit: str | None = None,
+    template_type: str | None = None,
 ) -> list[sqlite3.Row]:
     conditions: list[str] = []
     values: list[Any] = []
@@ -488,6 +489,9 @@ def list_record_template_slot_rows(
     if unit is not None:
         conditions.append("unit = ?")
         values.append(unit)
+    if template_type is not None:
+        conditions.append("template_type = ?")
+        values.append(template_type)
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     with connect() as db:
@@ -522,6 +526,66 @@ def list_record_template_slot_rows(
             values,
         ).fetchall()
 
+
+def get_record_template_slot_row(slot_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = """
+        SELECT
+            id,
+            section_code,
+            table_type,
+            unit,
+            template_type,
+            title,
+            record_text,
+            default_record_text,
+            tags,
+            is_customized,
+            created_at,
+            updated_at
+        FROM record_template_slots
+        WHERE id = ?
+    """
+    if db is not None:
+        return db.execute(query, (slot_id,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (slot_id,)).fetchone()
+
+
+def update_record_template_slot_row(slot_id: int, fields: dict[str, Any]) -> sqlite3.Row | None:
+    allowed = {"title", "record_text", "tags"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if "tags" in updates:
+        updates["tags"] = json.dumps(updates["tags"], ensure_ascii=False)
+    updates["is_customized"] = 1
+    updates["updated_at"] = utc_now()
+
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = list(updates.values()) + [slot_id]
+    with connect() as db:
+        if get_record_template_slot_row(slot_id, db=db) is None:
+            return None
+        db.execute(f"UPDATE record_template_slots SET {assignments} WHERE id = ?", values)
+        return get_record_template_slot_row(slot_id, db=db)
+
+
+def reset_record_template_slot_row(slot_id: int, title: str, tags: list[str]) -> sqlite3.Row | None:
+    timestamp = utc_now()
+    with connect() as db:
+        if get_record_template_slot_row(slot_id, db=db) is None:
+            return None
+        db.execute(
+            """
+            UPDATE record_template_slots
+            SET title = ?,
+                record_text = default_record_text,
+                tags = ?,
+                is_customized = 0,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (title, json.dumps(tags, ensure_ascii=False), timestamp, slot_id),
+        )
+        return get_record_template_slot_row(slot_id, db=db)
 
 def get_record_template_row(
     template_key: str,
