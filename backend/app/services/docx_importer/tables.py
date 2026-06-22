@@ -211,13 +211,21 @@ def _header_row_count(rows: list[list[str]], table_type: str) -> int:
         first_row_text = "".join(rows[0])
         if "量化指标" in first_row_text:
             return 2 if len(rows) >= 2 else 1
-        if len(rows) >= 2 and _row_contains_any(rows[1], {"D", "A", "K", "测评对象评分"}):
+        if len(rows) >= 2 and _is_technical_second_header_row(rows[1]):
             return 2
         return 1
     if _row_contains_any(rows[0], MANAGEMENT_HEADER_MARKERS):
         return 1
     return 1
 
+
+def _is_technical_second_header_row(row: list[str]) -> bool:
+    joined = "".join(row)
+    header_phrases = {"密码使用有效性", "密码算法", "密钥管理安全", "测评对象评分"}
+    if any(phrase in joined for phrase in header_phrases):
+        return True
+    exact_metric_cells = sum(1 for cell in row if cell.strip() in {"D", "A", "K"})
+    return exact_metric_cells >= 2
 
 def _row_contains_any(row: list[str], markers: set[str]) -> bool:
     joined = "".join(row)

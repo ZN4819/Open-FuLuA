@@ -66,6 +66,14 @@ class DocxImportMetricResultModel:
 
 
 @dataclass(frozen=True)
+class DocxImportCrossReferenceModel:
+    token: str
+    display_text: str
+    target_figure_label: str | None = None
+    target_image_key: str | None = None
+
+
+@dataclass(frozen=True)
 class DocxImportAssessmentRowModel:
     section_code: str
     unit: str
@@ -73,8 +81,27 @@ class DocxImportAssessmentRowModel:
     record_text: str
     sort_order: int
     metric_result: DocxImportMetricResultModel = field(default_factory=DocxImportMetricResultModel)
+    cross_references: list[DocxImportCrossReferenceModel] = field(default_factory=list)
     source_table_index: int | None = None
     source_row_index: int | None = None
+
+
+@dataclass(frozen=True)
+class DocxImportEvidenceImageModel:
+    section_code: str
+    figure_label: str
+    caption: str
+    sort_order: int
+    file_path: str
+    original_name: str
+    source_media_path: str
+    relationship_id: str
+    pixel_width: int | None = None
+    pixel_height: int | None = None
+    dpi_x: float | None = None
+    dpi_y: float | None = None
+    display_width_in: float | None = None
+    display_height_in: float | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +111,7 @@ class DocxImportParsedSectionModel:
     table_title: str
     table_type: str
     rows: list[DocxImportAssessmentRowModel] = field(default_factory=list)
+    images: list[DocxImportEvidenceImageModel] = field(default_factory=list)
     image_count: int = 0
     reference_count: int = 0
 
