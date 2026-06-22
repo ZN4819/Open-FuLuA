@@ -1,3 +1,4 @@
+from .confirm import DocxImportConfirmError, confirm_docx_import_project
 from .document import scan_docx_structure
 from .media import parse_docx_images_and_references
 from .tables import parse_docx_core_tables
@@ -19,6 +20,8 @@ from .storage import ensure_import_job_dir, import_job_dir, parsed_json_path, re
 
 __all__ = [
     "DOCX_IMPORT_STATUSES",
+    "DocxImportConfirmError",
+    "confirm_docx_import_project",
     "DocxImportAssessmentRowModel",
     "DocxImportCrossReferenceModel",
     "DocxImportEvidenceImageModel",
