@@ -203,7 +203,8 @@ export function AssessmentTable({
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
   const normalizedRows = normalizeRows(rows, unitOrder, technical);
-  const objectCount = technical ? uniqueValues(normalizedRows.map((row) => row.object_name)).length : rows.length;
+  const technicalObjectNames = uniqueValues(normalizedRows.map((row) => row.object_name));
+  const objectCount = technical ? technicalObjectNames.length : rows.length;
   const templateSlotCount = recordTemplateSlots.length;
   const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
   const groupedRows = unitOrder.map((unit) => {
@@ -248,12 +249,30 @@ export function AssessmentTable({
     if (!technical || !objectName || unitOrder.length === 0) {
       return;
     }
-    const appendedRows = unitOrder.map((unit, offset) => ({
-      ...createEmptyRow(normalizedRows.length + offset + 1, unit),
-      object_name: objectName
-    }));
-    onRowsChange(normalizeRows([...normalizedRows, ...appendedRows], unitOrder, technical));
+    const existingObjectUnits = new Set(
+      normalizedRows
+        .filter((row) => row.object_name.trim() === objectName)
+        .map((row) => row.unit.trim())
+    );
+    const appendedRows = unitOrder
+      .filter((unit) => !existingObjectUnits.has(unit))
+      .map((unit, offset) => ({
+        ...createEmptyRow(normalizedRows.length + offset + 1, unit),
+        object_name: objectName
+      }));
+    if (appendedRows.length > 0) {
+      onRowsChange(normalizeRows([...normalizedRows, ...appendedRows], unitOrder, technical));
+    }
     setTechnicalObjectName("");
+  }
+
+  function removeTechnicalSectionObject(objectNameValue: string | undefined) {
+    const objectName = (objectNameValue ?? "").trim();
+    if (!technical || !objectName) {
+      return;
+    }
+    recordSelections.current = {};
+    onRowsChange(normalizeRows(normalizedRows.filter((row) => row.object_name.trim() !== objectName), unitOrder, technical));
   }
 
   function removeRow(index: number) {
@@ -348,26 +367,41 @@ export function AssessmentTable({
 
       {technical ? (
         <div className="technical-object-toolbar">
-          <label>
-            <span>测评对象</span>
-            <input
-              value={technicalObjectName}
-              onChange={(event) => setTechnicalObjectName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addTechnicalSectionObject();
-                }
-              }}
-              placeholder="例如：XX机房"
-            />
-          </label>
-          <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
-            新增对象
-          </button>
+          <div className="technical-object-add">
+            <label>
+              <span>测评对象</span>
+              <input
+                value={technicalObjectName}
+                onChange={(event) => setTechnicalObjectName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addTechnicalSectionObject();
+                  }
+                }}
+                placeholder="例如：XX机房"
+              />
+            </label>
+            <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
+              新增对象
+            </button>
+          </div>
+          {technicalObjectNames.length > 0 ? (
+            <div className="technical-object-list" aria-label="已添加测评对象">
+              {technicalObjectNames.map((objectName) => (
+                <span className="technical-object-item" key={objectName}>
+                  <span>{objectName}</span>
+                  <button type="button" className="danger-button object-delete-button" onClick={() => removeTechnicalSectionObject(objectName)}>
+                    删除对象
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="technical-object-empty">当前章节还没有测评对象。</p>
+          )}
         </div>
       ) : null}
-
       {unitOrder.length === 0 ? (
         <div className="empty-table">
           <p>当前章节还没有可用的固定测评单元，请确认结果记录模板是否已加载。</p>
@@ -568,8 +602,12 @@ export function AssessmentTable({
                           </>
                         )}
                         <td className="row-action-cell">
-                          <button type="button" className="danger-button" onClick={() => removeRow(index)}>
-                            删除
+                          <button
+                            type="button"
+                            className="danger-button"
+                            onClick={() => (technical ? removeTechnicalSectionObject(row.object_name) : removeRow(index))}
+                          >
+                            {technical ? "删除对象" : "删除"}
                           </button>
                         </td>
                       </tr>

@@ -1577,6 +1577,14 @@ a:hover {
   border-radius: var(--radius-md);
 }
 
+.technical-object-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  min-width: 0;
+}
+
 .technical-object-toolbar label {
   display: grid;
   gap: var(--space-1);
@@ -1595,6 +1603,46 @@ a:hover {
 .technical-object-toolbar button {
   min-height: 38px;
   padding: 0 18px;
+}
+
+.technical-object-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+
+.technical-object-item {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  max-width: 100%;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.technical-object-item > span {
+  max-width: 220px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.technical-object-empty {
+  align-self: center;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.object-delete-button {
+  min-height: 30px;
+  padding: 0 10px;
 }
 
 .dirty-chip {
@@ -2226,7 +2274,8 @@ a:hover {
     flex-direction: column;
   }
 
-  .technical-object-toolbar {
+  .technical-object-toolbar,
+  .technical-object-add {
     grid-template-columns: 1fr;
   }
 
