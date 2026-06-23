@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { AssessmentRowInput, EvidenceImage, RecordTemplateSlot, TemplateProfile } from "../api/client";
 
@@ -199,9 +199,11 @@ export function AssessmentTable({
   const metricOptions = profile.content_controls.technical_metric.options;
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
+  const [technicalObjectName, setTechnicalObjectName] = useState("");
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
   const normalizedRows = normalizeRows(rows, unitOrder, technical);
+  const objectCount = technical ? uniqueValues(normalizedRows.map((row) => row.object_name)).length : rows.length;
   const templateSlotCount = recordTemplateSlots.length;
   const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
   const groupedRows = unitOrder.map((unit) => {
@@ -239,6 +241,19 @@ export function AssessmentTable({
 
   function addRow(unit: string) {
     onRowsChange(normalizeRows([...normalizedRows, createEmptyRow(normalizedRows.length + 1, unit)], unitOrder, technical));
+  }
+
+  function addTechnicalSectionObject() {
+    const objectName = technicalObjectName.trim();
+    if (!technical || !objectName || unitOrder.length === 0) {
+      return;
+    }
+    const appendedRows = unitOrder.map((unit, offset) => ({
+      ...createEmptyRow(normalizedRows.length + offset + 1, unit),
+      object_name: objectName
+    }));
+    onRowsChange(normalizeRows([...normalizedRows, ...appendedRows], unitOrder, technical));
+    setTechnicalObjectName("");
   }
 
   function removeRow(index: number) {
@@ -316,7 +331,7 @@ export function AssessmentTable({
           <p className="eyebrow">{technical ? "技术测评表" : "管理测评表"}</p>
           <h3>{tableTitle}</h3>
           <div className="editor-toolbar-meta">
-            <span className="status-chip">测评对象 {rows.length}</span>
+            <span className="status-chip">测评对象 {objectCount}</span>
             <span className="status-chip">固定单元 {unitOrder.length}</span>
             <span className="status-chip">三类模板 {templateTypeCount}</span>
             <span className="status-chip">模板槽位 {templateSlotCount}</span>
@@ -330,6 +345,28 @@ export function AssessmentTable({
           </button>
         </div>
       </div>
+
+      {technical ? (
+        <div className="technical-object-toolbar">
+          <label>
+            <span>测评对象</span>
+            <input
+              value={technicalObjectName}
+              onChange={(event) => setTechnicalObjectName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addTechnicalSectionObject();
+                }
+              }}
+              placeholder="例如：XX机房"
+            />
+          </label>
+          <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
+            新增对象
+          </button>
+        </div>
+      ) : null}
 
       {unitOrder.length === 0 ? (
         <div className="empty-table">
@@ -388,13 +425,15 @@ export function AssessmentTable({
                       <div className="fixed-unit-content">
                         <strong>{group.unit}</strong>
                         <span>对象 0</span>
-                        <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
-                          新增对象
-                        </button>
+                        {!technical ? (
+                          <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
+                            新增对象
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                     <td className="unit-empty-cell" colSpan={tableColumnCount - 1}>
-                      当前测评单元还没有测评对象。
+                      {technical ? "当前章节还没有为该单元新增测评对象。" : "当前测评单元还没有测评对象。"}
                     </td>
                   </tr>
                 ) : (
@@ -408,9 +447,11 @@ export function AssessmentTable({
                             <div className="fixed-unit-content">
                               <strong>{group.unit}</strong>
                               <span>对象 {group.entries.length}</span>
-                              <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
-                                新增对象
-                              </button>
+                              {!technical ? (
+                                <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
+                                  新增对象
+                                </button>
+                              ) : null}
                             </div>
                           </td>
                         ) : null}
