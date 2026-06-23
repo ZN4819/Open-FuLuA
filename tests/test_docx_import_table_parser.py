@@ -131,6 +131,33 @@ class DocxImportTableParserTest(unittest.TestCase):
         self.assertEqual(a1.row_count, 1)
         self.assertEqual(a1.rows[0].object_name, "主机")
 
+    def test_parses_compact_technical_rows_without_reading_scores_as_dak(self) -> None:
+        path = self.root / "compact-technical.docx"
+        document = Document()
+        document.add_paragraph("A-1")
+        table = document.add_table(rows=3, cols=8)
+        self._fill_technical_header(table)
+        table.cell(2, 0).text = "Unit"
+        table.cell(2, 1).text = "Object"
+        table.cell(2, 2).text = "Record"
+        table.cell(2, 3).text = "1.0000"
+        table.cell(2, 4).text = "0.5000"
+        for cell in list(table.rows[2]._tr.tc_lst)[5:]:
+            table.rows[2]._tr.remove(cell)
+        document.save(path)
+
+        parsed = parse_docx_core_tables(path)
+        a1 = self._section(parsed, "A-1")
+        issue_codes = {issue.code for issue in parsed.issues}
+
+        self.assertEqual(a1.row_count, 1)
+        self.assertEqual(a1.rows[0].metric_result.d, "/")
+        self.assertEqual(a1.rows[0].metric_result.a, "/")
+        self.assertEqual(a1.rows[0].metric_result.k, "/")
+        self.assertEqual(a1.rows[0].metric_result.object_score, "1.0000")
+        self.assertEqual(a1.rows[0].metric_result.unit_score, "0.5000")
+        self.assertNotIn("IMPORT_INVALID_DAK_VALUE", issue_codes)
+
     def test_reports_invalid_metric_and_compliance_values(self) -> None:
         technical_path = self.root / "invalid-technical.docx"
         document = Document()

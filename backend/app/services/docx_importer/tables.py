@@ -113,7 +113,7 @@ def _parse_section_rows(
     rows: list[DocxImportAssessmentRowModel] = []
 
     for source_row_index, raw_values in enumerate(expanded_rows[header_count:], start=header_count + 1):
-        values = _values_by_key(raw_values, keys)
+        values = _values_by_key(raw_values, keys, table_type)
         if _is_empty_import_row(values, table_type, profile):
             continue
 
@@ -232,12 +232,32 @@ def _row_contains_any(row: list[str], markers: set[str]) -> bool:
     return any(marker in joined for marker in markers)
 
 
-def _values_by_key(raw_values: list[str], keys: list[str]) -> dict[str, str]:
+def _values_by_key(raw_values: list[str], keys: list[str], table_type: str) -> dict[str, str]:
+    if table_type == "technical":
+        return _technical_values_by_key(raw_values, keys)
+
     values: dict[str, str] = {}
     for index, key in enumerate(keys):
         values[key] = raw_values[index] if index < len(raw_values) else ""
     return values
 
+
+def _technical_values_by_key(raw_values: list[str], keys: list[str]) -> dict[str, str]:
+    values = {key: "" for key in keys}
+    for index, key in enumerate(keys[:3]):
+        values[key] = raw_values[index] if index < len(raw_values) else ""
+
+    if len(raw_values) in {4, 5}:
+        values["d"] = "/"
+        values["a"] = "/"
+        values["k"] = "/"
+        values["object_score"] = raw_values[3] if len(raw_values) >= 4 else ""
+        values["unit_score"] = raw_values[4] if len(raw_values) >= 5 else ""
+        return values
+
+    for index, key in enumerate(keys[3:], start=3):
+        values[key] = raw_values[index] if index < len(raw_values) else ""
+    return values
 
 def _metric_result(values: dict[str, str], table_type: str) -> DocxImportMetricResultModel:
     if table_type == "technical":
