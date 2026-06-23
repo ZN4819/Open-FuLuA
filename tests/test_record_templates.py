@@ -320,6 +320,29 @@ class RecordTemplatesTest(unittest.TestCase):
             self.assertTrue(all(slot["default_record_text"] for slot in unit_slots))
             self.assertTrue(all(slot["title"] for slot in unit_slots))
 
+    def test_record_template_slots_follow_source_template_unit_order(self) -> None:
+        expected_units: list[str] = []
+        seen_units: set[str] = set()
+        for template in load_record_template_library()["templates"]:
+            if template["section_code"] != "A-1":
+                continue
+            unit = template["unit"]
+            if unit not in seen_units:
+                expected_units.append(unit)
+                seen_units.add(unit)
+
+        section_slots = list_record_template_slots("A-1")
+        actual_units: list[str] = []
+        for slot in section_slots:
+            if slot["unit"] not in actual_units:
+                actual_units.append(slot["unit"])
+
+        self.assertEqual(actual_units, expected_units)
+        self.assertEqual(
+            [slot["template_type"] for slot in section_slots[: len(TEMPLATE_SLOT_TYPES)]],
+            list(TEMPLATE_SLOT_TYPES),
+        )
+
     def test_record_template_slot_seed_is_idempotent_and_keeps_old_templates(self) -> None:
         first = list_record_template_slots()
         ensure_record_template_slots_seeded()

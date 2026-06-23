@@ -54,7 +54,7 @@ tests/test_docx_import_roundtrip.py
 .\scripts\run_checks.ps1
 ```
 
-当前自动化测试共 91 项，全部通过。
+当前自动化测试共 92 项，全部通过。
 
 ## 验收结论
 

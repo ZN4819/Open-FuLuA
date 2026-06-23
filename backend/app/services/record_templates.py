@@ -82,13 +82,14 @@ def list_record_template_slots(
     ensure_record_template_slots_seeded()
     if template_type is not None:
         _validate_template_slot_type(template_type)
+    rows = database.list_record_template_slot_rows(
+        section_code=section_code,
+        unit=unit,
+        template_type=template_type,
+    )
     return [
         _row_to_template_slot(row)
-        for row in database.list_record_template_slot_rows(
-            section_code=section_code,
-            unit=unit,
-            template_type=template_type,
-        )
+        for row in _sort_template_slot_rows(rows)
     ]
 
 
@@ -310,16 +311,16 @@ def ensure_record_template_slots_seeded() -> None:
 
 
 def _build_template_slot_seed() -> list[dict[str, Any]]:
-    system_rows = database.list_record_template_rows(source_type="system")
-    representative_by_unit: dict[tuple[str, str], Any] = {}
-    for row in system_rows:
-        key = (row["section_code"], row["unit"])
-        representative_by_unit.setdefault(key, row)
+    template_order = _template_unit_order()
+    representative_by_unit: dict[tuple[str, str], dict[str, Any]] = {}
+    for template in load_record_template_library()["templates"]:
+        key = (template["section_code"], template["unit"])
+        representative_by_unit.setdefault(key, template)
 
     slots: list[dict[str, Any]] = []
     for (section_code, unit), row in sorted(
         representative_by_unit.items(),
-        key=lambda item: (int(item[0][0].split("-")[1]), item[0][1]),
+        key=lambda item: template_order[item[0]],
     ):
         for template_type in TEMPLATE_SLOT_TYPES:
             default_record_text = _default_slot_record_text(template_type, row)
@@ -336,6 +337,40 @@ def _build_template_slot_seed() -> list[dict[str, Any]]:
                 }
             )
     return slots
+
+
+def _template_unit_order() -> dict[tuple[str, str], int]:
+    order: dict[tuple[str, str], int] = {}
+    for template in load_record_template_library()["templates"]:
+        key = (template["section_code"], template["unit"])
+        order.setdefault(key, len(order))
+    return order
+
+
+def _sort_template_slot_rows(rows: list[Any]) -> list[Any]:
+    template_order = _template_unit_order()
+    template_type_order = {template_type: index for index, template_type in enumerate(TEMPLATE_SLOT_TYPES)}
+    fallback_unit_order = len(template_order)
+
+    def sort_key(row: Any) -> tuple[int, int, str, int, int]:
+        section_code = row["section_code"]
+        unit = row["unit"]
+        return (
+            _section_number(section_code),
+            template_order.get((section_code, unit), fallback_unit_order),
+            unit,
+            template_type_order.get(row["template_type"], len(template_type_order)),
+            int(row["id"] or 0),
+        )
+
+    return sorted(rows, key=sort_key)
+
+
+def _section_number(section_code: str) -> int:
+    try:
+        return int(section_code.split("-", 1)[1])
+    except (IndexError, ValueError):
+        return 999
 
 
 def _default_slot_record_text(template_type: str, representative: Any) -> str:
