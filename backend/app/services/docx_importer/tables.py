@@ -248,9 +248,6 @@ def _technical_values_by_key(raw_values: list[str], keys: list[str]) -> dict[str
         values[key] = raw_values[index] if index < len(raw_values) else ""
 
     if len(raw_values) in {4, 5}:
-        values["d"] = "/"
-        values["a"] = "/"
-        values["k"] = "/"
         values["object_score"] = raw_values[3] if len(raw_values) >= 4 else ""
         values["unit_score"] = raw_values[4] if len(raw_values) >= 5 else ""
         return values

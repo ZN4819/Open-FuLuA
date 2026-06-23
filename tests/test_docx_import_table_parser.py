@@ -151,9 +151,9 @@ class DocxImportTableParserTest(unittest.TestCase):
         issue_codes = {issue.code for issue in parsed.issues}
 
         self.assertEqual(a1.row_count, 1)
-        self.assertEqual(a1.rows[0].metric_result.d, "/")
-        self.assertEqual(a1.rows[0].metric_result.a, "/")
-        self.assertEqual(a1.rows[0].metric_result.k, "/")
+        self.assertIsNone(a1.rows[0].metric_result.d)
+        self.assertIsNone(a1.rows[0].metric_result.a)
+        self.assertIsNone(a1.rows[0].metric_result.k)
         self.assertEqual(a1.rows[0].metric_result.object_score, "1.0000")
         self.assertEqual(a1.rows[0].metric_result.unit_score, "0.5000")
         self.assertNotIn("IMPORT_INVALID_DAK_VALUE", issue_codes)
