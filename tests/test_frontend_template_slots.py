@@ -69,6 +69,8 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("function addTechnicalSectionObject", table_source)
         self.assertIn("function removeTechnicalSectionObject", table_source)
         self.assertIn("technicalObjectNames", table_source)
+        self.assertIn("save-action-row", table_source)
+        self.assertIn("toolbar-object-add", table_source)
         self.assertIn("technical-object-toolbar", table_source)
         self.assertIn("technical-object-list", table_source)
         self.assertIn("object-delete-button", table_source)

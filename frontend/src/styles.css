@@ -1562,14 +1562,25 @@ a:hover {
 }
 
 .toolbar-actions {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  align-content: start;
+}
+
+.save-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
   justify-content: flex-end;
 }
 
 .technical-object-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 360px) auto;
+  grid-template-columns: 1fr;
   gap: var(--space-3);
-  align-items: end;
+  align-items: start;
   padding: var(--space-3);
   margin: 0 0 var(--space-4);
   background: var(--color-surface-muted);
@@ -1585,7 +1596,12 @@ a:hover {
   min-width: 0;
 }
 
-.technical-object-toolbar label {
+.toolbar-object-add {
+  justify-self: end;
+  width: min(360px, 100%);
+}
+
+.technical-object-add label {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
@@ -1594,13 +1610,13 @@ a:hover {
   color: var(--color-text-muted);
 }
 
-.technical-object-toolbar input {
+.technical-object-add input {
   width: 100%;
   min-width: 0;
   min-height: 38px;
 }
 
-.technical-object-toolbar button {
+.technical-object-add button {
   min-height: 38px;
   padding: 0 18px;
 }
@@ -2272,6 +2288,10 @@ a:hover {
   .editor-toolbar,
   .project-list-header {
     flex-direction: column;
+  }
+
+  .toolbar-actions {
+    justify-items: stretch;
   }
 
   .technical-object-toolbar,

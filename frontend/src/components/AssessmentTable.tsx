@@ -358,34 +358,38 @@ export function AssessmentTable({
           </div>
         </div>
         <div className="toolbar-actions">
-          {isDirty ? <span className="dirty-chip">有未保存修改</span> : <span className="clean-chip">已保存</span>}
-          <button type="button" onClick={onSave} disabled={isSaving || !isDirty}>
-            {isSaving ? "保存中..." : "保存"}
-          </button>
+          <div className="save-action-row">
+            {isDirty ? <span className="dirty-chip">有未保存修改</span> : <span className="clean-chip">已保存</span>}
+            <button type="button" onClick={onSave} disabled={isSaving || !isDirty}>
+              {isSaving ? "保存中..." : "保存"}
+            </button>
+          </div>
+          {technical ? (
+            <div className="technical-object-add toolbar-object-add">
+              <label>
+                <span>测评对象</span>
+                <input
+                  value={technicalObjectName}
+                  onChange={(event) => setTechnicalObjectName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTechnicalSectionObject();
+                    }
+                  }}
+                  placeholder="例如：XX机房"
+                />
+              </label>
+              <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
+                新增对象
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
       {technical ? (
         <div className="technical-object-toolbar">
-          <div className="technical-object-add">
-            <label>
-              <span>测评对象</span>
-              <input
-                value={technicalObjectName}
-                onChange={(event) => setTechnicalObjectName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addTechnicalSectionObject();
-                  }
-                }}
-                placeholder="例如：XX机房"
-              />
-            </label>
-            <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
-              新增对象
-            </button>
-          </div>
           {technicalObjectNames.length > 0 ? (
             <div className="technical-object-list" aria-label="已添加测评对象">
               {technicalObjectNames.map((objectName) => (
