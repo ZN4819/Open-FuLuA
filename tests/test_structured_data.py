@@ -108,6 +108,51 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(len(references), 1)
         self.assertEqual(references[0]["display_text"], "图A-1-1")
 
+    def test_technical_unit_score_is_calculated_on_save(self) -> None:
+        project = database.create_project("unit score project")
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "Unit A",
+                    "object_name": "Object 1",
+                    "record_text": "record 1",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1.0000", "unit_score": "9.9999"},
+                },
+                {
+                    "unit": "Unit A",
+                    "object_name": "Object 2",
+                    "record_text": "record 2",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0.0000", "unit_score": "9.9999"},
+                },
+                {
+                    "unit": "Unit A",
+                    "object_name": "Object 3",
+                    "record_text": "record 3",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "/", "unit_score": "9.9999"},
+                },
+                {
+                    "unit": "Unit B",
+                    "object_name": "Object 4",
+                    "record_text": "record 4",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "/", "unit_score": "9.9999"},
+                },
+                {
+                    "unit": "Unit B",
+                    "object_name": "Object 5",
+                    "record_text": "record 5",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "/", "unit_score": "9.9999"},
+                },
+            ],
+        )
+
+        section = database.get_section(project["id"], "A-1")
+        rows = database.list_assessment_rows(section["id"])
+
+        self.assertEqual([row["unit_score"] for row in rows[:3]], ["0.5000", "0.5000", "0.5000"])
+        self.assertEqual([row["unit_score"] for row in rows[3:]], ["/", "/"])
+
     def test_section_detail_shape_matches_api_contract(self) -> None:
         project = database.create_project("章节详情测试")
         database.replace_section_rows(

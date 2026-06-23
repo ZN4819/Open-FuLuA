@@ -78,6 +78,15 @@ class DocxGeneratorTest(unittest.TestCase):
             {"technical": "Si,j=1≤k≤ni,jSi,j,kni,j", "management": "Si,j"},
         )
         self.assertEqual(
+            _first_table_unit_score_column(path),
+            {
+                "text": "0.5000",
+                "first_vmerge": "restart",
+                "second_vmerge": "continue",
+                "second_text": "",
+            },
+        )
+        self.assertEqual(
             _first_figure_caption_format(path),
             {
                 "paragraph": {
@@ -182,8 +191,8 @@ class DocxGeneratorTest(unittest.TestCase):
                         "d": "√",
                         "a": "√",
                         "k": "/",
-                        "object_score": "1.0000",
-                        "unit_score": "1.0000",
+                        "object_score": "0.0000",
+                        "unit_score": "9.9999",
                     },
                 },
             ],
@@ -328,6 +337,25 @@ def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | N
         "bold_cs": _word_boolean_state(bold_cs),
     }
 
+
+def _first_table_unit_score_column(path: Path) -> dict[str, str | None]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    table = document.find(".//w:tbl", NS)
+    if table is None:
+        return {}
+    rows = table.findall("w:tr", NS)
+    body_rows = rows[2:4]
+    first_score_cell = body_rows[0].findall("w:tc", NS)[7]
+    second_score_cell = body_rows[1].findall("w:tc", NS)[7]
+    first_vmerge = first_score_cell.find("w:tcPr/w:vMerge", NS)
+    second_vmerge = second_score_cell.find("w:tcPr/w:vMerge", NS)
+    return {
+        "text": _cell_text(first_score_cell),
+        "first_vmerge": _w_attr(first_vmerge, "val") or "continue",
+        "second_vmerge": _w_attr(second_vmerge, "val") or "continue",
+        "second_text": _cell_text(second_score_cell),
+    }
 
 def _unit_score_header_formulas(path: Path) -> dict[str, str]:
     with zipfile.ZipFile(path) as package:

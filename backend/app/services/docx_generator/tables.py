@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 from docx import Document
@@ -36,7 +37,7 @@ def add_assessment_table(
     section_profile = _section_profile(profile, section["code"])
     table_profile = profile["tables"][section_profile["table_type"]]
     columns = table_profile["columns"]
-    output_rows = rows or [_empty_row(section_profile["table_type"])]
+    output_rows = _rows_with_calculated_unit_scores(rows or [_empty_row(section_profile["table_type"])], section_profile["table_type"])
     header_row_count = 2 if section_profile["table_type"] == "technical" else 1
 
     table = document.add_table(rows=header_row_count, cols=len(columns))
@@ -60,7 +61,7 @@ def add_assessment_table(
             )
 
     configure_table_geometry(table, [float(column["width_in"]) for column in columns], profile)
-    _merge_repeated_unit_cells(table, output_rows, header_row_count, profile)
+    _merge_repeated_unit_cells(table, output_rows, header_row_count, profile, columns)
     return table
 
 
@@ -281,14 +282,69 @@ def _mark_repeat_header(row) -> None:
     tr_pr.append(header)
 
 
+def _rows_with_calculated_unit_scores(rows: list[Any], table_type: str) -> list[Any]:
+    if table_type != "technical":
+        return rows
+
+    rows_by_unit: dict[str, list[Any]] = {}
+    for row in rows:
+        rows_by_unit.setdefault(_value(row, "unit").strip(), []).append(row)
+    score_by_unit = {
+        unit: _calculate_unit_score(unit_rows)
+        for unit, unit_rows in rows_by_unit.items()
+    }
+
+    output_rows: list[dict[str, Any]] = []
+    for row in rows:
+        row_data = _row_to_dict(row)
+        row_data["unit_score"] = score_by_unit.get(_value(row, "unit").strip(), "")
+        output_rows.append(row_data)
+    return output_rows
+
+
+def _row_to_dict(row: Any) -> dict[str, Any]:
+    if isinstance(row, dict):
+        return dict(row)
+    if hasattr(row, "keys"):
+        return {key: row[key] for key in row.keys()}
+    return {}
+
+
+def _calculate_unit_score(rows: list[Any]) -> str:
+    numeric_scores: list[Decimal] = []
+    filled_scores = 0
+    excluded_scores = 0
+    for row in rows:
+        score = _value(row, "object_score").strip()
+        if not score:
+            continue
+        filled_scores += 1
+        if score == "/":
+            excluded_scores += 1
+            continue
+        try:
+            numeric_scores.append(Decimal(score))
+        except InvalidOperation:
+            continue
+
+    if numeric_scores:
+        average = sum(numeric_scores) / Decimal(len(numeric_scores))
+        return str(average.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    if rows and filled_scores == len(rows) and excluded_scores == len(rows):
+        return "/"
+    return ""
+
+
 def _merge_repeated_unit_cells(
     table: Table,
     rows: list[Any],
     header_row_count: int,
     profile: dict[str, Any],
+    columns: list[Any],
 ) -> None:
     start_index = header_row_count
     previous_unit = None
+    unit_score_column = next((index for index, column in enumerate(columns) if column["key"] == "unit_score"), None)
     for offset, row in enumerate(rows + [None], start=header_row_count):
         unit = _value(row, "unit") if row is not None else None
         if offset == header_row_count:
@@ -300,5 +356,8 @@ def _merge_repeated_unit_cells(
             if previous_unit and end_index > start_index:
                 merged_cell = table.cell(start_index, 0).merge(table.cell(end_index, 0))
                 _set_unit_cell(merged_cell, previous_unit, profile)
+                if unit_score_column is not None:
+                    score_cell = table.cell(start_index, unit_score_column).merge(table.cell(end_index, unit_score_column))
+                    set_cell_text(score_cell, _value(rows[start_index - header_row_count], "unit_score"), profile, "body", "center")
             start_index = offset
             previous_unit = unit

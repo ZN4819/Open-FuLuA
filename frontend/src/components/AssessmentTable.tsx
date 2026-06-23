@@ -55,6 +55,67 @@ function uniqueValues(values: string[]) {
   return result;
 }
 
+const SCORE_EXCLUDED_VALUE = "/";
+
+function scoreText(value: string | null | undefined) {
+  return (value ?? "").trim();
+}
+
+function calculateTechnicalUnitScore(rows: AssessmentRowInput[]) {
+  const numericScores: number[] = [];
+  let filledScores = 0;
+  let excludedScores = 0;
+
+  rows.forEach((row) => {
+    const score = scoreText(row.metric_result?.object_score);
+    if (!score) {
+      return;
+    }
+    filledScores += 1;
+    if (score === SCORE_EXCLUDED_VALUE) {
+      excludedScores += 1;
+      return;
+    }
+    const numericScore = Number(score);
+    if (Number.isFinite(numericScore)) {
+      numericScores.push(numericScore);
+    }
+  });
+
+  if (numericScores.length > 0) {
+    const total = numericScores.reduce((sum, score) => sum + score, 0);
+    return (total / numericScores.length).toFixed(4);
+  }
+  if (rows.length > 0 && filledScores === rows.length && excludedScores === rows.length) {
+    return SCORE_EXCLUDED_VALUE;
+  }
+  return "";
+}
+
+function applyCalculatedUnitScores(rows: AssessmentRowInput[], shouldCalculate: boolean) {
+  if (!shouldCalculate) {
+    return rows;
+  }
+
+  const rowsByUnit = new Map<string, AssessmentRowInput[]>();
+  rows.forEach((row) => {
+    const unit = row.unit.trim();
+    rowsByUnit.set(unit, [...(rowsByUnit.get(unit) ?? []), row]);
+  });
+
+  const scoreByUnit = new Map<string, string>();
+  rowsByUnit.forEach((unitRows, unit) => {
+    scoreByUnit.set(unit, calculateTechnicalUnitScore(unitRows));
+  });
+
+  return rows.map((row) => ({
+    ...row,
+    metric_result: {
+      ...(row.metric_result ?? EMPTY_METRIC),
+      unit_score: scoreByUnit.get(row.unit.trim()) ?? ""
+    }
+  }));
+}
 function fixedUnitsFromSlots(recordTemplateSlots: RecordTemplateSlot[], rows: AssessmentRowInput[]) {
   return uniqueValues([
     ...recordTemplateSlots.map((slot) => slot.unit),
@@ -82,9 +143,9 @@ function templateSlotsForUnit(recordTemplateSlots: RecordTemplateSlot[], unit: s
     .filter((slot) => slot.unit === unit)
     .sort((first, second) => TEMPLATE_SLOT_ORDER[first.template_type] - TEMPLATE_SLOT_ORDER[second.template_type]);
 }
-function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = []) {
+function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = [], calculateUnitScores = false) {
   const order = new Map(unitOrder.map((unit, index) => [unit, index]));
-  return rows
+  const normalizedRows = rows
     .map((row, index) => {
       const unit = row.unit.trim();
       return {
@@ -107,6 +168,8 @@ function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = []) {
       ...row,
       sort_order: index + 1
     }));
+
+  return applyCalculatedUnitScores(normalizedRows, calculateUnitScores);
 }
 
 export function AssessmentTable({
@@ -126,26 +189,29 @@ export function AssessmentTable({
   const recordSelections = useRef<Record<number, TextSelection>>({});
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
+  const normalizedRows = normalizeRows(rows, unitOrder, technical);
   const templateSlotCount = recordTemplateSlots.length;
   const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
-  const groupedRows = unitOrder.map((unit) => ({
-    unit,
-    entries: rows
+  const groupedRows = unitOrder.map((unit) => {
+    const entries = normalizedRows
       .map((row, index) => ({ row, index }))
-      .filter((entry) => entry.row.unit.trim() === unit)
-  }));
+      .filter((entry) => entry.row.unit.trim() === unit);
+    const unitScore = technical ? calculateTechnicalUnitScore(entries.map((entry) => entry.row)) : scoreText(entries[0]?.row.metric_result?.unit_score);
+    return { unit, entries, unitScore };
+  });
   const tableColumnCount = technical ? 9 : 6;
 
   function updateRow(index: number, patch: Partial<AssessmentRowInput>) {
     const next = normalizeRows(
-      rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
-      unitOrder
+      normalizedRows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
+      unitOrder,
+      technical
     );
     onRowsChange(next);
   }
 
   function updateMetric(index: number, key: string, value: string) {
-    const row = rows[index];
+    const row = normalizedRows[index];
     updateRow(index, {
       metric_result: {
         ...(row.metric_result ?? EMPTY_METRIC),
@@ -155,11 +221,31 @@ export function AssessmentTable({
   }
 
   function addRow(unit: string) {
-    onRowsChange(normalizeRows([...rows, createEmptyRow(rows.length + 1, unit)], unitOrder));
+    onRowsChange(normalizeRows([...normalizedRows, createEmptyRow(normalizedRows.length + 1, unit)], unitOrder, technical));
   }
 
   function removeRow(index: number) {
-    onRowsChange(normalizeRows(rows.filter((_, rowIndex) => rowIndex !== index), unitOrder));
+    onRowsChange(normalizeRows(normalizedRows.filter((_, rowIndex) => rowIndex !== index), unitOrder, technical));
+  }
+
+  function updateUnitScoreForUnit(unit: string, value: string) {
+    const next = normalizeRows(
+      normalizedRows.map((row) => {
+        if (row.unit.trim() !== unit) {
+          return row;
+        }
+        return {
+          ...row,
+          metric_result: {
+            ...(row.metric_result ?? EMPTY_METRIC),
+            unit_score: value
+          }
+        };
+      }),
+      unitOrder,
+      false
+    );
+    onRowsChange(next);
   }
 
   function rememberRecordSelection(index: number, target: HTMLTextAreaElement) {
@@ -178,7 +264,7 @@ export function AssessmentTable({
     const token = `[[FIG:${image.id}]]`;
     const displayText = image.figure_label ??
       `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? `图${sectionCode}-`}${image.sort_order}`;
-    const row = rows[index];
+    const row = normalizedRows[index];
     const recordText = insertAtSelectionOrPlaceholder(row.record_text, token, recordSelections.current[index]);
     updateRow(index, {
       record_text: recordText,
@@ -194,7 +280,7 @@ export function AssessmentTable({
   }
 
   function applyRecordTemplate(index: number, slotId: string) {
-    const row = rows[index];
+    const row = normalizedRows[index];
     const selectedSlotId = Number(slotId);
     const slot = recordTemplateSlots.find((item) => item.id === selectedSlotId && item.unit === row.unit);
     if (!slot) {
@@ -389,13 +475,11 @@ export function AssessmentTable({
                                 onChange={(event) => updateMetric(index, "object_score", event.target.value)}
                               />
                             </td>
-                            <td className="score-cell">
-                              <input
-                                className="score-input"
-                                value={row.metric_result?.unit_score ?? ""}
-                                onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
-                              />
-                            </td>
+                            {entryIndex === 0 ? (
+                              <td className="score-cell unit-score-cell" rowSpan={group.entries.length}>
+                                <output className="unit-score-output">{group.unitScore}</output>
+                              </td>
+                            ) : null}
                           </>
                         ) : (
                           <>
@@ -413,13 +497,15 @@ export function AssessmentTable({
                                 ))}
                               </select>
                             </td>
-                            <td className="score-cell">
-                              <input
-                                className="score-input"
-                                value={row.metric_result?.unit_score ?? ""}
-                                onChange={(event) => updateMetric(index, "unit_score", event.target.value)}
-                              />
-                            </td>
+                            {entryIndex === 0 ? (
+                              <td className="score-cell unit-score-cell" rowSpan={group.entries.length}>
+                                <input
+                                  className="score-input"
+                                  value={group.unitScore}
+                                  onChange={(event) => updateUnitScoreForUnit(group.unit, event.target.value)}
+                                />
+                              </td>
+                            ) : null}
                           </>
                         )}
                         <td className="row-action-cell">

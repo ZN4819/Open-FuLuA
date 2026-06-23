@@ -109,6 +109,32 @@ class ValidationServiceTest(unittest.TestCase):
         self.assertEqual(result.summary.errors, 0)
         self.assertNotIn("DOCX_REF_TARGET_MISSING", {issue.code for issue in result.issues})
 
+    def test_validation_accepts_slash_scores(self) -> None:
+        project = database.create_project("slash score project")
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "Unit A",
+                    "object_name": "Object 1",
+                    "record_text": "record 1",
+                    "metric_result": {
+                        "d": "/",
+                        "a": "/",
+                        "k": "/",
+                        "object_score": "/",
+                        "unit_score": "/",
+                    },
+                }
+            ],
+        )
+
+        result = validate_project(project["id"])
+
+        self.assertEqual(result.summary.errors, 0)
+        self.assertNotIn("INVALID_SCORE", {issue.code for issue in result.issues})
+
     def _create_image(self, project_id: int, section_code: str, filename: str, alt_text: str, dpi: int):
         relative_path = Path("uploads") / str(project_id) / section_code / filename
         absolute_path = settings.storage_path / relative_path

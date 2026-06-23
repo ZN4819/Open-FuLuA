@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -1147,6 +1148,7 @@ def replace_section_rows(
     table_title: str | None = None,
 ) -> sqlite3.Row | None:
     timestamp = utc_now()
+    rows = _rows_with_calculated_unit_scores(rows)
     with connect() as db:
         section = get_section(project_id, code, db)
         if section is None:
@@ -1217,6 +1219,52 @@ def replace_section_rows(
                 )
 
         return get_section(project_id, code, db)
+
+
+def _rows_with_calculated_unit_scores(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not any((row.get("metric_result") or {}).get("object_score") is not None for row in rows):
+        return rows
+
+    rows_by_unit: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        rows_by_unit.setdefault(str(row.get("unit", "")).strip(), []).append(row)
+
+    score_by_unit = {
+        unit: _calculate_unit_score(unit_rows)
+        for unit, unit_rows in rows_by_unit.items()
+    }
+    output_rows: list[dict[str, Any]] = []
+    for row in rows:
+        metric = dict(row.get("metric_result") or {})
+        metric["unit_score"] = score_by_unit.get(str(row.get("unit", "")).strip(), "")
+        output_rows.append({**row, "metric_result": metric})
+    return output_rows
+
+
+def _calculate_unit_score(rows: list[dict[str, Any]]) -> str:
+    numeric_scores: list[Decimal] = []
+    filled_scores = 0
+    excluded_scores = 0
+    for row in rows:
+        metric = row.get("metric_result") or {}
+        score = str(metric.get("object_score") or "").strip()
+        if not score:
+            continue
+        filled_scores += 1
+        if score == "/":
+            excluded_scores += 1
+            continue
+        try:
+            numeric_scores.append(Decimal(score))
+        except InvalidOperation:
+            continue
+
+    if numeric_scores:
+        average = sum(numeric_scores) / Decimal(len(numeric_scores))
+        return str(average.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    if rows and filled_scores == len(rows) and excluded_scores == len(rows):
+        return "/"
+    return ""
 
 
 def replace_validation_issues(project_id: int, issues: list[dict[str, Any]]) -> list[sqlite3.Row]:

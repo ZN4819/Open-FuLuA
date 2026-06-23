@@ -233,6 +233,8 @@ def _validate_score(issues: list[dict[str, Any]], row: Any, row_label: str, key:
     if not value:
         issues.append(_issue("error", "SCORE_REQUIRED", f"{row_label} 缺少{label}。", "row", row["id"]))
         return
+    if value == "/":
+        return
     try:
         Decimal(value)
     except InvalidOperation:

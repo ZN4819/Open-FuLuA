@@ -1821,6 +1821,20 @@ a:hover {
   min-width: 0;
 }
 
+.unit-score-cell {
+  vertical-align: middle;
+  background: #fbfcfd;
+}
+
+.unit-score-output {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
 .row-action-cell .danger-button {
   min-height: 34px;
   padding: 0 10px;
