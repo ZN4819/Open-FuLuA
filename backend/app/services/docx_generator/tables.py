@@ -297,10 +297,23 @@ def _rows_with_calculated_unit_scores(rows: list[Any], table_type: str) -> list[
     output_rows: list[dict[str, Any]] = []
     for row in rows:
         row_data = _row_to_dict(row)
+        row_data["object_score"] = _format_score_to_four_decimals(_value(row, "object_score"))
         row_data["unit_score"] = score_by_unit.get(_value(row, "unit").strip(), "")
         output_rows.append(row_data)
     return output_rows
 
+
+def _format_score_to_four_decimals(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or text == "/":
+        return text
+    try:
+        score = Decimal(text)
+        if not score.is_finite():
+            return text
+        return str(score.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    except InvalidOperation:
+        return text
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     if isinstance(row, dict):
@@ -315,7 +328,7 @@ def _calculate_unit_score(rows: list[Any]) -> str:
     filled_scores = 0
     excluded_scores = 0
     for row in rows:
-        score = _value(row, "object_score").strip()
+        score = _format_score_to_four_decimals(_value(row, "object_score"))
         if not score:
             continue
         filled_scores += 1

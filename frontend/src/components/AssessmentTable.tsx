@@ -61,6 +61,18 @@ function scoreText(value: string | null | undefined) {
   return (value ?? "").trim();
 }
 
+function formatScoreToFourDecimals(value: string | null | undefined) {
+  const text = scoreText(value);
+  if (!text || text === SCORE_EXCLUDED_VALUE) {
+    return text;
+  }
+  const score = Number(text);
+  if (!Number.isFinite(score)) {
+    return text;
+  }
+  return score.toFixed(4);
+}
+
 function calculateTechnicalUnitScore(rows: AssessmentRowInput[]) {
   const numericScores: number[] = [];
   let filledScores = 0;
@@ -218,6 +230,11 @@ export function AssessmentTable({
         [key]: value
       }
     });
+  }
+
+  function formatObjectScore(index: number) {
+    const value = normalizedRows[index]?.metric_result?.object_score;
+    updateMetric(index, "object_score", formatScoreToFourDecimals(value));
   }
 
   function addRow(unit: string) {
@@ -473,6 +490,7 @@ export function AssessmentTable({
                                 className="score-input"
                                 value={row.metric_result?.object_score ?? ""}
                                 onChange={(event) => updateMetric(index, "object_score", event.target.value)}
+                                onBlur={() => formatObjectScore(index)}
                               />
                             </td>
                             {entryIndex === 0 ? (

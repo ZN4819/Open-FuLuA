@@ -118,13 +118,13 @@ class StructuredDataTest(unittest.TestCase):
                     "unit": "Unit A",
                     "object_name": "Object 1",
                     "record_text": "record 1",
-                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1.0000", "unit_score": "9.9999"},
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1", "unit_score": "9.9999"},
                 },
                 {
                     "unit": "Unit A",
                     "object_name": "Object 2",
                     "record_text": "record 2",
-                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0.0000", "unit_score": "9.9999"},
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0", "unit_score": "9.9999"},
                 },
                 {
                     "unit": "Unit A",
@@ -150,6 +150,7 @@ class StructuredDataTest(unittest.TestCase):
         section = database.get_section(project["id"], "A-1")
         rows = database.list_assessment_rows(section["id"])
 
+        self.assertEqual([row["object_score"] for row in rows[:3]], ["1.0000", "0.0000", "/"])
         self.assertEqual([row["unit_score"] for row in rows[:3]], ["0.5000", "0.5000", "0.5000"])
         self.assertEqual([row["unit_score"] for row in rows[3:]], ["/", "/"])
 

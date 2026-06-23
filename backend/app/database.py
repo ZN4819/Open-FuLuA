@@ -1236,10 +1236,25 @@ def _rows_with_calculated_unit_scores(rows: list[dict[str, Any]]) -> list[dict[s
     output_rows: list[dict[str, Any]] = []
     for row in rows:
         metric = dict(row.get("metric_result") or {})
+        metric["object_score"] = _format_score_to_four_decimals(metric.get("object_score"))
         metric["unit_score"] = score_by_unit.get(str(row.get("unit", "")).strip(), "")
         output_rows.append({**row, "metric_result": metric})
     return output_rows
 
+
+def _format_score_to_four_decimals(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "/":
+        return text
+    try:
+        score = Decimal(text)
+        if not score.is_finite():
+            return text
+        return str(score.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    except InvalidOperation:
+        return text
 
 def _calculate_unit_score(rows: list[dict[str, Any]]) -> str:
     numeric_scores: list[Decimal] = []
@@ -1247,7 +1262,7 @@ def _calculate_unit_score(rows: list[dict[str, Any]]) -> str:
     excluded_scores = 0
     for row in rows:
         metric = row.get("metric_result") or {}
-        score = str(metric.get("object_score") or "").strip()
+        score = _format_score_to_four_decimals(metric.get("object_score")) or ""
         if not score:
             continue
         filled_scores += 1

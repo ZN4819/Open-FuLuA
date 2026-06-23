@@ -86,6 +86,7 @@ class DocxGeneratorTest(unittest.TestCase):
                 "second_text": "",
             },
         )
+        self.assertEqual(_first_table_object_score_column(path), ["1.0000", "0.0000"])
         self.assertEqual(
             _first_figure_caption_format(path),
             {
@@ -172,7 +173,7 @@ class DocxGeneratorTest(unittest.TestCase):
                         "d": "√",
                         "a": "√",
                         "k": "/",
-                        "object_score": "1.0000",
+                        "object_score": "1",
                         "unit_score": "1.0000",
                     },
                     "cross_references": [
@@ -191,7 +192,7 @@ class DocxGeneratorTest(unittest.TestCase):
                         "d": "√",
                         "a": "√",
                         "k": "/",
-                        "object_score": "0.0000",
+                        "object_score": "0",
                         "unit_score": "9.9999",
                     },
                 },
@@ -336,6 +337,17 @@ def _first_table_unit_column_format(path: Path) -> dict[str, str | list[str] | N
         "bold": _word_boolean_state(bold),
         "bold_cs": _word_boolean_state(bold_cs),
     }
+
+
+def _first_table_object_score_column(path: Path) -> list[str]:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    table = document.find(".//w:tbl", NS)
+    if table is None:
+        return []
+    rows = table.findall("w:tr", NS)
+    body_rows = rows[2:4]
+    return [_cell_text(row.findall("w:tc", NS)[6]) for row in body_rows]
 
 
 def _first_table_unit_score_column(path: Path) -> dict[str, str | None]:
