@@ -184,10 +184,23 @@ def _table_shape(table: ET.Element) -> tuple[int, int]:
     max_columns = 0
     for row in rows:
         column_count = 0
-        for cell in row.findall("w:tc", NS):
+        for cell in _row_cells(row):
             column_count += _grid_span(cell)
         max_columns = max(max_columns, column_count)
     return len(rows), max_columns
+
+
+def _row_cells(row: ET.Element) -> list[ET.Element]:
+    cells: list[ET.Element] = []
+    for child in list(row):
+        if child.tag == W + "tc":
+            cells.append(child)
+            continue
+        if child.tag == W + "sdt":
+            content = child.find("w:sdtContent", NS)
+            if content is not None:
+                cells.extend(item for item in list(content) if item.tag == W + "tc")
+    return cells
 
 
 def _grid_span(cell: ET.Element) -> int:

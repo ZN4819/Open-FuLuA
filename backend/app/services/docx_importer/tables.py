@@ -141,7 +141,7 @@ def _expanded_table_rows(table: ET.Element) -> list[list[str]]:
     for row in table.findall("w:tr", NS):
         expanded: list[str] = []
         column_index = 0
-        for cell in row.findall("w:tc", NS):
+        for cell in _row_cells(row):
             grid_span = _grid_span(cell)
             vmerge = _vmerge(cell)
             raw_text = _cell_text(cell)
@@ -157,6 +157,19 @@ def _expanded_table_rows(table: ET.Element) -> list[list[str]]:
                 column_index += 1
         rows.append(expanded)
     return rows
+
+
+def _row_cells(row: ET.Element) -> list[ET.Element]:
+    cells: list[ET.Element] = []
+    for child in list(row):
+        if child.tag == W + "tc":
+            cells.append(child)
+            continue
+        if child.tag == W + "sdt":
+            content = child.find("w:sdtContent", NS)
+            if content is not None:
+                cells.extend(item for item in list(content) if item.tag == W + "tc")
+    return cells
 
 
 def _grid_span(cell: ET.Element) -> int:
