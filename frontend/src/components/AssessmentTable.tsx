@@ -559,7 +559,7 @@ export function AssessmentTable({
                     const templateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit);
                     const templateOptionsCount = templateSlots.length;
                     const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
-                    const deleteWholeObject = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
+                    const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -691,9 +691,9 @@ export function AssessmentTable({
                           <button
                             type="button"
                             className="danger-button"
-                            onClick={() => (deleteWholeObject ? removeTechnicalSectionObject(row.object_name) : removeRow(index))}
+                            onClick={() => removeRow(index)}
                           >
-                            {deleteWholeObject ? "删除对象" : "删除"}
+                            {showObjectDeleteLabel ? "删除对象" : "删除"}
                           </button>
                         </td>
                       </tr>
