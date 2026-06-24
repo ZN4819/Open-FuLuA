@@ -163,6 +163,14 @@ docs/DOCX导入新项目功能实施计划.md
 
 ## 后端运行
 
+一键启动本地开发服务：
+
+```powershell
+.\scripts\start_dev.ps1
+```
+
+脚本会启动后端 `http://127.0.0.1:8000` 和前端 `http://127.0.0.1:5173`，并将日志写入 `storage/backend-dev.*.log` 与 `storage/frontend-dev.*.log`。
+
 ```powershell
 cd backend
 python -m venv .venv

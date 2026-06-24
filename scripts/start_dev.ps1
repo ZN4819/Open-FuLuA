@@ -1,0 +1,101 @@
+$ErrorActionPreference = 'Stop'
+
+$Root = Split-Path -Parent $PSScriptRoot
+$BackendDir = Join-Path $Root 'backend'
+$FrontendDir = Join-Path $Root 'frontend'
+$StorageDir = Join-Path $Root 'storage'
+$BackendPython = Join-Path $BackendDir '.venv\Scripts\python.exe'
+$BackendOut = Join-Path $StorageDir 'backend-dev.out.log'
+$BackendErr = Join-Path $StorageDir 'backend-dev.err.log'
+$FrontendOut = Join-Path $StorageDir 'frontend-dev.out.log'
+$FrontendErr = Join-Path $StorageDir 'frontend-dev.err.log'
+
+function Normalize-ProcessPathEnvironment {
+    $environment = [Environment]::GetEnvironmentVariables('Process')
+    if ($environment.Contains('Path') -and $environment.Contains('PATH')) {
+        $pathValue = [Environment]::GetEnvironmentVariable('Path', 'Process')
+        if ([string]::IsNullOrWhiteSpace($pathValue)) {
+            $pathValue = [Environment]::GetEnvironmentVariable('PATH', 'Process')
+        }
+
+        [Environment]::SetEnvironmentVariable('PATH', $null, 'Process')
+        [Environment]::SetEnvironmentVariable('Path', $pathValue, 'Process')
+    }
+}
+
+function Test-HttpReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Url
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Start-Backend {
+    if (-not (Test-Path $BackendPython)) {
+        throw 'Backend virtual environment was not found. Create backend/.venv and install requirements.txt first.'
+    }
+
+    if (Test-HttpReady -Url 'http://127.0.0.1:8000/api/health') {
+        Write-Host 'Backend already responds on http://127.0.0.1:8000.'
+        return
+    }
+
+    $process = Start-Process `
+        -FilePath $BackendPython `
+        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000') `
+        -WorkingDirectory $BackendDir `
+        -RedirectStandardOutput $BackendOut `
+        -RedirectStandardError $BackendErr `
+        -WindowStyle Hidden `
+        -PassThru
+
+    Write-Host "Backend started on http://127.0.0.1:8000 (PID: $($process.Id))."
+}
+
+function Start-Frontend {
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($null -eq $npm) {
+        throw 'npm.cmd was not found. Install Node.js and npm first.'
+    }
+
+    if (Test-HttpReady -Url 'http://127.0.0.1:5173/') {
+        Write-Host 'Frontend already responds on http://127.0.0.1:5173.'
+        return
+    }
+
+    $process = Start-Process `
+        -FilePath $npm.Source `
+        -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173') `
+        -WorkingDirectory $FrontendDir `
+        -RedirectStandardOutput $FrontendOut `
+        -RedirectStandardError $FrontendErr `
+        -WindowStyle Hidden `
+        -PassThru
+
+    Write-Host "Frontend started on http://127.0.0.1:5173 (PID: $($process.Id))."
+}
+
+New-Item -ItemType Directory -Force -Path $StorageDir | Out-Null
+Normalize-ProcessPathEnvironment
+
+Start-Backend
+Start-Frontend
+
+Write-Host ''
+Write-Host 'Local development services are ready:'
+Write-Host '  Frontend: http://127.0.0.1:5173'
+Write-Host '  Backend:  http://127.0.0.1:8000'
+Write-Host ''
+Write-Host 'Logs:'
+Write-Host "  Backend stdout:  $BackendOut"
+Write-Host "  Backend stderr:  $BackendErr"
+Write-Host "  Frontend stdout: $FrontendOut"
+Write-Host "  Frontend stderr: $FrontendErr"
