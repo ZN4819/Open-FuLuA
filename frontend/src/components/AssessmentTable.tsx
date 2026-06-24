@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import type { AssessmentRowInput, EvidenceImage, RecordTemplateSlot, TemplateProfile } from "../api/client";
+import type { AssessmentRowInput, CrossReferenceInput, EvidenceImage, RecordTemplateSlot, TemplateProfile } from "../api/client";
 
 type AssessmentTableProps = {
   sectionCode: string;
@@ -27,6 +27,12 @@ const FIGURE_PLACEHOLDER = "[插入图片引用]";
 type TextSelection = {
   start: number;
   end: number;
+};
+
+type FigureReferenceOption = {
+  token: string;
+  displayText: string;
+  target_image_id?: number | null;
 };
 
 function isTechnicalSection(code: string) {
@@ -100,6 +106,114 @@ function uniqueValues(values: string[]) {
     }
   });
   return result;
+}
+
+function sectionFigurePrefix(sectionCode: string, profile: TemplateProfile) {
+  return profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? `图${sectionCode}-`;
+}
+
+function imageFigureDisplayText(image: EvidenceImage, sectionCode: string, profile: TemplateProfile) {
+  return image.figure_label ?? `${sectionFigurePrefix(sectionCode, profile)}${image.sort_order}`;
+}
+
+function figureReferenceOptions(
+  row: AssessmentRowInput,
+  evidenceImages: EvidenceImage[],
+  sectionCode: string,
+  profile: TemplateProfile
+) {
+  const optionsByToken = new Map<string, FigureReferenceOption>();
+
+  evidenceImages.forEach((image) => {
+    const token = `[[FIG:${image.id}]]`;
+    optionsByToken.set(token, {
+      token,
+      displayText: imageFigureDisplayText(image, sectionCode, profile),
+      target_image_id: image.id
+    });
+  });
+
+  (row.cross_references ?? []).forEach((reference) => {
+    const token = reference.token.trim();
+    if (!token) {
+      return;
+    }
+    const existing = optionsByToken.get(token);
+    optionsByToken.set(token, {
+      token,
+      displayText: reference.display_text?.trim() || existing?.displayText || token,
+      target_image_id: reference.target_image_id ?? existing?.target_image_id ?? null
+    });
+  });
+
+  return Array.from(optionsByToken.values()).sort(
+    (first, second) => second.displayText.length - first.displayText.length || first.token.localeCompare(second.token)
+  );
+}
+
+function displayRecordText(
+  row: AssessmentRowInput,
+  evidenceImages: EvidenceImage[],
+  sectionCode: string,
+  profile: TemplateProfile
+) {
+  return figureReferenceOptions(row, evidenceImages, sectionCode, profile).reduce(
+    (text, reference) => replaceAllText(text, reference.token, reference.displayText),
+    row.record_text ?? ""
+  );
+}
+
+function storedRecordText(
+  displayText: string,
+  row: AssessmentRowInput,
+  evidenceImages: EvidenceImage[],
+  sectionCode: string,
+  profile: TemplateProfile
+) {
+  return figureReferenceOptions(row, evidenceImages, sectionCode, profile).reduce(
+    (text, reference) => replaceAllText(text, reference.displayText, reference.token),
+    displayText
+  );
+}
+
+function crossReferencesForRecordText(
+  recordText: string,
+  row: AssessmentRowInput,
+  evidenceImages: EvidenceImage[],
+  sectionCode: string,
+  profile: TemplateProfile
+): CrossReferenceInput[] {
+  const optionsByToken = new Map(
+    figureReferenceOptions(row, evidenceImages, sectionCode, profile).map((reference) => [reference.token, reference])
+  );
+  const references: CrossReferenceInput[] = [];
+  const seenTokens = new Set<string>();
+  const tokenPattern = /\[\[FIG:(\d+)\]\]/g;
+  let match = tokenPattern.exec(recordText);
+
+  while (match) {
+    const token = match[0];
+    if (!seenTokens.has(token)) {
+      seenTokens.add(token);
+      const imageId = Number(match[1]);
+      const reference = optionsByToken.get(token);
+      references.push({
+        target_image_id: reference?.target_image_id ?? (Number.isFinite(imageId) ? imageId : null),
+        token,
+        display_text: reference?.displayText ?? token
+      });
+    }
+    match = tokenPattern.exec(recordText);
+  }
+
+  return references;
+}
+
+function replaceAllText(text: string, search: string, replacement: string) {
+  if (!search || search === replacement) {
+    return text;
+  }
+  return text.split(search).join(replacement);
 }
 
 const SCORE_EXCLUDED_VALUE = "/";
@@ -377,21 +491,17 @@ export function AssessmentTable({
     if (!image) {
       return;
     }
-    const token = `[[FIG:${image.id}]]`;
-    const displayText = image.figure_label ??
-      `${profile.sections.find((section) => section.code === sectionCode)?.figure_prefix ?? `图${sectionCode}-`}${image.sort_order}`;
     const row = normalizedRows[index];
-    const recordText = insertAtSelectionOrPlaceholder(row.record_text, token, recordSelections.current[index]);
+    const displayText = imageFigureDisplayText(image, sectionCode, profile);
+    const displayRecordTextValue = insertAtSelectionOrPlaceholder(
+      displayRecordText(row, evidenceImages, sectionCode, profile),
+      displayText,
+      recordSelections.current[index]
+    );
+    const recordText = storedRecordText(displayRecordTextValue, row, evidenceImages, sectionCode, profile);
     updateRow(index, {
       record_text: recordText,
-      cross_references: [
-        ...(row.cross_references ?? []),
-        {
-          target_image_id: image.id,
-          token,
-          display_text: displayText
-        }
-      ]
+      cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
     });
   }
 
@@ -586,10 +696,14 @@ export function AssessmentTable({
                           <div className="record-input-group">
                             <textarea
                               className="record-textarea"
-                              value={row.record_text}
+                              value={displayRecordText(row, evidenceImages, sectionCode, profile)}
                               onChange={(event) => {
                                 rememberRecordSelection(index, event.target);
-                                updateRow(index, { record_text: event.target.value });
+                                const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile);
+                                updateRow(index, {
+                                  record_text: recordText,
+                                  cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
+                                });
                               }}
                               onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
                               onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
