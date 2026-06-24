@@ -33,6 +33,53 @@ function isTechnicalSection(code: string) {
   return ["A-1", "A-2", "A-3", "A-4"].includes(code);
 }
 
+const A4_SECTION_CODE = "A-4";
+const A4_UNIT_SCOPED_OBJECT_UNIT = "重要信息资源安全标记完整性";
+
+const A4_OBJECT_CATEGORIES = [
+  { value: "user", label: "用户", placeholder: "例如：PC端用户", units: ["身份鉴别"] },
+  { value: "access_control_info", label: "访问控制信息", placeholder: "例如：用户权限控制信息", units: ["访问控制信息完整性"] },
+  {
+    value: "important_data",
+    label: "重要数据",
+    placeholder: "例如：用户个人信息",
+    units: ["重要数据传输机密性", "重要数据传输完整性", "重要数据存储机密性", "重要数据存储完整性"]
+  },
+  { value: "key_business_action", label: "关键业务行为", placeholder: "例如：支付交易", units: ["不可否认性"] }
+] as const;
+
+type TechnicalObjectCategoryValue = (typeof A4_OBJECT_CATEGORIES)[number]["value"];
+
+function isA4UnitScopedObjectUnit(sectionCode: string, unit: string) {
+  return sectionCode === A4_SECTION_CODE && unit.trim() === A4_UNIT_SCOPED_OBJECT_UNIT;
+}
+
+function isSectionManagedTechnicalObjectUnit(sectionCode: string, unit: string) {
+  return !isA4UnitScopedObjectUnit(sectionCode, unit);
+}
+
+function technicalObjectCategoriesForSection(sectionCode: string) {
+  return sectionCode === A4_SECTION_CODE ? A4_OBJECT_CATEGORIES : [];
+}
+
+function targetUnitsForTechnicalObject(sectionCode: string, unitOrder: string[], categoryValue: TechnicalObjectCategoryValue) {
+  if (sectionCode !== A4_SECTION_CODE) {
+    return unitOrder;
+  }
+
+  const category = A4_OBJECT_CATEGORIES.find((item) => item.value === categoryValue) ?? A4_OBJECT_CATEGORIES[0];
+  const targetUnits = new Set<string>(category.units);
+  return unitOrder.filter((unit) => targetUnits.has(unit));
+}
+
+function technicalObjectCategoryPlaceholder(categoryValue: TechnicalObjectCategoryValue) {
+  return A4_OBJECT_CATEGORIES.find((item) => item.value === categoryValue)?.placeholder ?? "例如：XX机房";
+}
+
+function canAddObjectWithinUnit(sectionCode: string, unit: string, technical: boolean) {
+  return !technical || isA4UnitScopedObjectUnit(sectionCode, unit);
+}
+
 function createEmptyRow(sortOrder: number, unit: string): AssessmentRowInput {
   return {
     unit,
@@ -200,11 +247,21 @@ export function AssessmentTable({
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
   const [technicalObjectName, setTechnicalObjectName] = useState("");
+  const [technicalObjectCategory, setTechnicalObjectCategory] = useState<TechnicalObjectCategoryValue>("user");
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
   const normalizedRows = normalizeRows(rows, unitOrder, technical);
-  const technicalObjectNames = uniqueValues(normalizedRows.map((row) => row.object_name));
-  const objectCount = technical ? technicalObjectNames.length : rows.length;
+  const sectionManagedTechnicalRows = technical
+    ? normalizedRows.filter((row) => isSectionManagedTechnicalObjectUnit(sectionCode, row.unit))
+    : [];
+  const allTechnicalObjectNames = uniqueValues(normalizedRows.map((row) => row.object_name));
+  const technicalObjectNames = uniqueValues(sectionManagedTechnicalRows.map((row) => row.object_name));
+  const objectCount = technical ? allTechnicalObjectNames.length : rows.length;
+  const technicalObjectCategoryOptions = technicalObjectCategoriesForSection(sectionCode);
+  const technicalObjectTargetUnits = targetUnitsForTechnicalObject(sectionCode, unitOrder, technicalObjectCategory);
+  const technicalObjectPlaceholder = sectionCode === A4_SECTION_CODE ? technicalObjectCategoryPlaceholder(technicalObjectCategory) : "例如：XX机房";
+  const technicalObjectAddDisabled = isSaving || technicalObjectTargetUnits.length === 0 || !technicalObjectName.trim();
+  const technicalObjectEmptyText = sectionCode === A4_SECTION_CODE ? "当前章节还没有通过上方分类新增测评对象。" : "当前章节还没有测评对象。";
   const templateSlotCount = recordTemplateSlots.length;
   const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
   const groupedRows = unitOrder.map((unit) => {
@@ -246,7 +303,7 @@ export function AssessmentTable({
 
   function addTechnicalSectionObject() {
     const objectName = technicalObjectName.trim();
-    if (!technical || !objectName || unitOrder.length === 0) {
+    if (!technical || !objectName || technicalObjectTargetUnits.length === 0) {
       return;
     }
     const existingObjectUnits = new Set(
@@ -254,7 +311,7 @@ export function AssessmentTable({
         .filter((row) => row.object_name.trim() === objectName)
         .map((row) => row.unit.trim())
     );
-    const appendedRows = unitOrder
+    const appendedRows = technicalObjectTargetUnits
       .filter((unit) => !existingObjectUnits.has(unit))
       .map((unit, offset) => ({
         ...createEmptyRow(normalizedRows.length + offset + 1, unit),
@@ -272,7 +329,15 @@ export function AssessmentTable({
       return;
     }
     recordSelections.current = {};
-    onRowsChange(normalizeRows(normalizedRows.filter((row) => row.object_name.trim() !== objectName), unitOrder, technical));
+    onRowsChange(
+      normalizeRows(
+        normalizedRows.filter(
+          (row) => row.object_name.trim() !== objectName || !isSectionManagedTechnicalObjectUnit(sectionCode, row.unit)
+        ),
+        unitOrder,
+        technical
+      )
+    );
   }
 
   function removeRow(index: number) {
@@ -365,7 +430,22 @@ export function AssessmentTable({
             </button>
           </div>
           {technical ? (
-            <div className="technical-object-add toolbar-object-add">
+            <div className={`technical-object-add toolbar-object-add${technicalObjectCategoryOptions.length > 0 ? " categorized-object-add" : ""}`}>
+              {technicalObjectCategoryOptions.length > 0 ? (
+                <label>
+                  <span>对象分类</span>
+                  <select
+                    value={technicalObjectCategory}
+                    onChange={(event) => setTechnicalObjectCategory(event.target.value as TechnicalObjectCategoryValue)}
+                  >
+                    {technicalObjectCategoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label>
                 <span>测评对象</span>
                 <input
@@ -377,10 +457,10 @@ export function AssessmentTable({
                       addTechnicalSectionObject();
                     }
                   }}
-                  placeholder="例如：XX机房"
+                  placeholder={technicalObjectPlaceholder}
                 />
               </label>
-              <button type="button" onClick={addTechnicalSectionObject} disabled={isSaving || unitOrder.length === 0 || !technicalObjectName.trim()}>
+              <button type="button" onClick={addTechnicalSectionObject} disabled={technicalObjectAddDisabled}>
                 新增对象
               </button>
             </div>
@@ -402,7 +482,7 @@ export function AssessmentTable({
               ))}
             </div>
           ) : (
-            <p className="technical-object-empty">当前章节还没有测评对象。</p>
+            <p className="technical-object-empty">{technicalObjectEmptyText}</p>
           )}
         </div>
       ) : null}
@@ -463,7 +543,7 @@ export function AssessmentTable({
                       <div className="fixed-unit-content">
                         <strong>{group.unit}</strong>
                         <span>对象 0</span>
-                        {!technical ? (
+                        {canAddObjectWithinUnit(sectionCode, group.unit, technical) ? (
                           <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
                             新增对象
                           </button>
@@ -471,13 +551,15 @@ export function AssessmentTable({
                       </div>
                     </td>
                     <td className="unit-empty-cell" colSpan={tableColumnCount - 1}>
-                      {technical ? "当前章节还没有为该单元新增测评对象。" : "当前测评单元还没有测评对象。"}
+                      {technical && !canAddObjectWithinUnit(sectionCode, group.unit, technical) ? "当前章节还没有为该单元新增测评对象。" : "当前测评单元还没有测评对象。"}
                     </td>
                   </tr>
                 ) : (
                   group.entries.map(({ row, index }, entryIndex) => {
                     const templateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit);
                     const templateOptionsCount = templateSlots.length;
+                    const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
+                    const deleteWholeObject = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -485,7 +567,7 @@ export function AssessmentTable({
                             <div className="fixed-unit-content">
                               <strong>{group.unit}</strong>
                               <span>对象 {group.entries.length}</span>
-                              {!technical ? (
+                              {canAddWithinUnit ? (
                                 <button type="button" className="unit-add-button" onClick={() => addRow(group.unit)}>
                                   新增对象
                                 </button>
@@ -609,9 +691,9 @@ export function AssessmentTable({
                           <button
                             type="button"
                             className="danger-button"
-                            onClick={() => (technical ? removeTechnicalSectionObject(row.object_name) : removeRow(index))}
+                            onClick={() => (deleteWholeObject ? removeTechnicalSectionObject(row.object_name) : removeRow(index))}
                           >
-                            {technical ? "删除对象" : "删除"}
+                            {deleteWholeObject ? "删除对象" : "删除"}
                           </button>
                         </td>
                       </tr>

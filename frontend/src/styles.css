@@ -1601,6 +1601,11 @@ a:hover {
   width: min(360px, 100%);
 }
 
+.categorized-object-add {
+  grid-template-columns: minmax(130px, 0.7fr) minmax(180px, 1fr) auto;
+  width: min(560px, 100%);
+}
+
 .technical-object-add label {
   display: grid;
   gap: var(--space-1);
@@ -1610,7 +1615,8 @@ a:hover {
   color: var(--color-text-muted);
 }
 
-.technical-object-add input {
+.technical-object-add input,
+.technical-object-add select {
   width: 100%;
   min-width: 0;
   min-height: 38px;
