@@ -31,6 +31,7 @@ export type AssessmentRow = {
   section_id: number;
   unit: string;
   object_name: string;
+  subsystem: string;
   record_text: string;
   sort_order: number;
   metric_result: MetricResult;
@@ -39,6 +40,7 @@ export type AssessmentRow = {
 export type AssessmentRowInput = {
   unit: string;
   object_name: string;
+  subsystem?: string;
   record_text: string;
   sort_order?: number | null;
   metric_result?: MetricResult;

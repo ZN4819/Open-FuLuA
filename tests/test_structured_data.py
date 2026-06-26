@@ -108,6 +108,37 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(len(references), 1)
         self.assertEqual(references[0]["display_text"], "图A-1-1")
 
+    def test_assessment_rows_preserve_subsystem(self) -> None:
+        project = database.create_project("subsystem project")
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-2",
+            rows=[
+                {
+                    "unit": "Network identity",
+                    "object_name": "Payment service",
+                    "subsystem": "Core banking",
+                    "record_text": "record",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1"},
+                },
+                {
+                    "unit": "Network identity",
+                    "object_name": "Legacy service",
+                    "record_text": "record",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0"},
+                },
+            ],
+        )
+
+        section = database.get_section(project["id"], "A-2")
+        rows = database.list_assessment_rows(section["id"])
+        detail = build_section_detail(project["id"], "A-2")
+
+        self.assertEqual(rows[0]["subsystem"], "Core banking")
+        self.assertEqual(rows[1]["subsystem"], "")
+        self.assertEqual(detail.rows[0].subsystem, "Core banking")
+        self.assertEqual(detail.rows[1].subsystem, "")
+
     def test_technical_unit_score_is_calculated_on_save(self) -> None:
         project = database.create_project("unit score project")
         database.replace_section_rows(

@@ -202,13 +202,14 @@ def _insert_assessment_row(
     cursor = db.execute(
         """
         INSERT INTO assessment_rows
-            (section_id, unit, object_name, record_text, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (section_id, unit, object_name, subsystem, record_text, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             section_id,
             row.get("unit") or "",
             row.get("object_name") or "",
+            row.get("subsystem") or "",
             record_text,
             int(row.get("sort_order") or default_sort_order),
             timestamp,

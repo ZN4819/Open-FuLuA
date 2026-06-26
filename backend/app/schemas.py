@@ -109,6 +109,7 @@ class AssessmentRowRead(BaseModel):
     section_id: int
     unit: str
     object_name: str
+    subsystem: str = ""
     record_text: str
     sort_order: int
     metric_result: MetricResultRead
@@ -117,6 +118,7 @@ class AssessmentRowRead(BaseModel):
 class AssessmentRowWrite(BaseModel):
     unit: str = Field(default="", max_length=500)
     object_name: str = Field(default="", max_length=500)
+    subsystem: str = Field(default="", max_length=500)
     record_text: str = ""
     sort_order: int | None = None
     metric_result: MetricResultWrite = Field(default_factory=MetricResultWrite)

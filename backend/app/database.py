@@ -73,6 +73,7 @@ def init_db() -> None:
                 section_id INTEGER NOT NULL,
                 unit TEXT NOT NULL DEFAULT '',
                 object_name TEXT NOT NULL DEFAULT '',
+                subsystem TEXT NOT NULL DEFAULT '',
                 record_text TEXT NOT NULL DEFAULT '',
                 sort_order INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
@@ -257,6 +258,7 @@ def init_db() -> None:
         )
         _ensure_column(db, "render_jobs", "page_count", "INTEGER")
         _ensure_column(db, "render_jobs", "log_path", "TEXT")
+        _ensure_column(db, "assessment_rows", "subsystem", "TEXT NOT NULL DEFAULT ''")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS appendix_sections (
@@ -897,6 +899,7 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
             r.section_id,
             r.unit,
             r.object_name,
+            r.subsystem,
             r.record_text,
             r.sort_order,
             m.d,
@@ -1172,13 +1175,14 @@ def replace_section_rows(
             cursor = db.execute(
                 """
                 INSERT INTO assessment_rows
-                    (section_id, unit, object_name, record_text, sort_order, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (section_id, unit, object_name, subsystem, record_text, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     section["id"],
                     row.get("unit", ""),
                     row.get("object_name", ""),
+                    row.get("subsystem", ""),
                     row.get("record_text", ""),
                     sort_order,
                     timestamp,

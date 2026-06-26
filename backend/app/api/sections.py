@@ -32,6 +32,7 @@ def assessment_row_to_schema(row) -> AssessmentRowRead:
         section_id=row["section_id"],
         unit=row["unit"],
         object_name=row["object_name"],
+        subsystem=row["subsystem"],
         record_text=row["record_text"],
         sort_order=row["sort_order"],
         metric_result=MetricResultRead(

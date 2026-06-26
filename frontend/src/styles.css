@@ -1606,6 +1606,36 @@ a:hover {
   width: min(560px, 100%);
 }
 
+.subsystem-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 0.9fr);
+  gap: var(--space-2);
+  align-items: end;
+  width: min(620px, 100%);
+  justify-self: end;
+}
+
+.subsystem-controls label {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.subsystem-controls input,
+.subsystem-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+}
+
+.subsystem-controls button {
+  min-height: 38px;
+  padding: 0 18px;
+}
+
 .technical-object-add label {
   display: grid;
   gap: var(--space-1);
@@ -1633,6 +1663,45 @@ a:hover {
   gap: var(--space-2);
   align-content: start;
   min-width: 0;
+}
+
+.subsystem-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.subsystem-item {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  max-width: 100%;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.subsystem-item.active {
+  background: var(--color-primary-soft);
+  border-color: rgba(23, 114, 136, 0.45);
+}
+
+.subsystem-item > button:first-child {
+  min-height: 30px;
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border-color: transparent;
+}
+
+.subsystem-item > button:first-child:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
 }
 
 .technical-object-item {
@@ -2301,7 +2370,8 @@ a:hover {
   }
 
   .technical-object-toolbar,
-  .technical-object-add {
+  .technical-object-add,
+  .subsystem-controls {
     grid-template-columns: 1fr;
   }
 

@@ -43,6 +43,7 @@ function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
     unit: row.unit,
     object_name: row.object_name,
+    subsystem: row.subsystem ?? "",
     record_text: row.record_text,
     sort_order: row.sort_order,
     metric_result: row.metric_result,
