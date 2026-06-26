@@ -44,6 +44,28 @@ const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
   activeSubsystem: ""
 };
 
+function uniqueNonEmptyValues(values: Array<string | null | undefined>) {
+  const result: string[] = [];
+  values.forEach((value) => {
+    const text = (value ?? "").trim();
+    if (text && !result.includes(text)) {
+      result.push(text);
+    }
+  });
+  return result;
+}
+
+function subsystemUiStateFromDetail(detail: SectionDetail, current?: SubsystemUiState): SubsystemUiState {
+  const manualSubsystemNames = uniqueNonEmptyValues([
+    ...(detail.subsystems ?? []),
+    ...detail.rows.map((row) => row.subsystem)
+  ]);
+  const activeSubsystem = current?.activeSubsystem && manualSubsystemNames.includes(current.activeSubsystem)
+    ? current.activeSubsystem
+    : "";
+  return { manualSubsystemNames, activeSubsystem };
+}
+
 function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
     unit: row.unit,
@@ -138,6 +160,10 @@ export function ProjectPage() {
       .then((detail) => {
         setSectionDetails((current) => ({ ...current, [activeCode]: detail }));
         setDraftRows((current) => ({ ...current, [activeCode]: rowsFromDetail(detail) }));
+        setSubsystemUiStateBySection((current) => ({
+          ...current,
+          [activeCode]: subsystemUiStateFromDetail(detail, current[activeCode])
+        }));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取章节失败"))
       .finally(() => setIsLoadingSection(false));
@@ -339,11 +365,27 @@ export function ProjectPage() {
     setSaveMessage(undefined);
   }
 
-  function handleSubsystemUiStateChange(code: string, updater: (current: SubsystemUiState) => SubsystemUiState) {
+  function subsystemNamesForSave(code: string) {
+    const uiState = subsystemUiStateBySection[code] ?? EMPTY_SUBSYSTEM_UI_STATE;
+    return uniqueNonEmptyValues([
+      ...uiState.manualSubsystemNames,
+      ...(draftRows[code] ?? []).map((row) => row.subsystem)
+    ]);
+  }
+
+  function handleSubsystemUiStateChange(
+    code: string,
+    updater: (current: SubsystemUiState) => SubsystemUiState,
+    options: { dirty?: boolean } = {}
+  ) {
     setSubsystemUiStateBySection((current) => ({
       ...current,
       [code]: updater(current[code] ?? EMPTY_SUBSYSTEM_UI_STATE)
     }));
+    if (options.dirty) {
+      setDirtySections((current) => new Set([...current, code]));
+      setSaveMessage(undefined);
+    }
   }
 
   async function handleUpdateRecordTemplateSlot(slotId: number, payload: RecordTemplateSlotUpdateInput) {
@@ -377,6 +419,10 @@ export function ProjectPage() {
   function applySavedSectionDetail(code: string, detail: SectionDetail) {
     setSectionDetails((current) => ({ ...current, [code]: detail }));
     setDraftRows((current) => ({ ...current, [code]: rowsFromDetail(detail) }));
+    setSubsystemUiStateBySection((current) => ({
+      ...current,
+      [code]: subsystemUiStateFromDetail(detail, current[code])
+    }));
   }
 
   function markSectionsSaved(codes: string[]) {
@@ -396,6 +442,7 @@ export function ProjectPage() {
     setError(undefined);
     try {
       const detail = await updateSectionDetail(project.id, activeCode, {
+        subsystems: subsystemNamesForSave(activeCode),
         rows: draftRows[activeCode] ?? []
       });
       applySavedSectionDetail(activeCode, detail);
@@ -427,6 +474,7 @@ export function ProjectPage() {
       const results = await Promise.allSettled(
         codesToSave.map(async (code) => {
           const detail = await updateSectionDetail(project.id, code, {
+            subsystems: subsystemNamesForSave(code),
             rows: draftRows[code] ?? []
           });
           return { code, detail };
@@ -769,7 +817,7 @@ export function ProjectPage() {
               recordTemplateSlots={activeRecordTemplateSlots}
               subsystemUiState={subsystemUiStateBySection[activeCode] ?? EMPTY_SUBSYSTEM_UI_STATE}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
-              onSubsystemUiStateChange={(updater) => handleSubsystemUiStateChange(activeCode, updater)}
+              onSubsystemUiStateChange={(updater, options) => handleSubsystemUiStateChange(activeCode, updater, options)}
               onSave={handleSaveSection}
             />
           ) : null}

@@ -62,6 +62,10 @@ def build_section_detail(project_id: int, code: str) -> SectionDetailRead:
         raise HTTPException(status_code=404, detail="章节不存在")
 
     rows = [assessment_row_to_schema(row) for row in database.list_assessment_rows(section["id"])]
+    subsystems = _unique_values(
+        [row["name"] for row in database.list_section_subsystems(project_id, code)] +
+        [row.subsystem for row in rows]
+    )
     evidence_images = [
         evidence_to_schema(row, index)
         for index, row in enumerate(database.list_evidence_images(project_id, section["code"]), start=1)
@@ -74,6 +78,7 @@ def build_section_detail(project_id: int, code: str) -> SectionDetailRead:
     return SectionDetailRead(
         section=section_to_schema(section),
         rows=rows,
+        subsystems=subsystems,
         evidence_images=evidence_images,
         cross_references=cross_references,
     )
@@ -91,8 +96,18 @@ def update_section_detail(project_id: int, code: str, payload: SectionUpdate) ->
         code=code,
         title=payload.title,
         table_title=payload.table_title,
+        subsystems=payload.subsystems,
         rows=[row.model_dump() for row in payload.rows],
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="章节不存在")
     return build_section_detail(project_id, code)
+
+
+def _unique_values(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        text = (value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result

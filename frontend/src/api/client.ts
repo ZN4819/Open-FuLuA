@@ -86,6 +86,7 @@ export type CrossReferenceInput = {
 export type SectionDetail = {
   section: Section;
   rows: AssessmentRow[];
+  subsystems: string[];
   evidence_images: EvidenceImage[];
   cross_references: CrossReference[];
 };
@@ -372,6 +373,7 @@ export function updateSectionDetail(
   payload: {
     title?: string | null;
     table_title?: string | null;
+    subsystems?: string[] | null;
     rows: AssessmentRowInput[];
   }
 ): Promise<SectionDetail> {

@@ -163,6 +163,7 @@ class EvidenceOrderUpdate(BaseModel):
 class SectionDetailRead(BaseModel):
     section: SectionRead
     rows: list[AssessmentRowRead]
+    subsystems: list[str] = []
     evidence_images: list[EvidenceImageRead]
     cross_references: list[CrossReferenceRead]
 
@@ -170,6 +171,7 @@ class SectionDetailRead(BaseModel):
 class SectionUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     table_title: str | None = Field(default=None, max_length=200)
+    subsystems: list[str] | None = None
     rows: list[AssessmentRowWrite] = []
 
 

@@ -12,6 +12,7 @@ from app import database  # noqa: E402
 from app.api.projects import list_projects as list_project_schemas  # noqa: E402
 from app.api.projects import delete_project as delete_project_schema  # noqa: E402
 from app.api.sections import build_section_detail  # noqa: E402
+from app.api.sections import update_section_detail  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.schemas import SectionUpdate  # noqa: E402
 
@@ -136,6 +137,38 @@ class StructuredDataTest(unittest.TestCase):
 
         self.assertEqual(rows[0]["subsystem"], "Core banking")
         self.assertEqual(rows[1]["subsystem"], "")
+        self.assertEqual(detail.rows[0].subsystem, "Core banking")
+        self.assertEqual(detail.rows[1].subsystem, "")
+
+    def test_section_update_preserves_subsystem_catalog_and_assignments(self) -> None:
+        project = database.create_project("subsystem catalog project")
+
+        update_section_detail(
+            project["id"],
+            "A-2",
+            SectionUpdate(
+                subsystems=["Core banking"],
+                rows=[
+                    {
+                        "unit": "Network identity",
+                        "object_name": "Payment service",
+                        "subsystem": "Core banking",
+                        "record_text": "record",
+                        "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1"},
+                    },
+                    {
+                        "unit": "Network identity",
+                        "object_name": "Legacy service",
+                        "record_text": "record",
+                        "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0"},
+                    },
+                ],
+            ),
+        )
+
+        detail = build_section_detail(project["id"], "A-2")
+
+        self.assertEqual(detail.subsystems, ["Core banking"])
         self.assertEqual(detail.rows[0].subsystem, "Core banking")
         self.assertEqual(detail.rows[1].subsystem, "")
 

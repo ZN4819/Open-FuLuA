@@ -8,6 +8,9 @@ export type SubsystemUiState = {
 };
 
 type SubsystemUiStateUpdater = (current: SubsystemUiState) => SubsystemUiState;
+type SubsystemUiStateChangeOptions = {
+  dirty?: boolean;
+};
 
 type AssessmentTableProps = {
   sectionCode: string;
@@ -19,7 +22,7 @@ type AssessmentTableProps = {
   recordTemplateSlots: RecordTemplateSlot[];
   subsystemUiState: SubsystemUiState;
   onRowsChange: (rows: AssessmentRowInput[]) => void;
-  onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater) => void;
+  onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onSave: () => void;
 };
 
@@ -439,7 +442,7 @@ export function AssessmentTable({
     onSubsystemUiStateChange((current) => ({
       ...current,
       manualSubsystemNames: updater(current.manualSubsystemNames)
-    }));
+    }), { dirty: true });
   }
 
   function setActiveSubsystemForSection(subsystemName: string) {

@@ -273,6 +273,27 @@ def init_db() -> None:
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS section_subsystems (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                section_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, section_code, name),
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_section_subsystems_section
+            ON section_subsystems(project_id, section_code, sort_order)
+            """
+        )
 
 
 def create_project(name: str) -> sqlite3.Row:
@@ -301,6 +322,15 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def _unique_nonempty_values(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def create_docx_import_job(
@@ -919,6 +949,19 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
         return connection.execute(query, (section_id,)).fetchall()
 
 
+def list_section_subsystems(project_id: int, section_code: str, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    query = """
+        SELECT id, project_id, section_code, name, sort_order, created_at, updated_at
+        FROM section_subsystems
+        WHERE project_id = ? AND section_code = ?
+        ORDER BY sort_order, id
+    """
+    if db is not None:
+        return db.execute(query, (project_id, section_code)).fetchall()
+    with connect() as connection:
+        return connection.execute(query, (project_id, section_code)).fetchall()
+
+
 def list_evidence_images(project_id: int, section_code: str, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
     query = """
         SELECT
@@ -1149,9 +1192,13 @@ def replace_section_rows(
     rows: list[dict[str, Any]],
     title: str | None = None,
     table_title: str | None = None,
+    subsystems: list[str] | None = None,
 ) -> sqlite3.Row | None:
     timestamp = utc_now()
     rows = _rows_with_calculated_unit_scores(rows)
+    subsystem_names = _unique_nonempty_values(
+        (subsystems or []) + [str(row.get("subsystem", "")) for row in rows]
+    )
     with connect() as db:
         section = get_section(project_id, code, db)
         if section is None:
@@ -1169,6 +1216,20 @@ def replace_section_rows(
             )
 
         db.execute("DELETE FROM assessment_rows WHERE section_id = ?", (section["id"],))
+        db.execute(
+            "DELETE FROM section_subsystems WHERE project_id = ? AND section_code = ?",
+            (project_id, code),
+        )
+
+        for index, subsystem_name in enumerate(subsystem_names, start=1):
+            db.execute(
+                """
+                INSERT INTO section_subsystems
+                    (project_id, section_code, name, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (project_id, code, subsystem_name, index, timestamp, timestamp),
+            )
 
         for index, row in enumerate(rows, start=1):
             sort_order = int(row.get("sort_order") or index)
