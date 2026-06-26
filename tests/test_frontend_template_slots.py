@@ -145,5 +145,15 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("我的模板", panel_source)
 
 
+    def test_subsystem_and_object_controls_share_one_grid_row(self) -> None:
+        styles_source = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn(".technical-entry-row.with-subsystem", styles_source)
+        self.assertIn("grid-template-columns: minmax(140px, 1.1fr) auto minmax(140px, 1fr) minmax(110px, 0.8fr) minmax(140px, 1fr) auto", styles_source)
+        self.assertIn(".technical-entry-row.with-subsystem .subsystem-controls", styles_source)
+        self.assertIn(".technical-entry-row.with-subsystem .technical-object-add", styles_source)
+        self.assertIn("display: contents", styles_source)
+
+
 if __name__ == "__main__":
     unittest.main()

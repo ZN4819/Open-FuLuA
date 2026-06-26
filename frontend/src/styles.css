@@ -1615,6 +1615,19 @@ a:hover {
   width: min(1120px, 100%);
 }
 
+.technical-entry-row.with-subsystem {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) auto minmax(140px, 1fr) minmax(110px, 0.8fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  justify-content: stretch;
+  width: min(920px, 100%);
+}
+
+.technical-entry-row.with-subsystem .subsystem-controls,
+.technical-entry-row.with-subsystem .technical-object-add {
+  display: contents;
+}
+
 .technical-entry-row .subsystem-controls {
   flex: 1 1 500px;
   width: auto;
@@ -2402,6 +2415,11 @@ a:hover {
 
   .technical-entry-row {
     justify-content: stretch;
+    width: 100%;
+  }
+
+  .technical-entry-row.with-subsystem {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 
