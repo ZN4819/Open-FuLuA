@@ -150,6 +150,21 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("我的模板", panel_source)
 
 
+    def test_subsystem_state_is_preserved_above_assessment_table(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("subsystemUiStateBySection", page_source)
+        self.assertIn("setSubsystemUiStateBySection", page_source)
+        self.assertIn("subsystemUiState={subsystemUiStateBySection[activeCode] ?? EMPTY_SUBSYSTEM_UI_STATE}", page_source)
+        self.assertIn("handleSubsystemUiStateChange(activeCode, updater)", page_source)
+        self.assertIn("subsystemUiState", table_source)
+        self.assertIn("onSubsystemUiStateChange", table_source)
+        self.assertIn("setManualSubsystemNamesForSection", table_source)
+        self.assertIn("setActiveSubsystemForSection", table_source)
+        self.assertNotIn("setManualSubsystemNames([]);", table_source)
+        self.assertNotIn("setActiveSubsystem(\"\");", table_source)
+
     def test_subsystem_and_object_controls_share_one_grid_row(self) -> None:
         styles_source = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
 

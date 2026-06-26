@@ -33,11 +33,16 @@ import {
   type ValidationIssue,
   type ValidationResponse
 } from "../api/client";
-import { AssessmentTable } from "../components/AssessmentTable";
+import { AssessmentTable, type SubsystemUiState } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
 import { TemplateManagerPanel } from "../components/TemplateManagerPanel";
+
+const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
+  manualSubsystemNames: [],
+  activeSubsystem: ""
+};
 
 function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
@@ -66,6 +71,7 @@ export function ProjectPage() {
   const [recordTemplateSlots, setRecordTemplateSlots] = useState<RecordTemplateSlot[]>([]);
   const [sectionDetails, setSectionDetails] = useState<Record<string, SectionDetail>>({});
   const [draftRows, setDraftRows] = useState<Record<string, AssessmentRowInput[]>>({});
+  const [subsystemUiStateBySection, setSubsystemUiStateBySection] = useState<Record<string, SubsystemUiState>>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>();
   const [isCreating, setIsCreating] = useState(false);
@@ -181,6 +187,7 @@ export function ProjectPage() {
     setProject(projectToOpen);
     setSectionDetails({});
     setDraftRows({});
+    setSubsystemUiStateBySection({});
     setDirtySections(new Set());
     setValidation(undefined);
     setRenderJob(undefined);
@@ -230,6 +237,7 @@ export function ProjectPage() {
     setActiveCode(undefined);
     setSectionDetails({});
     setDraftRows({});
+    setSubsystemUiStateBySection({});
     setValidation(undefined);
     setRenderJob(undefined);
     setSaveMessage(undefined);
@@ -329,6 +337,13 @@ export function ProjectPage() {
     setDraftRows((current) => ({ ...current, [code]: rows }));
     setDirtySections((current) => new Set([...current, code]));
     setSaveMessage(undefined);
+  }
+
+  function handleSubsystemUiStateChange(code: string, updater: (current: SubsystemUiState) => SubsystemUiState) {
+    setSubsystemUiStateBySection((current) => ({
+      ...current,
+      [code]: updater(current[code] ?? EMPTY_SUBSYSTEM_UI_STATE)
+    }));
   }
 
   async function handleUpdateRecordTemplateSlot(slotId: number, payload: RecordTemplateSlotUpdateInput) {
@@ -752,7 +767,9 @@ export function ProjectPage() {
               isDirty={isDirty}
               evidenceImages={activeDetail.evidence_images}
               recordTemplateSlots={activeRecordTemplateSlots}
+              subsystemUiState={subsystemUiStateBySection[activeCode] ?? EMPTY_SUBSYSTEM_UI_STATE}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
+              onSubsystemUiStateChange={(updater) => handleSubsystemUiStateChange(activeCode, updater)}
               onSave={handleSaveSection}
             />
           ) : null}

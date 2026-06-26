@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import type { AssessmentRowInput, CrossReferenceInput, EvidenceImage, RecordTemplateSlot, TemplateProfile } from "../api/client";
 
+export type SubsystemUiState = {
+  manualSubsystemNames: string[];
+  activeSubsystem: string;
+};
+
+type SubsystemUiStateUpdater = (current: SubsystemUiState) => SubsystemUiState;
+
 type AssessmentTableProps = {
   sectionCode: string;
   rows: AssessmentRowInput[];
@@ -10,7 +17,9 @@ type AssessmentTableProps = {
   isDirty: boolean;
   evidenceImages: EvidenceImage[];
   recordTemplateSlots: RecordTemplateSlot[];
+  subsystemUiState: SubsystemUiState;
   onRowsChange: (rows: AssessmentRowInput[]) => void;
+  onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater) => void;
   onSave: () => void;
 };
 
@@ -360,7 +369,9 @@ export function AssessmentTable({
   isDirty,
   evidenceImages,
   recordTemplateSlots,
+  subsystemUiState,
   onRowsChange,
+  onSubsystemUiStateChange,
   onSave
 }: AssessmentTableProps) {
   const technical = isTechnicalSection(sectionCode);
@@ -370,17 +381,15 @@ export function AssessmentTable({
   const [technicalObjectName, setTechnicalObjectName] = useState("");
   const [technicalObjectCategory, setTechnicalObjectCategory] = useState<TechnicalObjectCategoryValue>("user");
   const [newSubsystemName, setNewSubsystemName] = useState("");
-  const [manualSubsystemNames, setManualSubsystemNames] = useState<string[]>([]);
-  const [activeSubsystem, setActiveSubsystem] = useState("");
   useEffect(() => {
     setNewSubsystemName("");
-    setManualSubsystemNames([]);
-    setActiveSubsystem("");
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
   const normalizedRows = normalizeRows(rows, unitOrder, technical);
   const sectionSupportsSubsystem = supportsSubsystem(sectionCode);
+  const manualSubsystemNames = subsystemUiState.manualSubsystemNames;
+  const activeSubsystem = subsystemUiState.activeSubsystem;
   const subsystemNames = sectionSupportsSubsystem
     ? uniqueValues([...manualSubsystemNames, ...normalizedRows.map((row) => row.subsystem ?? "")])
     : [];
@@ -426,6 +435,20 @@ export function AssessmentTable({
   });
   const tableColumnCount = technical ? 9 : 6;
 
+  function setManualSubsystemNamesForSection(updater: (current: string[]) => string[]) {
+    onSubsystemUiStateChange((current) => ({
+      ...current,
+      manualSubsystemNames: updater(current.manualSubsystemNames)
+    }));
+  }
+
+  function setActiveSubsystemForSection(subsystemName: string) {
+    onSubsystemUiStateChange((current) => ({
+      ...current,
+      activeSubsystem: subsystemName
+    }));
+  }
+
   function updateRow(index: number, patch: Partial<AssessmentRowInput>) {
     const next = normalizeRows(
       normalizedRows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
@@ -455,8 +478,8 @@ export function AssessmentTable({
     if (!sectionSupportsSubsystem || !subsystemName) {
       return;
     }
-    setManualSubsystemNames((current) => uniqueValues([...current, subsystemName]));
-    setActiveSubsystem(subsystemName);
+    setManualSubsystemNamesForSection((current) => uniqueValues([...current, subsystemName]));
+    setActiveSubsystemForSection(subsystemName);
     setNewSubsystemName("");
   }
 
@@ -466,9 +489,9 @@ export function AssessmentTable({
       return;
     }
     recordSelections.current = {};
-    setManualSubsystemNames((current) => current.filter((item) => item.trim() !== subsystemName));
+    setManualSubsystemNamesForSection((current) => current.filter((item) => item.trim() !== subsystemName));
     if (activeSubsystemName === subsystemName) {
-      setActiveSubsystem("");
+      setActiveSubsystemForSection("");
     }
     onRowsChange(
       normalizeRows(
@@ -668,7 +691,7 @@ export function AssessmentTable({
                   </button>
                   <label className="subsystem-filter">
                     <span>子系统筛选</span>
-                    <select value={activeSubsystemName} onChange={(event) => setActiveSubsystem(event.target.value)}>
+                    <select value={activeSubsystemName} onChange={(event) => setActiveSubsystemForSection(event.target.value)}>
                       <option value="">全部子系统</option>
                       {subsystemNames.map((subsystemName) => (
                         <option key={subsystemName} value={subsystemName}>
@@ -725,7 +748,7 @@ export function AssessmentTable({
               {subsystemNames.length > 0 ? (
                 subsystemNames.map((subsystemName) => (
                   <span className={`subsystem-item${activeSubsystemName === subsystemName ? " active" : ""}`} key={subsystemName}>
-                    <button type="button" onClick={() => setActiveSubsystem(subsystemName)}>
+                    <button type="button" onClick={() => setActiveSubsystemForSection(subsystemName)}>
                       {subsystemName}
                     </button>
                     <button type="button" className="danger-button object-delete-button" onClick={() => removeSubsystem(subsystemName)}>
