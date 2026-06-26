@@ -396,6 +396,13 @@ export function AssessmentTable({
     : [];
   const allTechnicalObjectNames = uniqueValues(visibleRowEntries.map((entry) => entry.row.object_name));
   const technicalObjectNames = uniqueValues(sectionManagedTechnicalRows.map((row) => row.object_name));
+  const unassignedTechnicalObjectNames = sectionSupportsSubsystem
+    ? uniqueValues(
+        normalizedRows
+          .filter((row) => !row.subsystem?.trim())
+          .map((row) => row.object_name)
+      )
+    : [];
   const objectCount = technical ? allTechnicalObjectNames.length : visibleRowEntries.length;
   const technicalObjectCategoryOptions = technicalObjectCategoriesForSection(sectionCode);
   const technicalObjectTargetUnits = targetUnitsForTechnicalObject(sectionCode, unitOrder, technicalObjectCategory);
@@ -466,6 +473,27 @@ export function AssessmentTable({
     onRowsChange(
       normalizeRows(
         normalizedRows.filter((row) => row.subsystem?.trim() !== subsystemName),
+        unitOrder,
+        technical
+      )
+    );
+  }
+
+  function assignUnassignedObjectsToSubsystem(objectNameValue?: string) {
+    const objectName = (objectNameValue ?? "").trim();
+    if (!sectionSupportsSubsystem || !activeSubsystemName) {
+      return;
+    }
+    onRowsChange(
+      normalizeRows(
+        normalizedRows.map((row) => {
+          const rowObjectName = row.object_name.trim();
+          const shouldAssign =
+            !row.subsystem?.trim() &&
+            rowObjectName &&
+            (!objectName || rowObjectName === objectName);
+          return shouldAssign ? { ...row, subsystem: activeSubsystemName } : row;
+        }),
         unitOrder,
         technical
       )
@@ -708,6 +736,35 @@ export function AssessmentTable({
               ) : (
                 <p className="technical-object-empty">请先新增子系统，再录入测评对象。</p>
               )}
+            </div>
+          ) : null}
+          {sectionSupportsSubsystem && unassignedTechnicalObjectNames.length > 0 ? (
+            <div className="unassigned-object-panel">
+              <div className="unassigned-object-heading">
+                <strong>未归属测评对象</strong>
+                {activeSubsystemName ? (
+                  <button type="button" className="secondary-button" onClick={() => assignUnassignedObjectsToSubsystem()}>
+                    全部归入当前子系统
+                  </button>
+                ) : (
+                  <span>选择子系统后可归属</span>
+                )}
+              </div>
+              <div className="unassigned-object-list" aria-label="未归属测评对象">
+                {unassignedTechnicalObjectNames.map((objectName) => (
+                  <span className="technical-object-item unassigned-object-item" key={objectName}>
+                    <span>{objectName}</span>
+                    <button
+                      type="button"
+                      className="secondary-button object-assign-button"
+                      disabled={!activeSubsystemName}
+                      onClick={() => assignUnassignedObjectsToSubsystem(objectName)}
+                    >
+                      归入当前子系统
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
           ) : null}
           {technicalObjectNames.length > 0 ? (

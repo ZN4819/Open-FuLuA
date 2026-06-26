@@ -1742,6 +1742,48 @@ a:hover {
   border-color: var(--color-border);
 }
 
+.unassigned-object-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: #fffdf5;
+  border: 1px solid #ecd890;
+  border-radius: var(--radius-sm);
+}
+
+.unassigned-object-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.unassigned-object-heading strong {
+  color: var(--color-warning);
+}
+
+.unassigned-object-heading span {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.unassigned-object-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.unassigned-object-item {
+  border-color: #e6d391;
+}
+
+.object-assign-button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
 .technical-object-item {
   display: inline-flex;
   gap: var(--space-2);
