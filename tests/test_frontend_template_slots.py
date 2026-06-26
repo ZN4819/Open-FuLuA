@@ -98,6 +98,7 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("SUBSYSTEM_SECTION_CODES", table_source)
         self.assertIn("supportsSubsystem(sectionCode)", table_source)
         self.assertIn("subsystem-filter", table_source)
+        self.assertIn("technical-entry-row", table_source)
         self.assertIn("function addSubsystem", table_source)
         self.assertIn("function removeSubsystem", table_source)
         self.assertIn("row.subsystem", table_source)

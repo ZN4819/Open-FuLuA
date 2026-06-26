@@ -1606,6 +1606,31 @@ a:hover {
   width: min(560px, 100%);
 }
 
+.technical-entry-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: end;
+  justify-content: flex-end;
+  width: min(1120px, 100%);
+}
+
+.technical-entry-row .subsystem-controls {
+  flex: 1 1 500px;
+  width: auto;
+  justify-self: auto;
+}
+
+.technical-entry-row .technical-object-add {
+  flex: 0 1 360px;
+  width: auto;
+  justify-self: auto;
+}
+
+.technical-entry-row .categorized-object-add {
+  flex-basis: 520px;
+}
+
 .subsystem-controls {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 0.9fr);
@@ -2373,6 +2398,16 @@ a:hover {
   .technical-object-add,
   .subsystem-controls {
     grid-template-columns: 1fr;
+  }
+
+  .technical-entry-row {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .technical-entry-row .subsystem-controls,
+  .technical-entry-row .technical-object-add {
+    flex: 1 1 100%;
   }
 
   .project-list-item {

@@ -617,40 +617,41 @@ export function AssessmentTable({
               {isSaving ? "保存中..." : "保存"}
             </button>
           </div>
-          {technical && sectionSupportsSubsystem ? (
-            <div className="subsystem-controls">
-              <label>
-                <span>所属子系统</span>
-                <input
-                  value={newSubsystemName}
-                  onChange={(event) => setNewSubsystemName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addSubsystem();
-                    }
-                  }}
-                  placeholder="例如：核心业务系统"
-                />
-              </label>
-              <button type="button" onClick={addSubsystem} disabled={isSaving || !newSubsystemName.trim()}>
-                新增子系统
-              </button>
-              <label className="subsystem-filter">
-                <span>子系统筛选</span>
-                <select value={activeSubsystemName} onChange={(event) => setActiveSubsystem(event.target.value)}>
-                  <option value="">全部子系统</option>
-                  {subsystemNames.map((subsystemName) => (
-                    <option key={subsystemName} value={subsystemName}>
-                      {subsystemName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
           {technical ? (
-            <div className={`technical-object-add toolbar-object-add${technicalObjectCategoryOptions.length > 0 ? " categorized-object-add" : ""}`}>
+            <div className={`technical-entry-row${sectionSupportsSubsystem ? " with-subsystem" : ""}`}>
+              {sectionSupportsSubsystem ? (
+                <div className="subsystem-controls">
+                  <label>
+                    <span>所属子系统</span>
+                    <input
+                      value={newSubsystemName}
+                      onChange={(event) => setNewSubsystemName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addSubsystem();
+                        }
+                      }}
+                      placeholder="例如：核心业务系统"
+                    />
+                  </label>
+                  <button type="button" onClick={addSubsystem} disabled={isSaving || !newSubsystemName.trim()}>
+                    新增子系统
+                  </button>
+                  <label className="subsystem-filter">
+                    <span>子系统筛选</span>
+                    <select value={activeSubsystemName} onChange={(event) => setActiveSubsystem(event.target.value)}>
+                      <option value="">全部子系统</option>
+                      {subsystemNames.map((subsystemName) => (
+                        <option key={subsystemName} value={subsystemName}>
+                          {subsystemName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+              <div className={`technical-object-add toolbar-object-add${technicalObjectCategoryOptions.length > 0 ? " categorized-object-add" : ""}`}>
               {technicalObjectCategoryOptions.length > 0 ? (
                 <label>
                   <span>对象分类</span>
@@ -683,6 +684,7 @@ export function AssessmentTable({
               <button type="button" onClick={addTechnicalSectionObject} disabled={technicalObjectAddDisabled}>
                 新增对象
               </button>
+              </div>
             </div>
           ) : null}
         </div>
