@@ -56,6 +56,40 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("handleDeleteRecordTemplate", page_source)
         self.assertNotIn("handleCopyRecordTemplate", page_source)
 
+    def test_technical_filters_drive_visible_evidence_images(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("export type EvidenceImageFilterState", table_source)
+        self.assertIn("onVisibleEvidenceFilterChange", table_source)
+        self.assertIn("technicalUnitFilter", table_source)
+        self.assertIn("technicalObjectFilter", table_source)
+        self.assertIn("technical-filter-controls", table_source)
+        self.assertIn("测评单元筛选", table_source)
+        self.assertIn("测评对象筛选", table_source)
+        self.assertIn("function referencedEvidenceImageIds", table_source)
+        self.assertIn("const filterActive = Boolean(activeSubsystemName || activeUnitFilter || activeObjectFilter)", table_source)
+        self.assertIn("imageIds: filterActive ? visibleEvidenceImageIds : []", table_source)
+
+        self.assertIn("type EvidenceImageFilterBySection", page_source)
+        self.assertIn("const [evidenceFilterBySection", page_source)
+        self.assertIn("handleEvidenceFilterChange", page_source)
+        self.assertIn("onVisibleEvidenceFilterChange={(filter) => handleEvidenceFilterChange(activeCode, filter)}", page_source)
+        self.assertIn("visibleImageIds={activeEvidenceFilter?.imageIds}", page_source)
+        self.assertIn("filterActive={activeEvidenceFilter?.active ?? false}", page_source)
+
+        self.assertIn("visibleImageIds?: number[]", evidence_source)
+        self.assertIn("filterActive?: boolean", evidence_source)
+        self.assertIn("const visibleImageIdSet", evidence_source)
+        self.assertIn("const displayImages = filterActive", evidence_source)
+        self.assertIn("images.filter((image) => visibleImageIdSet.has(image.id))", evidence_source)
+        self.assertIn("warningCount = displayImages.reduce", evidence_source)
+        self.assertIn("图片 {displayImages.length}", evidence_source)
+        self.assertIn("共 {images.length}", evidence_source)
+        self.assertIn("disabled={filterActive || index === 0}", evidence_source)
+        self.assertIn("当前筛选条件下没有被引用的证据图片。", evidence_source)
+
     def test_assessment_table_uses_three_slot_templates_without_legacy_groups(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
 

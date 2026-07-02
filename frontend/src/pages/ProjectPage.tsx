@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createProjectFromDocxImport,
   createRenderJob,
@@ -33,7 +33,7 @@ import {
   type ValidationIssue,
   type ValidationResponse
 } from "../api/client";
-import { AssessmentTable, type SubsystemUiState } from "../components/AssessmentTable";
+import { AssessmentTable, type EvidenceImageFilterState, type SubsystemUiState } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
@@ -43,6 +43,8 @@ const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
   manualSubsystemNames: [],
   activeSubsystem: ""
 };
+
+type EvidenceImageFilterBySection = Record<string, EvidenceImageFilterState>;
 
 function uniqueNonEmptyValues(values: Array<string | null | undefined>) {
   const result: string[] = [];
@@ -94,6 +96,7 @@ export function ProjectPage() {
   const [sectionDetails, setSectionDetails] = useState<Record<string, SectionDetail>>({});
   const [draftRows, setDraftRows] = useState<Record<string, AssessmentRowInput[]>>({});
   const [subsystemUiStateBySection, setSubsystemUiStateBySection] = useState<Record<string, SubsystemUiState>>({});
+  const [evidenceFilterBySection, setEvidenceFilterBySection] = useState<EvidenceImageFilterBySection>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>();
   const [isCreating, setIsCreating] = useState(false);
@@ -131,6 +134,7 @@ export function ProjectPage() {
   const dirtyCount = dirtySections.size;
   const isSavingAny = isSaving || isSavingAll;
   const activeEvidenceCount = activeDetail?.evidence_images.length ?? 0;
+  const activeEvidenceFilter = activeCode ? evidenceFilterBySection[activeCode] : undefined;
 
   useEffect(() => {
     getTemplateProfile()
@@ -387,6 +391,21 @@ export function ProjectPage() {
       setSaveMessage(undefined);
     }
   }
+
+  const handleEvidenceFilterChange = useCallback((code: string, filter: EvidenceImageFilterState) => {
+    setEvidenceFilterBySection((current) => {
+      const existing = current[code];
+      const existingKey = `${existing?.active ? "1" : "0"}:${existing?.imageIds.join(",") ?? ""}`;
+      const nextKey = `${filter.active ? "1" : "0"}:${filter.imageIds.join(",")}`;
+      if (existingKey === nextKey) {
+        return current;
+      }
+      return {
+        ...current,
+        [code]: filter
+      };
+    });
+  }, []);
 
   async function handleUpdateRecordTemplateSlot(slotId: number, payload: RecordTemplateSlotUpdateInput) {
     const updated = await updateRecordTemplateSlot(slotId, payload);
@@ -818,6 +837,7 @@ export function ProjectPage() {
               subsystemUiState={subsystemUiStateBySection[activeCode] ?? EMPTY_SUBSYSTEM_UI_STATE}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSubsystemUiStateChange={(updater, options) => handleSubsystemUiStateChange(activeCode, updater, options)}
+              onVisibleEvidenceFilterChange={(filter) => handleEvidenceFilterChange(activeCode, filter)}
               onSave={handleSaveSection}
             />
           ) : null}
@@ -827,6 +847,8 @@ export function ProjectPage() {
               projectId={project.id}
               sectionCode={activeCode}
               images={activeDetail.evidence_images}
+              visibleImageIds={activeEvidenceFilter?.imageIds}
+              filterActive={activeEvidenceFilter?.active ?? false}
               onImagesChange={(images) => handleImagesChange(activeCode, images)}
               onError={setError}
             />

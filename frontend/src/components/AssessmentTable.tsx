@@ -7,6 +7,11 @@ export type SubsystemUiState = {
   activeSubsystem: string;
 };
 
+export type EvidenceImageFilterState = {
+  active: boolean;
+  imageIds: number[];
+};
+
 type SubsystemUiStateUpdater = (current: SubsystemUiState) => SubsystemUiState;
 type SubsystemUiStateChangeOptions = {
   dirty?: boolean;
@@ -23,6 +28,7 @@ type AssessmentTableProps = {
   subsystemUiState: SubsystemUiState;
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
+  onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
   onSave: () => void;
 };
 
@@ -227,6 +233,29 @@ function crossReferencesForRecordText(
   return references;
 }
 
+function referencedEvidenceImageIds(rows: AssessmentRowInput[]) {
+  const result: number[] = [];
+  rows.forEach((row) => {
+    (row.cross_references ?? []).forEach((reference) => {
+      const imageId = reference.target_image_id;
+      if (typeof imageId === "number" && Number.isFinite(imageId) && !result.includes(imageId)) {
+        result.push(imageId);
+      }
+    });
+
+    const tokenPattern = /\[\[FIG:(\d+)\]\]/g;
+    let match = tokenPattern.exec(row.record_text ?? "");
+    while (match) {
+      const imageId = Number(match[1]);
+      if (Number.isFinite(imageId) && !result.includes(imageId)) {
+        result.push(imageId);
+      }
+      match = tokenPattern.exec(row.record_text ?? "");
+    }
+  });
+  return result;
+}
+
 function replaceAllText(text: string, search: string, replacement: string) {
   if (!search || search === replacement) {
     return text;
@@ -375,6 +404,7 @@ export function AssessmentTable({
   subsystemUiState,
   onRowsChange,
   onSubsystemUiStateChange,
+  onVisibleEvidenceFilterChange,
   onSave
 }: AssessmentTableProps) {
   const technical = isTechnicalSection(sectionCode);
@@ -383,9 +413,13 @@ export function AssessmentTable({
   const recordSelections = useRef<Record<number, TextSelection>>({});
   const [technicalObjectName, setTechnicalObjectName] = useState("");
   const [technicalObjectCategory, setTechnicalObjectCategory] = useState<TechnicalObjectCategoryValue>("user");
+  const [technicalUnitFilter, setTechnicalUnitFilter] = useState("");
+  const [technicalObjectFilter, setTechnicalObjectFilter] = useState("");
   const [newSubsystemName, setNewSubsystemName] = useState("");
   useEffect(() => {
     setNewSubsystemName("");
+    setTechnicalUnitFilter("");
+    setTechnicalObjectFilter("");
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
@@ -398,9 +432,22 @@ export function AssessmentTable({
     : [];
   const activeSubsystemName =
     sectionSupportsSubsystem && subsystemNames.includes(activeSubsystem.trim()) ? activeSubsystem.trim() : "";
-  const visibleRowEntries = normalizedRows
+  const subsystemRowEntries = normalizedRows
     .map((row, index) => ({ row, index }))
     .filter((entry) => !sectionSupportsSubsystem || !activeSubsystemName || entry.row.subsystem?.trim() === activeSubsystemName);
+  const unitFilterOptions = technical
+    ? unitOrder.filter((unit) => subsystemRowEntries.some((entry) => entry.row.unit.trim() === unit))
+    : [];
+  const activeUnitFilter = technical && unitFilterOptions.includes(technicalUnitFilter.trim()) ? technicalUnitFilter.trim() : "";
+  const unitFilteredRowEntries = subsystemRowEntries.filter(
+    (entry) => !activeUnitFilter || entry.row.unit.trim() === activeUnitFilter
+  );
+  const objectFilterOptions = technical ? uniqueValues(unitFilteredRowEntries.map((entry) => entry.row.object_name)) : [];
+  const activeObjectFilter =
+    technical && objectFilterOptions.includes(technicalObjectFilter.trim()) ? technicalObjectFilter.trim() : "";
+  const visibleRowEntries = unitFilteredRowEntries.filter(
+    (entry) => !activeObjectFilter || entry.row.object_name.trim() === activeObjectFilter
+  );
   const sectionManagedTechnicalRows = technical
     ? visibleRowEntries
         .map((entry) => entry.row)
@@ -439,12 +486,23 @@ export function AssessmentTable({
     : sectionCode === A4_SECTION_CODE ? "当前章节还没有通过上方分类新增测评对象。" : "当前章节还没有测评对象。";
   const templateSlotCount = recordTemplateSlots.length;
   const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
-  const groupedRows = unitOrder.map((unit) => {
+  const filterActive = Boolean(activeSubsystemName || activeUnitFilter || activeObjectFilter);
+  const visibleEvidenceImageIds = referencedEvidenceImageIds(visibleRowEntries.map((entry) => entry.row));
+  const groupedUnitOrder = technical && activeUnitFilter ? [activeUnitFilter] : unitOrder;
+  const groupedRows = groupedUnitOrder.map((unit) => {
     const entries = visibleRowEntries.filter((entry) => entry.row.unit.trim() === unit);
     const unitScore = technical ? calculateTechnicalUnitScore(entries.map((entry) => entry.row)) : scoreText(entries[0]?.row.metric_result?.unit_score);
     return { unit, entries, unitScore };
   });
   const tableColumnCount = technical ? 9 : 6;
+  const visibleEvidenceFilterKey = `${filterActive ? "1" : "0"}:${visibleEvidenceImageIds.join(",")}`;
+
+  useEffect(() => {
+    onVisibleEvidenceFilterChange?.({
+      active: filterActive,
+      imageIds: filterActive ? visibleEvidenceImageIds : []
+    });
+  }, [onVisibleEvidenceFilterChange, visibleEvidenceFilterKey]);
 
   function setManualSubsystemNamesForSection(updater: (current: string[]) => string[]) {
     onSubsystemUiStateChange((current) => ({
@@ -701,74 +759,110 @@ export function AssessmentTable({
             </button>
           </div>
           {technical ? (
-            <div className={`technical-entry-row${sectionSupportsSubsystem ? " with-subsystem" : ""}`}>
-              {sectionSupportsSubsystem ? (
-                <div className="subsystem-controls">
-                  <label>
-                    <span>所属子系统</span>
-                    <input
-                      value={newSubsystemName}
-                      onChange={(event) => setNewSubsystemName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addSubsystem();
-                        }
-                      }}
-                      placeholder="例如：核心业务系统"
-                    />
-                  </label>
-                  <button type="button" onClick={addSubsystem} disabled={isSaving || !newSubsystemName.trim()}>
-                    新增子系统
-                  </button>
-                  <label className="subsystem-filter">
-                    <span>子系统筛选</span>
-                    <select value={activeSubsystemName} onChange={(event) => setActiveSubsystemForSection(event.target.value)}>
-                      <option value="">全部子系统</option>
-                      {subsystemNames.map((subsystemName) => (
-                        <option key={subsystemName} value={subsystemName}>
-                          {subsystemName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ) : null}
-              <div className={`technical-object-add toolbar-object-add${technicalObjectCategoryOptions.length > 0 ? " categorized-object-add" : ""}`}>
-              {technicalObjectCategoryOptions.length > 0 ? (
+            <>
+              <div className="technical-filter-controls">
                 <label>
-                  <span>对象分类</span>
+                  <span>测评单元筛选</span>
                   <select
-                    value={technicalObjectCategory}
-                    onChange={(event) => setTechnicalObjectCategory(event.target.value as TechnicalObjectCategoryValue)}
+                    value={activeUnitFilter}
+                    onChange={(event) => {
+                      setTechnicalUnitFilter(event.target.value);
+                      setTechnicalObjectFilter("");
+                    }}
                   >
-                    {technicalObjectCategoryOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
+                    <option value="">全部测评单元</option>
+                    {unitFilterOptions.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
                       </option>
                     ))}
                   </select>
                 </label>
-              ) : null}
-              <label>
-                <span>测评对象</span>
-                <input
-                  value={technicalObjectName}
-                  onChange={(event) => setTechnicalObjectName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addTechnicalSectionObject();
-                    }
-                  }}
-                  placeholder={technicalObjectPlaceholder}
-                />
-              </label>
-              <button type="button" onClick={addTechnicalSectionObject} disabled={technicalObjectAddDisabled}>
-                新增对象
-              </button>
+                <label>
+                  <span>测评对象筛选</span>
+                  <select
+                    value={activeObjectFilter}
+                    onChange={(event) => setTechnicalObjectFilter(event.target.value)}
+                    disabled={objectFilterOptions.length === 0}
+                  >
+                    <option value="">全部测评对象</option>
+                    {objectFilterOptions.map((objectName) => (
+                      <option key={objectName} value={objectName}>
+                        {objectName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            </div>
+              <div className={`technical-entry-row${sectionSupportsSubsystem ? " with-subsystem" : ""}`}>
+                {sectionSupportsSubsystem ? (
+                  <div className="subsystem-controls">
+                    <label>
+                      <span>所属子系统</span>
+                      <input
+                        value={newSubsystemName}
+                        onChange={(event) => setNewSubsystemName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addSubsystem();
+                          }
+                        }}
+                        placeholder="例如：核心业务系统"
+                      />
+                    </label>
+                    <button type="button" onClick={addSubsystem} disabled={isSaving || !newSubsystemName.trim()}>
+                      新增子系统
+                    </button>
+                    <label className="subsystem-filter">
+                      <span>子系统筛选</span>
+                      <select value={activeSubsystemName} onChange={(event) => setActiveSubsystemForSection(event.target.value)}>
+                        <option value="">全部子系统</option>
+                        {subsystemNames.map((subsystemName) => (
+                          <option key={subsystemName} value={subsystemName}>
+                            {subsystemName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                <div className={`technical-object-add toolbar-object-add${technicalObjectCategoryOptions.length > 0 ? " categorized-object-add" : ""}`}>
+                {technicalObjectCategoryOptions.length > 0 ? (
+                  <label>
+                    <span>对象分类</span>
+                    <select
+                      value={technicalObjectCategory}
+                      onChange={(event) => setTechnicalObjectCategory(event.target.value as TechnicalObjectCategoryValue)}
+                    >
+                      {technicalObjectCategoryOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  <span>测评对象</span>
+                  <input
+                    value={technicalObjectName}
+                    onChange={(event) => setTechnicalObjectName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addTechnicalSectionObject();
+                      }
+                    }}
+                    placeholder={technicalObjectPlaceholder}
+                  />
+                </label>
+                <button type="button" onClick={addTechnicalSectionObject} disabled={technicalObjectAddDisabled}>
+                  新增对象
+                </button>
+                </div>
+              </div>
+            </>
           ) : null}
         </div>
       </div>

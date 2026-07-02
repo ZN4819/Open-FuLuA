@@ -13,6 +13,8 @@ type EvidencePanelProps = {
   projectId: number;
   sectionCode: string;
   images: EvidenceImage[];
+  visibleImageIds?: number[];
+  filterActive?: boolean;
   onImagesChange: (images: EvidenceImage[]) => void;
   onError: (message: string) => void;
 };
@@ -25,7 +27,15 @@ function isAltTextWarning(warning: string): boolean {
   return warning.toLowerCase().includes("alt");
 }
 
-export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, onError }: EvidencePanelProps) {
+export function EvidencePanel({
+  projectId,
+  sectionCode,
+  images,
+  visibleImageIds = [],
+  filterActive = false,
+  onImagesChange,
+  onError
+}: EvidencePanelProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [caption, setCaption] = useState("");
@@ -33,7 +43,11 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
   const [isUploading, setIsUploading] = useState(false);
   const [busyImageId, setBusyImageId] = useState<number | null>(null);
   const [draggingImageId, setDraggingImageId] = useState<number | null>(null);
-  const warningCount = images.reduce(
+  const visibleImageIdSet = new Set(visibleImageIds);
+  const displayImages = filterActive
+    ? images.filter((image) => visibleImageIdSet.has(image.id))
+    : images;
+  const warningCount = displayImages.reduce(
     (count, image) => count + image.warnings.filter((warning) => !isAltTextWarning(warning)).length,
     0
   );
@@ -134,6 +148,9 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
   }
 
   async function moveImage(image: EvidenceImage, direction: -1 | 1) {
+    if (filterActive) {
+      return;
+    }
     const index = images.findIndex((item) => item.id === image.id);
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= images.length) {
@@ -151,6 +168,10 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
 
   async function handleDrop(event: DragEvent<HTMLElement>, targetImage: EvidenceImage) {
     event.preventDefault();
+    if (filterActive) {
+      setDraggingImageId(null);
+      return;
+    }
     if (!draggingImageId || draggingImageId === targetImage.id) {
       setDraggingImageId(null);
       return;
@@ -192,7 +213,8 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
           <p className="eyebrow">证据图片</p>
           <h3>上传、题注与排序</h3>
           <div className="editor-toolbar-meta">
-            <span className="status-chip">图片 {images.length}</span>
+            <span className="status-chip">图片 {displayImages.length}</span>
+            {filterActive ? <span className="status-chip">共 {images.length}</span> : null}
             <span className={warningCount > 0 ? "dirty-chip" : "clean-chip"}>提示 {warningCount}</span>
           </div>
         </div>
@@ -215,17 +237,20 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
         </div>
       </div>
 
-      {images.length === 0 ? (
-        <p className="evidence-empty">当前章节还没有证据图片。</p>
+      {displayImages.length === 0 ? (
+        <p className="evidence-empty">
+          {filterActive ? "当前筛选条件下没有被引用的证据图片。" : "当前章节还没有证据图片。"}
+        </p>
       ) : (
         <div className="evidence-grid">
-          {images.map((image, index) => {
+          {displayImages.map((image, index) => {
             const draft = drafts[image.id] ?? { caption: image.caption };
             const visibleWarnings = image.warnings.filter((warning) => !isAltTextWarning(warning));
+            const globalIndex = images.findIndex((item) => item.id === image.id);
             return (
               <article
                 className={`evidence-card${draggingImageId === image.id ? " dragging" : ""}`}
-                draggable
+                draggable={!filterActive}
                 key={image.id}
                 onDragStart={() => setDraggingImageId(image.id)}
                 onDragOver={(event) => event.preventDefault()}
@@ -237,7 +262,7 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                     <strong>{image.figure_label ?? `${sectionCode}-${index + 1}`}</strong>
                     <span>{image.original_name}</span>
                   </div>
-                  <span className="status-chip">排序 {index + 1}</span>
+                  <span className="status-chip">排序 {globalIndex + 1}</span>
                 </div>
                 <div className="image-preview">
                   <img src={resolveFileUrl(image.file_url)} alt={image.alt_text || image.caption || image.original_name} />
@@ -276,10 +301,10 @@ export function EvidencePanel({ projectId, sectionCode, images, onImagesChange, 
                   </label>
                 </div>
                 <div className="image-actions">
-                  <button type="button" onClick={() => moveImage(image, -1)} disabled={index === 0}>
+                  <button type="button" onClick={() => moveImage(image, -1)} disabled={filterActive || index === 0}>
                     上移
                   </button>
-                  <button type="button" onClick={() => moveImage(image, 1)} disabled={index === images.length - 1}>
+                  <button type="button" onClick={() => moveImage(image, 1)} disabled={filterActive || index === displayImages.length - 1}>
                     下移
                   </button>
                   <button type="button" onClick={() => saveImage(image)} disabled={busyImageId === image.id}>

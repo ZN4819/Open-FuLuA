@@ -1576,6 +1576,30 @@ a:hover {
   justify-content: flex-end;
 }
 
+.technical-filter-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+  justify-self: end;
+  width: min(520px, 100%);
+}
+
+.technical-filter-controls label {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.technical-filter-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+}
+
 .technical-object-toolbar {
   display: grid;
   grid-template-columns: 1fr;
