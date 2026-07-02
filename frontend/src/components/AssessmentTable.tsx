@@ -408,6 +408,14 @@ export function AssessmentTable({
     : [];
   const allTechnicalObjectNames = uniqueValues(visibleRowEntries.map((entry) => entry.row.object_name));
   const technicalObjectNames = uniqueValues(sectionManagedTechnicalRows.map((row) => row.object_name));
+  const technicalObjectEntries = technicalObjectNames.map((objectName) => {
+    const objectSubsystemNames = uniqueValues(
+      sectionManagedTechnicalRows
+        .filter((row) => row.object_name.trim() === objectName)
+        .map((row) => row.subsystem ?? "")
+    );
+    return { objectName, objectSubsystemNames };
+  });
   const unassignedTechnicalObjectNames = sectionSupportsSubsystem
     ? uniqueValues(
         normalizedRows
@@ -526,9 +534,10 @@ export function AssessmentTable({
     );
   }
 
-  function removeObjectFromActiveSubsystem(objectNameValue: string | undefined) {
+  function removeObjectFromActiveSubsystem(objectNameValue: string | undefined, subsystemNameValue = activeSubsystemName) {
     const objectName = (objectNameValue ?? "").trim();
-    if (!sectionSupportsSubsystem || !activeSubsystemName || !objectName) {
+    const subsystemName = subsystemNameValue.trim();
+    if (!sectionSupportsSubsystem || !subsystemName || !objectName) {
       return;
     }
     recordSelections.current = {};
@@ -537,7 +546,7 @@ export function AssessmentTable({
         normalizedRows.map((row) => {
           const shouldRemove =
             row.object_name.trim() === objectName &&
-            row.subsystem?.trim() === activeSubsystemName;
+            row.subsystem?.trim() === subsystemName;
           return shouldRemove ? { ...row, subsystem: "" } : row;
         }),
         unitOrder,
@@ -813,25 +822,28 @@ export function AssessmentTable({
               </div>
             </div>
           ) : null}
-          {technicalObjectNames.length > 0 ? (
+          {technicalObjectEntries.length > 0 ? (
             <div className="technical-object-list" aria-label="已添加测评对象">
-              {technicalObjectNames.map((objectName) => (
-                <span className="technical-object-item" key={objectName}>
-                  <span>{objectName}</span>
-                  {sectionSupportsSubsystem && activeSubsystemName ? (
-                    <button
-                      type="button"
-                      className="secondary-button object-assign-button"
-                      onClick={() => removeObjectFromActiveSubsystem(objectName)}
-                    >
-                      移出当前子系统
+              {technicalObjectEntries.map(({ objectName, objectSubsystemNames }) => {
+                const targetSubsystemName = activeSubsystemName || (objectSubsystemNames.length === 1 ? objectSubsystemNames[0] : "");
+                return (
+                  <span className="technical-object-item" key={objectName}>
+                    <span>{objectName}</span>
+                    {sectionSupportsSubsystem && targetSubsystemName ? (
+                      <button
+                        type="button"
+                        className="secondary-button object-assign-button"
+                        onClick={() => removeObjectFromActiveSubsystem(objectName, targetSubsystemName)}
+                      >
+                        移出当前子系统
+                      </button>
+                    ) : null}
+                    <button type="button" className="danger-button object-delete-button" onClick={() => removeTechnicalSectionObject(objectName)}>
+                      删除对象
                     </button>
-                  ) : null}
-                  <button type="button" className="danger-button object-delete-button" onClick={() => removeTechnicalSectionObject(objectName)}>
-                    删除对象
-                  </button>
-                </span>
-              ))}
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="technical-object-empty">{technicalObjectEmptyText}</p>
