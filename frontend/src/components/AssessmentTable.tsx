@@ -526,6 +526,26 @@ export function AssessmentTable({
     );
   }
 
+  function removeObjectFromActiveSubsystem(objectNameValue: string | undefined) {
+    const objectName = (objectNameValue ?? "").trim();
+    if (!sectionSupportsSubsystem || !activeSubsystemName || !objectName) {
+      return;
+    }
+    recordSelections.current = {};
+    onRowsChange(
+      normalizeRows(
+        normalizedRows.map((row) => {
+          const shouldRemove =
+            row.object_name.trim() === objectName &&
+            row.subsystem?.trim() === activeSubsystemName;
+          return shouldRemove ? { ...row, subsystem: "" } : row;
+        }),
+        unitOrder,
+        technical
+      )
+    );
+  }
+
   function addRow(unit: string) {
     if (sectionSupportsSubsystem && !activeSubsystemName) {
       return;
@@ -798,6 +818,15 @@ export function AssessmentTable({
               {technicalObjectNames.map((objectName) => (
                 <span className="technical-object-item" key={objectName}>
                   <span>{objectName}</span>
+                  {sectionSupportsSubsystem && activeSubsystemName ? (
+                    <button
+                      type="button"
+                      className="secondary-button object-assign-button"
+                      onClick={() => removeObjectFromActiveSubsystem(objectName)}
+                    >
+                      移出当前子系统
+                    </button>
+                  ) : null}
                   <button type="button" className="danger-button object-delete-button" onClick={() => removeTechnicalSectionObject(objectName)}>
                     删除对象
                   </button>
