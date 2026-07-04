@@ -409,7 +409,7 @@ function recordFigureReferenceParts(text: string, references: FigureReferenceHov
 }
 
 function figurePreviewTop(clientY: number) {
-  const previewHeight = 280;
+  const previewHeight = 480;
   const minTop = 76;
   const maxTop = Math.max(minTop, window.innerHeight - previewHeight - 16);
   return Math.min(Math.max(clientY - previewHeight / 2, minTop), maxTop);

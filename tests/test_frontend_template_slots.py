@@ -196,6 +196,9 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("pointer-events: auto", styles_source)
         self.assertIn("position: fixed", styles_source)
         self.assertIn("left: 16px", styles_source)
+        self.assertIn("const previewHeight = 480", table_source)
+        self.assertIn("width: min(420px, calc(100vw - 32px))", styles_source)
+        self.assertIn("max-height: 360px", styles_source)
 
     def test_template_manager_is_fixed_split_slot_editor_with_config_backup(self) -> None:
         panel_source = (FRONTEND_SRC / "components" / "TemplateManagerPanel.tsx").read_text(encoding="utf-8")

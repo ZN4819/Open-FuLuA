@@ -2112,7 +2112,7 @@ a:hover {
 .figure-hover-preview {
   position: fixed;
   left: 16px;
-  width: min(268px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   padding: var(--space-3);
   pointer-events: none;
   background: rgba(255, 255, 255, 0.98);
@@ -2145,8 +2145,8 @@ a:hover {
 .figure-hover-preview-image {
   display: grid;
   place-items: center;
-  min-height: 144px;
-  max-height: 190px;
+  min-height: 260px;
+  max-height: 360px;
   overflow: hidden;
   color: var(--color-text-muted);
   background: var(--color-surface-muted);
@@ -2157,7 +2157,7 @@ a:hover {
 .figure-hover-preview-image img {
   display: block;
   max-width: 100%;
-  max-height: 190px;
+  max-height: 360px;
   object-fit: contain;
 }
 
