@@ -265,6 +265,8 @@ class RecordTemplateSlotRead(BaseModel):
     section_code: str
     table_type: str
     unit: str
+    template_group: str
+    template_group_label: str
     template_type: str
     template_type_label: str
     title: str
@@ -286,6 +288,7 @@ class RecordTemplateSlotImportItem(BaseModel):
     section_code: str = Field(min_length=1, max_length=20)
     table_type: str = Field(min_length=1, max_length=30)
     unit: str = Field(default="", max_length=500)
+    template_group: str = Field(default="verification_record", max_length=40)
     template_type: str = Field(min_length=1, max_length=30)
     title: str = Field(default="", max_length=500)
     record_text: str = ""
@@ -311,6 +314,7 @@ class RecordTemplateSlotImportPreviewItem(BaseModel):
     slot_id: int | None = None
     section_code: str = ""
     unit: str = ""
+    template_group: str = ""
     template_type: str = ""
     title: str = ""
 

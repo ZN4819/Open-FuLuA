@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 import type {
   RecordTemplateSlot,
+  RecordTemplateSlotGroup,
   RecordTemplateSlotExport,
   RecordTemplateSlotImportPayload,
   RecordTemplateSlotImportResult,
@@ -27,17 +28,55 @@ type TemplateManagerPanelProps = {
   onImportSlots: (payload: RecordTemplateSlotImportPayload) => Promise<RecordTemplateSlotImportResult>;
 };
 
-const TEMPLATE_TYPE_ORDER: Record<RecordTemplateSlot["template_type"], number> = {
-  compliant: 0,
-  non_compliant: 1,
-  not_applicable: 2
+const TEMPLATE_GROUP_ORDER: Record<RecordTemplateSlotGroup, number> = {
+  verification_record: 0,
+  score_basis: 1
+};
+
+const TEMPLATE_GROUP_FALLBACK_LABELS: Record<RecordTemplateSlotGroup, string> = {
+  verification_record: "测评验证记录模板",
+  score_basis: "测评对象评分计算依据模板"
+};
+
+const TEMPLATE_TYPE_ORDER: Record<RecordTemplateSlotGroup, Partial<Record<RecordTemplateSlot["template_type"], number>>> = {
+  verification_record: {
+    compliant: 0,
+    non_compliant: 1,
+    not_applicable: 2
+  },
+  score_basis: {
+    fully_compliant: 0,
+    score_adjusted: 1,
+    non_compliant: 2
+  }
 };
 
 const TEMPLATE_TYPE_CLASS: Record<RecordTemplateSlot["template_type"], string> = {
   compliant: "compliant",
+  fully_compliant: "compliant",
+  score_adjusted: "score-adjusted",
   non_compliant: "non-compliant",
   not_applicable: "not-applicable"
 };
+
+function templateSlotSortValue(slot: RecordTemplateSlot) {
+  return TEMPLATE_TYPE_ORDER[slot.template_group]?.[slot.template_type] ?? 99;
+}
+
+const TEMPLATE_GROUPS = Object.keys(TEMPLATE_GROUP_ORDER) as RecordTemplateSlotGroup[];
+
+function slotsByTemplateGroup(slots: RecordTemplateSlot[]) {
+  return TEMPLATE_GROUPS.map((templateGroup) => {
+    const groupSlots = slots
+      .filter((slot) => slot.template_group === templateGroup)
+      .sort((first, second) => templateSlotSortValue(first) - templateSlotSortValue(second));
+    return {
+      templateGroup,
+      label: groupSlots[0]?.template_group_label ?? TEMPLATE_GROUP_FALLBACK_LABELS[templateGroup],
+      slots: groupSlots
+    };
+  }).filter((group) => group.slots.length > 0);
+}
 
 function tagsToText(tags?: string[]) {
   return tags?.join("，") ?? "";
@@ -100,6 +139,7 @@ function slotMatchesKeyword(slot: RecordTemplateSlot, draft: SlotDraft, keyword:
   const content = [
     slot.section_code,
     slot.unit,
+    slot.template_group_label,
     slot.template_type_label,
     draft.title,
     draft.record_text,
@@ -196,7 +236,8 @@ export function TemplateManagerPanel({
         .sort((first, second) => {
           return (
             first.unit.localeCompare(second.unit, "zh-CN") ||
-            TEMPLATE_TYPE_ORDER[first.template_type] - TEMPLATE_TYPE_ORDER[second.template_type]
+            TEMPLATE_GROUP_ORDER[first.template_group] - TEMPLATE_GROUP_ORDER[second.template_group] ||
+            templateSlotSortValue(first) - templateSlotSortValue(second)
           );
         }),
     [recordTemplateSlots, sectionFilter]
@@ -217,12 +258,20 @@ export function TemplateManagerPanel({
 
   const unitGroups = useMemo(
     () =>
-      visibleUnits.map((unit) => ({
-        unit,
-        slots: sectionSlots
+      visibleUnits.map((unit) => {
+        const slots = sectionSlots
           .filter((slot) => slot.unit === unit)
-          .sort((first, second) => TEMPLATE_TYPE_ORDER[first.template_type] - TEMPLATE_TYPE_ORDER[second.template_type])
-      })),
+          .sort(
+            (first, second) =>
+              TEMPLATE_GROUP_ORDER[first.template_group] - TEMPLATE_GROUP_ORDER[second.template_group] ||
+              templateSlotSortValue(first) - templateSlotSortValue(second)
+          );
+        return {
+          unit,
+          slots,
+          slotGroups: slotsByTemplateGroup(slots)
+        };
+      }),
     [sectionSlots, visibleUnits]
   );
 
@@ -257,16 +306,16 @@ export function TemplateManagerPanel({
         tags: tagsFromText(draft.tags)
       });
       setDrafts((current) => ({ ...current, [saved.id]: draftFromSlot(saved) }));
-      setMessage(`${saved.unit} 的${saved.template_type_label}已保存。`);
+      setMessage(`${saved.unit} 的${saved.template_group_label} / ${saved.template_type_label}已保存。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存三类模板失败。");
+      setError(err instanceof Error ? err.message : "保存分段模板失败。");
     } finally {
       setBusySlotId(null);
     }
   }
 
   async function handleResetSlot(slot: RecordTemplateSlot) {
-    const confirmed = window.confirm(`确定将“${slot.unit} / ${slot.template_type_label}”恢复为默认模板吗？当前修改会被覆盖。`);
+    const confirmed = window.confirm(`确定将“${slot.unit} / ${slot.template_group_label} / ${slot.template_type_label}”恢复为默认模板吗？当前修改会被覆盖。`);
     if (!confirmed) {
       return;
     }
@@ -277,9 +326,9 @@ export function TemplateManagerPanel({
     try {
       const reset = await onResetSlot(slot.id);
       setDrafts((current) => ({ ...current, [reset.id]: draftFromSlot(reset) }));
-      setMessage(`${reset.unit} 的${reset.template_type_label}已恢复默认。`);
+      setMessage(`${reset.unit} 的${reset.template_group_label} / ${reset.template_type_label}已恢复默认。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "恢复默认模板失败。");
+      setError(err instanceof Error ? err.message : "恢复默认分段模板失败。");
     } finally {
       setResettingSlotId(null);
     }
@@ -292,9 +341,9 @@ export function TemplateManagerPanel({
     try {
       const exported = await onExportSlots();
       downloadJsonFile(exported, `fulua-record-template-slots-${new Date().toISOString().slice(0, 10)}.json`);
-      setMessage(`已导出 ${exported.templates.length} 条三类模板配置。`);
+      setMessage(`已导出 ${exported.templates.length} 条分段模板配置。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "导出三类模板配置失败。");
+      setError(err instanceof Error ? err.message : "导出分段模板配置失败。");
     } finally {
       setIsExportingConfig(false);
     }
@@ -321,13 +370,13 @@ export function TemplateManagerPanel({
     } catch (err) {
       setImportPayload(undefined);
       setImportFileName(undefined);
-      setError(err instanceof Error ? err.message : "读取三类模板配置文件失败。");
+      setError(err instanceof Error ? err.message : "读取分段模板配置文件失败。");
     }
   }
 
   async function handlePreviewImport() {
     if (!importPayload) {
-      setError("请先选择三类模板配置 JSON 文件。");
+      setError("请先选择分段模板配置 JSON 文件。");
       return;
     }
 
@@ -347,7 +396,7 @@ export function TemplateManagerPanel({
 
   async function handleImportTemplateSlots() {
     if (!importPayload) {
-      setError("请先选择三类模板配置 JSON 文件。");
+      setError("请先选择分段模板配置 JSON 文件。");
       return;
     }
     if (importPreview?.summary.errors) {
@@ -363,17 +412,17 @@ export function TemplateManagerPanel({
       setImportPreview(result);
       setMessage(`导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "导入三类模板配置失败。");
+      setError(err instanceof Error ? err.message : "导入分段模板配置失败。");
     } finally {
       setIsImportingConfig(false);
     }
   }
 
   return (
-    <section className="feedback-panel template-manager-panel" aria-label="三类结果记录模板管理">
+    <section className="feedback-panel template-manager-panel" aria-label="分段结果记录模板管理">
       <div className="feedback-heading template-manager-heading">
         <div>
-          <p className="eyebrow">三类模板</p>
+          <p className="eyebrow">分段模板</p>
           <h3>结果记录模板管理</h3>
         </div>
         <div className="template-manager-actions">
@@ -433,7 +482,7 @@ export function TemplateManagerPanel({
         <div className="template-side-heading">
           <div>
             <p className="eyebrow">备份与恢复</p>
-            <h4>三类模板配置导入导出</h4>
+            <h4>分段模板配置导入导出</h4>
           </div>
           <span className="status-chip">JSON</span>
         </div>
@@ -481,11 +530,11 @@ export function TemplateManagerPanel({
             <p className="eyebrow">固定槽位</p>
             <h4>{visibleUnits.length} 个测评单元</h4>
           </div>
-          <span className="status-chip">每个单元 3 类模板</span>
+          <span className="status-chip">每个单元 2 组 / 6 模板</span>
         </div>
 
         {unitGroups.length === 0 ? (
-          <p className="template-empty">没有匹配的三类模板，可调整章节、测评单元或关键词。</p>
+          <p className="template-empty">没有匹配的分段模板，可调整章节、测评单元或关键词。</p>
         ) : (
           <div className="template-unit-list">
             {unitGroups.map((group) => (
@@ -501,77 +550,85 @@ export function TemplateManagerPanel({
                   </div>
                 </div>
 
-                <div className="template-slot-grid">
-                  {group.slots.map((slot) => {
-                    const draft = drafts[slot.id] ?? draftFromSlot(slot);
-                    const isDirty = slotDraftIsDirty(slot, draft);
-                    const isSaving = busySlotId === slot.id;
-                    const isResetting = resettingSlotId === slot.id;
-                    return (
-                      <form
-                        className={`template-slot-card ${TEMPLATE_TYPE_CLASS[slot.template_type]}`}
-                        key={slot.id}
-                        onSubmit={(event) => handleSaveSlot(event, slot)}
-                      >
-                        <div className="template-slot-heading">
-                          <div>
-                            <p className="eyebrow">{slot.template_type_label}</p>
-                            <h5>{draft.title.trim() || slot.template_type_label}</h5>
-                          </div>
-                          <span className={slot.is_customized ? "dirty-chip" : "clean-chip"}>
-                            {slot.is_customized ? "已修改" : "默认"}
-                          </span>
-                        </div>
-
-                        <label>
-                          <span>标题</span>
-                          <input
-                            value={draft.title}
-                            onChange={(event) => updateDraft(slot.id, { title: event.target.value })}
-                            maxLength={500}
-                            placeholder={slot.template_type_label}
-                          />
-                        </label>
-                        <label>
-                          <span>结果记录正文</span>
-                          <textarea
-                            value={draft.record_text}
-                            onChange={(event) => updateDraft(slot.id, { record_text: event.target.value })}
-                            rows={8}
-                            required
-                          />
-                        </label>
-                        <label>
-                          <span>标签</span>
-                          <input
-                            value={draft.tags}
-                            onChange={(event) => updateDraft(slot.id, { tags: event.target.value })}
-                            placeholder="多个标签用逗号分隔"
-                          />
-                        </label>
-
-                        <div className="template-slot-meta">
-                          <span>更新 {formatTemplateDate(slot.updated_at)}</span>
-                          {isDirty ? <span>有未保存修改</span> : null}
-                        </div>
-
-                        <div className="template-slot-actions">
-                          <button type="submit" disabled={isSaving || isResetting || !isDirty || !draft.record_text.trim()}>
-                            {isSaving ? "保存中..." : "保存"}
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => handleResetSlot(slot)}
-                            disabled={isSaving || isResetting}
+                {group.slotGroups.map((slotGroup) => (
+                  <div className="template-slot-group" key={`${group.unit}-${slotGroup.templateGroup}`}>
+                    <div className="template-slot-group-heading">
+                      <strong>{slotGroup.label}</strong>
+                      <span className="status-chip">模板 {slotGroup.slots.length}</span>
+                    </div>
+                    <div className="template-slot-grid">
+                      {slotGroup.slots.map((slot) => {
+                        const draft = drafts[slot.id] ?? draftFromSlot(slot);
+                        const isDirty = slotDraftIsDirty(slot, draft);
+                        const isSaving = busySlotId === slot.id;
+                        const isResetting = resettingSlotId === slot.id;
+                        return (
+                          <form
+                            className={`template-slot-card ${TEMPLATE_TYPE_CLASS[slot.template_type]}`}
+                            key={slot.id}
+                            onSubmit={(event) => handleSaveSlot(event, slot)}
                           >
-                            {isResetting ? "恢复中..." : "恢复默认"}
-                          </button>
-                        </div>
-                      </form>
-                    );
-                  })}
-                </div>
+                            <div className="template-slot-heading">
+                              <div>
+                                <p className="eyebrow">{slot.template_type_label}</p>
+                                <h5>{draft.title.trim() || slot.template_type_label}</h5>
+                              </div>
+                              <span className={slot.is_customized ? "dirty-chip" : "clean-chip"}>
+                                {slot.is_customized ? "已修改" : "默认"}
+                              </span>
+                            </div>
+
+                            <label>
+                              <span>标题</span>
+                              <input
+                                value={draft.title}
+                                onChange={(event) => updateDraft(slot.id, { title: event.target.value })}
+                                maxLength={500}
+                                placeholder={slot.template_type_label}
+                              />
+                            </label>
+                            <label>
+                              <span>{slot.template_group === "score_basis" ? "评分依据正文" : "验证记录正文"}</span>
+                              <textarea
+                                value={draft.record_text}
+                                onChange={(event) => updateDraft(slot.id, { record_text: event.target.value })}
+                                rows={8}
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>标签</span>
+                              <input
+                                value={draft.tags}
+                                onChange={(event) => updateDraft(slot.id, { tags: event.target.value })}
+                                placeholder="多个标签用逗号分隔"
+                              />
+                            </label>
+
+                            <div className="template-slot-meta">
+                              <span>更新 {formatTemplateDate(slot.updated_at)}</span>
+                              {isDirty ? <span>有未保存修改</span> : null}
+                            </div>
+
+                            <div className="template-slot-actions">
+                              <button type="submit" disabled={isSaving || isResetting || !isDirty || !draft.record_text.trim()}>
+                                {isSaving ? "保存中..." : "保存"}
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => handleResetSlot(slot)}
+                                disabled={isSaving || isResetting}
+                              >
+                                {isResetting ? "恢复中..." : "恢复默认"}
+                              </button>
+                            </div>
+                          </form>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </article>
             ))}
           </div>

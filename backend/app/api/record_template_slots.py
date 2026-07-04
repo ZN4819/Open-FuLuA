@@ -48,10 +48,16 @@ def import_record_template_slot_config(payload: RecordTemplateSlotImportPayload)
 def get_record_template_slots(
     section_code: str | None = None,
     unit: str | None = None,
+    template_group: str | None = None,
     template_type: str | None = None,
 ) -> list[RecordTemplateSlotRead]:
     try:
-        slots = list_record_template_slots(section_code=section_code, unit=unit, template_type=template_type)
+        slots = list_record_template_slots(
+            section_code=section_code,
+            unit=unit,
+            template_group=template_group,
+            template_type=template_type,
+        )
     except RecordTemplateValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [RecordTemplateSlotRead(**slot) for slot in slots]

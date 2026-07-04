@@ -215,13 +215,16 @@ export type RecordTemplate = {
 };
 
 
-export type RecordTemplateSlotType = "compliant" | "non_compliant" | "not_applicable";
+export type RecordTemplateSlotGroup = "verification_record" | "score_basis";
+export type RecordTemplateSlotType = "compliant" | "non_compliant" | "not_applicable" | "fully_compliant" | "score_adjusted";
 
 export type RecordTemplateSlot = {
   id: number;
   section_code: string;
   table_type: "technical" | "management";
   unit: string;
+  template_group: RecordTemplateSlotGroup;
+  template_group_label: string;
   template_type: RecordTemplateSlotType;
   template_type_label: string;
   title: string;
@@ -243,6 +246,7 @@ export type RecordTemplateSlotImportItem = {
   section_code: string;
   table_type: "technical" | "management";
   unit: string;
+  template_group: RecordTemplateSlotGroup;
   template_type: RecordTemplateSlotType;
   title: string;
   record_text: string;
@@ -270,6 +274,7 @@ export type RecordTemplateSlotImportResult = {
     slot_id?: number | null;
     section_code: string;
     unit: string;
+    template_group: string;
     template_type: string;
     title: string;
   }>;
@@ -403,6 +408,7 @@ export function getRecordTemplates(sectionCode?: string, keyword?: string): Prom
 export function getRecordTemplateSlots(
   sectionCode?: string,
   unit?: string,
+  templateGroup?: RecordTemplateSlotGroup,
   templateType?: RecordTemplateSlotType
 ): Promise<RecordTemplateSlot[]> {
   const params = new URLSearchParams();
@@ -411,6 +417,9 @@ export function getRecordTemplateSlots(
   }
   if (unit) {
     params.set("unit", unit);
+  }
+  if (templateGroup) {
+    params.set("template_group", templateGroup);
   }
   if (templateType) {
     params.set("template_type", templateType);

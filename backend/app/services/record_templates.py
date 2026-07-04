@@ -19,27 +19,50 @@ RECORD_TEMPLATES_PATH = (
 EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
 SLOT_EXPORT_PROFILE_ID = "appendix_a_record_template_slots_v1"
 
-TEMPLATE_SLOT_TYPES = ("compliant", "non_compliant", "not_applicable")
+TEMPLATE_SLOT_GROUPS = ("verification_record", "score_basis")
+TEMPLATE_SLOT_GROUP_LABELS = {
+    "verification_record": "测评验证记录模板",
+    "score_basis": "测评对象评分计算依据模板",
+}
+TEMPLATE_SLOT_TYPES_BY_GROUP = {
+    "verification_record": ("compliant", "non_compliant", "not_applicable"),
+    "score_basis": ("fully_compliant", "score_adjusted", "non_compliant"),
+}
+TEMPLATE_SLOT_TYPES = tuple(dict.fromkeys(template_type for types in TEMPLATE_SLOT_TYPES_BY_GROUP.values() for template_type in types))
 TEMPLATE_SLOT_TYPE_LABELS = {
     "compliant": "符合/部分符合模板",
+    "fully_compliant": "完全符合模板",
+    "score_adjusted": "分数修正模板",
     "non_compliant": "不符合模板",
     "not_applicable": "不适用模板",
 }
 TEMPLATE_SLOT_TYPE_TAGS = {
     "compliant": ["符合", "部分符合"],
+    "fully_compliant": ["完全符合"],
+    "score_adjusted": ["分数修正"],
     "non_compliant": ["不符合"],
     "not_applicable": ["不适用"],
 }
+VERIFICATION_MARKER = "测评验证记录："
+SCORE_BASIS_MARKER = "测评对象评分计算依据："
+COMPLIANT_VERIFICATION_DEFAULT_TEXT = "测评验证记录：经核查，{测评对象}满足本测评单元相关要求，详见[插入图片引用]。"
 NON_COMPLIANT_DEFAULT_TEXT = (
     "测评验证记录：经核查，{测评对象}未满足本测评单元相关要求，"
     "具体不符合情况为[请补充不符合事实、依据和影响]。"
-    "测评对象评分计算依据：根据量化评估规则，该测评对象评分为0。"
 )
 NOT_APPLICABLE_DEFAULT_TEXT = (
     "测评验证记录：经核查，{测评对象}不适用于本测评单元，"
     "原因是[请补充不适用原因、范围和依据]。"
-    "本测评单元不参与该测评对象评分。"
 )
+FULLY_COMPLIANT_SCORE_DEFAULT_TEXT = (
+    "测评对象评分计算依据：被测系统为等保三级系统，使用的密码产品安全等级满足要求，"
+    "根据2023版量化评估规则，该测评对象评分为1。"
+)
+SCORE_ADJUSTED_DEFAULT_TEXT = (
+    "测评对象评分计算依据：被测系统为等保三级系统，存在[请补充分数修正原因]，"
+    "根据2023版量化评估规则，该测评对象评分为[请填写修正后分数]。"
+)
+NON_COMPLIANT_SCORE_DEFAULT_TEXT = "测评对象评分计算依据：根据量化评估规则，该测评对象评分为0。"
 
 class RecordTemplateError(RuntimeError):
     """结果记录模板库无法读取或结构不符合预期。"""
@@ -77,14 +100,18 @@ def list_record_templates(section_code: str | None = None, keyword: str | None =
 def list_record_template_slots(
     section_code: str | None = None,
     unit: str | None = None,
+    template_group: str | None = None,
     template_type: str | None = None,
 ) -> list[dict[str, Any]]:
     ensure_record_template_slots_seeded()
+    if template_group is not None:
+        _validate_template_slot_group(template_group)
     if template_type is not None:
-        _validate_template_slot_type(template_type)
+        _validate_template_slot_type(template_type, template_group)
     rows = database.list_record_template_slot_rows(
         section_code=section_code,
         unit=unit,
+        template_group=template_group,
         template_type=template_type,
     )
     return [
@@ -98,7 +125,7 @@ def get_record_template_slot(slot_id: int) -> dict[str, Any]:
     row = database.get_record_template_slot_row(slot_id)
     if row is None:
         raise RecordTemplateNotFoundError("结果记录模板不存在。")
-    _validate_template_slot_type(row["template_type"])
+    _validate_template_slot_type(row["template_type"], row["template_group"])
     return _row_to_template_slot(row)
 
 
@@ -160,7 +187,7 @@ def import_record_template_slots(payload: dict[str, Any]) -> dict[str, Any]:
         slot_id = item.get("slot_id")
         payload_to_update = item.get("payload")
         if not slot_id or not payload_to_update:
-            imported_items.append({**item, "action": "error", "message": "缺少待更新的三类模板槽位。"})
+            imported_items.append({**item, "action": "error", "message": "缺少待更新的分段模板槽位。"})
             continue
         update_record_template_slot(
             slot_id,
@@ -322,20 +349,22 @@ def _build_template_slot_seed() -> list[dict[str, Any]]:
         representative_by_unit.items(),
         key=lambda item: template_order[item[0]],
     ):
-        for template_type in TEMPLATE_SLOT_TYPES:
-            default_record_text = _default_slot_record_text(template_type, row)
-            slots.append(
-                {
-                    "section_code": section_code,
-                    "table_type": row["table_type"],
-                    "unit": unit,
-                    "template_type": template_type,
-                    "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
-                    "record_text": default_record_text,
-                    "default_record_text": default_record_text,
-                    "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
-                }
-            )
+        for template_group in TEMPLATE_SLOT_GROUPS:
+            for template_type in TEMPLATE_SLOT_TYPES_BY_GROUP[template_group]:
+                default_record_text = _default_slot_record_text(template_group, template_type, row)
+                slots.append(
+                    {
+                        "section_code": section_code,
+                        "table_type": row["table_type"],
+                        "unit": unit,
+                        "template_group": template_group,
+                        "template_type": template_type,
+                        "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
+                        "record_text": default_record_text,
+                        "default_record_text": default_record_text,
+                        "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
+                    }
+                )
     return slots
 
 
@@ -349,17 +378,25 @@ def _template_unit_order() -> dict[tuple[str, str], int]:
 
 def _sort_template_slot_rows(rows: list[Any]) -> list[Any]:
     template_order = _template_unit_order()
-    template_type_order = {template_type: index for index, template_type in enumerate(TEMPLATE_SLOT_TYPES)}
+    template_group_order = {template_group: index for index, template_group in enumerate(TEMPLATE_SLOT_GROUPS)}
+    template_type_order = {
+        (template_group, template_type): index
+        for template_group, template_types in TEMPLATE_SLOT_TYPES_BY_GROUP.items()
+        for index, template_type in enumerate(template_types)
+    }
     fallback_unit_order = len(template_order)
 
-    def sort_key(row: Any) -> tuple[int, int, str, int, int]:
+    def sort_key(row: Any) -> tuple[int, int, str, int, int, int]:
         section_code = row["section_code"]
         unit = row["unit"]
+        template_group = row["template_group"]
+        template_type = row["template_type"]
         return (
             _section_number(section_code),
             template_order.get((section_code, unit), fallback_unit_order),
             unit,
-            template_type_order.get(row["template_type"], len(template_type_order)),
+            template_group_order.get(template_group, len(template_group_order)),
+            template_type_order.get((template_group, template_type), len(template_type_order)),
             int(row["id"] or 0),
         )
 
@@ -373,17 +410,32 @@ def _section_number(section_code: str) -> int:
         return 999
 
 
-def _default_slot_record_text(template_type: str, representative: Any) -> str:
-    if template_type == "compliant":
-        text = _clean_text(representative["record_text"])
-        if text:
-            return text
-        return "测评验证记录：经核查，{测评对象}满足本测评单元相关要求，详见[插入图片引用]。"
-    if template_type == "non_compliant":
-        return NON_COMPLIANT_DEFAULT_TEXT
-    if template_type == "not_applicable":
-        return NOT_APPLICABLE_DEFAULT_TEXT
-    raise RecordTemplateValidationError(f"未知结果记录模板类型：{template_type}")
+def _default_slot_record_text(template_group: str, template_type: str, representative: Any) -> str:
+    verification_text, score_basis_text = _split_record_template_sections(_clean_text(representative["record_text"]))
+    if template_group == "verification_record":
+        if template_type == "compliant":
+            return verification_text or COMPLIANT_VERIFICATION_DEFAULT_TEXT
+        if template_type == "non_compliant":
+            return NON_COMPLIANT_DEFAULT_TEXT
+        if template_type == "not_applicable":
+            return NOT_APPLICABLE_DEFAULT_TEXT
+    if template_group == "score_basis":
+        if template_type == "fully_compliant":
+            return score_basis_text or FULLY_COMPLIANT_SCORE_DEFAULT_TEXT
+        if template_type == "score_adjusted":
+            return SCORE_ADJUSTED_DEFAULT_TEXT
+        if template_type == "non_compliant":
+            return NON_COMPLIANT_SCORE_DEFAULT_TEXT
+    raise RecordTemplateValidationError(f"未知结果记录模板类型：{template_group}/{template_type}")
+
+
+def _split_record_template_sections(record_text: str) -> tuple[str, str]:
+    score_index = record_text.find(SCORE_BASIS_MARKER)
+    if score_index < 0:
+        return record_text, ""
+    verification_text = record_text[:score_index].strip()
+    score_basis_text = record_text[score_index:].strip()
+    return verification_text, score_basis_text
 
 def validate_record_template_library(library: dict[str, Any]) -> None:
     templates = library.get("templates")
@@ -436,21 +488,34 @@ def _normalize_template_slot_update(payload: dict[str, Any], existing: dict[str,
     if "title" in payload and payload["title"] is not None:
         title = _clean_text(payload["title"])
         if not title:
-            raise RecordTemplateValidationError("三类结果记录模板标题不能为空。")
+            raise RecordTemplateValidationError("分段结果记录模板标题不能为空。")
         updates["title"] = title
     if "record_text" in payload and payload["record_text"] is not None:
         record_text = _clean_text(payload["record_text"])
         if not record_text:
-            raise RecordTemplateValidationError("三类结果记录模板正文不能为空。")
+            raise RecordTemplateValidationError("分段结果记录模板正文不能为空。")
         updates["record_text"] = record_text
     if "tags" in payload and payload["tags"] is not None:
         updates["tags"] = _normalize_tags(payload["tags"])
 
-    _validate_template_slot_type(existing["template_type"])
+    _validate_template_slot_type(existing["template_type"], existing.get("template_group"))
     return updates
 
 
-def _validate_template_slot_type(template_type: str) -> None:
+def _validate_template_slot_group(template_group: str) -> None:
+    if template_group not in TEMPLATE_SLOT_GROUPS:
+        valid_groups = "、".join(TEMPLATE_SLOT_GROUPS)
+        raise RecordTemplateValidationError(f"结果记录模板分组必须为 {valid_groups}。")
+
+
+def _validate_template_slot_type(template_type: str, template_group: str | None = None) -> None:
+    if template_group:
+        _validate_template_slot_group(template_group)
+        valid_types = TEMPLATE_SLOT_TYPES_BY_GROUP[template_group]
+        if template_type not in valid_types:
+            valid_text = "、".join(valid_types)
+            raise RecordTemplateValidationError(f"结果记录模板类型必须为 {valid_text}。")
+        return
     if template_type not in TEMPLATE_SLOT_TYPES:
         valid_types = "、".join(TEMPLATE_SLOT_TYPES)
         raise RecordTemplateValidationError(f"结果记录模板类型必须为 {valid_types}。")
@@ -517,7 +582,7 @@ def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
 
     existing_slots = list_record_template_slots()
     slots_by_key = {_slot_key(slot): slot for slot in existing_slots}
-    seen_keys: dict[tuple[str, str, str], int] = {}
+    seen_keys: dict[tuple[str, str, str, str], int] = {}
     items: list[dict[str, Any]] = []
 
     for index, raw_template in enumerate(raw_templates, start=1):
@@ -537,7 +602,7 @@ def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 _slot_import_item(
                     index,
                     "skip",
-                    f"与本次导入第 {seen_keys[natural_key]} 条三类模板重复，已跳过。",
+                    f"与本次导入第 {seen_keys[natural_key]} 条分段模板重复，已跳过。",
                     normalized,
                 )
             )
@@ -550,7 +615,7 @@ def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 _slot_import_item(
                     index,
                     "error",
-                    "未找到对应的三类模板槽位，导入不会创建新的测评单元或第四类模板。",
+                    "未找到对应的分段模板槽位，导入不会创建新的测评单元或额外模板。",
                     normalized,
                 )
             )
@@ -573,7 +638,7 @@ def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 _slot_import_item(
                     index,
                     "skip",
-                    "三类模板内容未变化，已跳过。",
+                    "分段模板内容未变化，已跳过。",
                     normalized,
                     existing["id"],
                 )
@@ -584,7 +649,7 @@ def _build_slot_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
             _slot_import_item(
                 index,
                 "update",
-                "将更新已有三类模板槽位。",
+                "将更新已有分段模板槽位。",
                 normalized,
                 existing["id"],
             )
@@ -606,27 +671,30 @@ def _normalize_template_slot_import_item(raw_template: dict[str, Any]) -> dict[s
     section_code = _clean_text(raw_template.get("section_code"))
     table_type = _clean_text(raw_template.get("table_type"))
     unit = _clean_text(raw_template.get("unit"))
+    template_group = _clean_text(raw_template.get("template_group")) or "verification_record"
     template_type = _clean_text(raw_template.get("template_type"))
     title = _clean_text(raw_template.get("title"))
     record_text = _clean_text(raw_template.get("record_text"))
     tags = _normalize_tags(raw_template.get("tags"))
 
     if section_code not in {f"A-{number}" for number in range(1, 9)}:
-        raise RecordTemplateValidationError("三类模板章节必须为 A-1 至 A-8。")
+        raise RecordTemplateValidationError("分段模板章节必须为 A-1 至 A-8。")
     if table_type not in {"technical", "management"}:
-        raise RecordTemplateValidationError("三类模板表格类型必须为 technical 或 management。")
+        raise RecordTemplateValidationError("分段模板表格类型必须为 technical 或 management。")
     if not unit:
-        raise RecordTemplateValidationError("三类模板测评单元不能为空。")
-    _validate_template_slot_type(template_type)
+        raise RecordTemplateValidationError("分段模板测评单元不能为空。")
+    _validate_template_slot_group(template_group)
+    _validate_template_slot_type(template_type, template_group)
     if not title:
         title = TEMPLATE_SLOT_TYPE_LABELS[template_type]
     if not record_text:
-        raise RecordTemplateValidationError("三类模板正文不能为空。")
+        raise RecordTemplateValidationError("分段模板正文不能为空。")
 
     return {
         "section_code": section_code,
         "table_type": table_type,
         "unit": unit,
+        "template_group": template_group,
         "template_type": template_type,
         "title": title,
         "record_text": record_text,
@@ -659,6 +727,7 @@ def _public_slot_import_item(item: dict[str, Any]) -> dict[str, Any]:
         "slot_id": item.get("slot_id"),
         "section_code": payload.get("section_code", ""),
         "unit": payload.get("unit", ""),
+        "template_group": payload.get("template_group", ""),
         "template_type": payload.get("template_type", ""),
         "title": payload.get("title", ""),
     }
@@ -669,6 +738,7 @@ def _export_template_slot(slot: dict[str, Any]) -> dict[str, Any]:
         "section_code": slot["section_code"],
         "table_type": slot["table_type"],
         "unit": slot["unit"],
+        "template_group": slot["template_group"],
         "template_type": slot["template_type"],
         "title": slot["title"],
         "record_text": slot["record_text"],
@@ -676,10 +746,11 @@ def _export_template_slot(slot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _slot_key(slot: dict[str, Any]) -> tuple[str, str, str]:
+def _slot_key(slot: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         slot["section_code"],
         slot["unit"],
+        slot.get("template_group") or "verification_record",
         slot["template_type"],
     )
 
@@ -687,7 +758,7 @@ def _slot_key(slot: dict[str, Any]) -> tuple[str, str, str]:
 def _slot_payload_matches(existing: dict[str, Any], payload: dict[str, Any]) -> bool:
     return all(
         existing[key] == payload[key]
-        for key in ["section_code", "table_type", "unit", "template_type", "title", "record_text", "tags"]
+        for key in ["section_code", "table_type", "unit", "template_group", "template_type", "title", "record_text", "tags"]
     )
 
 def _build_import_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -852,6 +923,8 @@ def _row_to_template_slot(row: Any) -> dict[str, Any]:
         "section_code": row["section_code"],
         "table_type": row["table_type"],
         "unit": row["unit"],
+        "template_group": row["template_group"],
+        "template_group_label": TEMPLATE_SLOT_GROUP_LABELS.get(row["template_group"], row["template_group"]),
         "template_type": row["template_type"],
         "template_type_label": TEMPLATE_SLOT_TYPE_LABELS.get(row["template_type"], row["template_type"]),
         "title": row["title"],

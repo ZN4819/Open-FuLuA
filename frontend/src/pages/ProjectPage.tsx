@@ -140,7 +140,7 @@ export function ProjectPage() {
     getTemplateProfile()
       .then(setProfile)
       .catch((err) => setError(err instanceof Error ? err.message : "读取模板 profile 失败"));
-    refreshRecordTemplateSlots().catch((err) => setError(err instanceof Error ? err.message : "读取三类结果记录模板失败"));
+    refreshRecordTemplateSlots().catch((err) => setError(err instanceof Error ? err.message : "读取分段结果记录模板失败"));
     refreshProjects();
   }, []);
 
@@ -150,7 +150,7 @@ export function ProjectPage() {
     }
 
     refreshRecordTemplateSlots(activeCode).catch((err) =>
-      setError(err instanceof Error ? err.message : "读取三类结果记录模板失败")
+      setError(err instanceof Error ? err.message : "读取分段结果记录模板失败")
     );
   }, [activeCode]);
   useEffect(() => {
@@ -410,14 +410,14 @@ export function ProjectPage() {
   async function handleUpdateRecordTemplateSlot(slotId: number, payload: RecordTemplateSlotUpdateInput) {
     const updated = await updateRecordTemplateSlot(slotId, payload);
     await refreshRecordTemplateSlots(updated.section_code);
-    setSaveMessage("三类结果记录模板已保存。");
+    setSaveMessage("分段结果记录模板已保存。");
     return updated;
   }
 
   async function handleResetRecordTemplateSlot(slotId: number) {
     const reset = await resetRecordTemplateSlot(slotId);
     await refreshRecordTemplateSlots(reset.section_code);
-    setSaveMessage("三类结果记录模板已恢复默认。");
+    setSaveMessage("分段结果记录模板已恢复默认。");
     return reset;
   }
 
@@ -432,7 +432,7 @@ export function ProjectPage() {
   async function handleImportRecordTemplateSlots(payload: RecordTemplateSlotImportPayload) {
     const result = await importRecordTemplateSlots(payload);
     await refreshRecordTemplateSlots();
-    setSaveMessage(`三类模板配置导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
+    setSaveMessage(`分段模板配置导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
     return result;
   }
   function applySavedSectionDetail(code: string, detail: SectionDetail) {

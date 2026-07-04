@@ -232,6 +232,7 @@ def init_db() -> None:
                 section_code TEXT NOT NULL,
                 table_type TEXT NOT NULL,
                 unit TEXT NOT NULL DEFAULT '',
+                template_group TEXT NOT NULL DEFAULT 'verification_record',
                 template_type TEXT NOT NULL,
                 title TEXT NOT NULL DEFAULT '',
                 record_text TEXT NOT NULL DEFAULT '',
@@ -240,14 +241,21 @@ def init_db() -> None:
                 is_customized INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                UNIQUE(section_code, unit, template_type)
+                UNIQUE(section_code, unit, template_group, template_type)
             )
             """
         )
+        _ensure_record_template_slots_schema(db)
         db.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_record_template_slots_section_unit
             ON record_template_slots(section_code, unit)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_template_slots_group_type
+            ON record_template_slots(template_group, template_type)
             """
         )
         db.execute(
@@ -322,6 +330,69 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def _ensure_record_template_slots_schema(db: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(record_template_slots)").fetchall()}
+    if "template_group" in columns:
+        return
+
+    db.execute("ALTER TABLE record_template_slots RENAME TO record_template_slots_legacy")
+    db.execute(
+        """
+        CREATE TABLE record_template_slots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_code TEXT NOT NULL,
+            table_type TEXT NOT NULL,
+            unit TEXT NOT NULL DEFAULT '',
+            template_group TEXT NOT NULL DEFAULT 'verification_record',
+            template_type TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            record_text TEXT NOT NULL DEFAULT '',
+            default_record_text TEXT NOT NULL DEFAULT '',
+            tags TEXT NOT NULL DEFAULT '[]',
+            is_customized INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(section_code, unit, template_group, template_type)
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO record_template_slots (
+            id,
+            section_code,
+            table_type,
+            unit,
+            template_group,
+            template_type,
+            title,
+            record_text,
+            default_record_text,
+            tags,
+            is_customized,
+            created_at,
+            updated_at
+        )
+        SELECT
+            id,
+            section_code,
+            table_type,
+            unit,
+            'verification_record',
+            template_type,
+            title,
+            record_text,
+            default_record_text,
+            tags,
+            is_customized,
+            created_at,
+            updated_at
+        FROM record_template_slots_legacy
+        """
+    )
+    db.execute("DROP TABLE record_template_slots_legacy")
 
 
 def _unique_nonempty_values(values: list[str]) -> list[str]:
@@ -574,6 +645,7 @@ def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
                     section_code,
                     table_type,
                     unit,
+                    template_group,
                     template_type,
                     title,
                     record_text,
@@ -583,8 +655,8 @@ def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                ON CONFLICT(section_code, unit, template_type) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(section_code, unit, template_group, template_type) DO UPDATE SET
                     table_type = excluded.table_type,
                     title = CASE
                         WHEN record_template_slots.is_customized = 0 THEN excluded.title
@@ -618,6 +690,7 @@ def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
                     slot["section_code"],
                     slot["table_type"],
                     slot["unit"],
+                    slot["template_group"],
                     slot["template_type"],
                     slot["title"],
                     slot["record_text"],
@@ -632,6 +705,7 @@ def upsert_record_template_slots(slots: list[dict[str, Any]]) -> None:
 def list_record_template_slot_rows(
     section_code: str | None = None,
     unit: str | None = None,
+    template_group: str | None = None,
     template_type: str | None = None,
 ) -> list[sqlite3.Row]:
     conditions: list[str] = []
@@ -642,6 +716,9 @@ def list_record_template_slot_rows(
     if unit is not None:
         conditions.append("unit = ?")
         values.append(unit)
+    if template_group is not None:
+        conditions.append("template_group = ?")
+        values.append(template_group)
     if template_type is not None:
         conditions.append("template_type = ?")
         values.append(template_type)
@@ -655,6 +732,7 @@ def list_record_template_slot_rows(
                 section_code,
                 table_type,
                 unit,
+                template_group,
                 template_type,
                 title,
                 record_text,
@@ -668,10 +746,17 @@ def list_record_template_slot_rows(
             ORDER BY
                 CAST(SUBSTR(section_code, 3) AS INTEGER),
                 unit,
+                CASE template_group
+                    WHEN 'verification_record' THEN 1
+                    WHEN 'score_basis' THEN 2
+                    ELSE 3
+                END,
                 CASE template_type
                     WHEN 'compliant' THEN 1
                     WHEN 'non_compliant' THEN 2
                     WHEN 'not_applicable' THEN 3
+                    WHEN 'fully_compliant' THEN 4
+                    WHEN 'score_adjusted' THEN 5
                     ELSE 4
                 END,
                 id
@@ -687,6 +772,7 @@ def get_record_template_slot_row(slot_id: int, db: sqlite3.Connection | None = N
             section_code,
             table_type,
             unit,
+            template_group,
             template_type,
             title,
             record_text,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { AssessmentRowInput, CrossReferenceInput, EvidenceImage, RecordTemplateSlot, TemplateProfile } from "../api/client";
+import type { AssessmentRowInput, CrossReferenceInput, EvidenceImage, RecordTemplateSlot, RecordTemplateSlotGroup, TemplateProfile } from "../api/client";
 
 export type SubsystemUiState = {
   manualSubsystemNames: string[];
@@ -41,6 +41,8 @@ const EMPTY_METRIC = {
   compliance: undefined
 };
 const FIGURE_PLACEHOLDER = "[插入图片引用]";
+const VERIFICATION_MARKER = "测评验证记录：";
+const SCORE_BASIS_MARKER = "测评对象评分计算依据：";
 
 type TextSelection = {
   start: number;
@@ -343,10 +345,22 @@ function fixedUnitsFromSlots(recordTemplateSlots: RecordTemplateSlot[], rows: As
   ]);
 }
 
-const TEMPLATE_SLOT_ORDER: Record<RecordTemplateSlot["template_type"], number> = {
-  compliant: 0,
-  non_compliant: 1,
-  not_applicable: 2
+const TEMPLATE_GROUP_ORDER: Record<RecordTemplateSlotGroup, number> = {
+  verification_record: 0,
+  score_basis: 1
+};
+
+const TEMPLATE_SLOT_ORDER: Record<RecordTemplateSlotGroup, Partial<Record<RecordTemplateSlot["template_type"], number>>> = {
+  verification_record: {
+    compliant: 0,
+    non_compliant: 1,
+    not_applicable: 2
+  },
+  score_basis: {
+    fully_compliant: 0,
+    score_adjusted: 1,
+    non_compliant: 2
+  }
 };
 
 function templateSlotOptionLabel(slot: RecordTemplateSlot) {
@@ -358,10 +372,47 @@ function templateSlotOptionLabel(slot: RecordTemplateSlot) {
   return title || label || "未命名模板";
 }
 
-function templateSlotsForUnit(recordTemplateSlots: RecordTemplateSlot[], unit: string) {
+function templateSlotSortValue(slot: RecordTemplateSlot) {
+  return TEMPLATE_SLOT_ORDER[slot.template_group]?.[slot.template_type] ?? 99;
+}
+
+function templateSlotsForUnit(recordTemplateSlots: RecordTemplateSlot[], unit: string, templateGroup?: RecordTemplateSlotGroup) {
   return recordTemplateSlots
-    .filter((slot) => slot.unit === unit)
-    .sort((first, second) => TEMPLATE_SLOT_ORDER[first.template_type] - TEMPLATE_SLOT_ORDER[second.template_type]);
+    .filter((slot) => slot.unit === unit && (!templateGroup || slot.template_group === templateGroup))
+    .sort(
+      (first, second) =>
+        TEMPLATE_GROUP_ORDER[first.template_group] - TEMPLATE_GROUP_ORDER[second.template_group] ||
+        templateSlotSortValue(first) - templateSlotSortValue(second)
+    );
+}
+
+function extractTemplateSectionText(slot: RecordTemplateSlot) {
+  const text = slot.record_text.trim();
+  if (slot.template_group === "verification_record") {
+    const scoreIndex = text.indexOf(SCORE_BASIS_MARKER);
+    const verificationText = scoreIndex >= 0 ? text.slice(0, scoreIndex).trim() : text;
+    return verificationText || VERIFICATION_MARKER;
+  }
+  if (slot.template_group === "score_basis") {
+    const scoreIndex = text.indexOf(SCORE_BASIS_MARKER);
+    return scoreIndex >= 0 ? text.slice(scoreIndex).trim() : text;
+  }
+  return text;
+}
+
+function replaceRecordTemplateSection(recordText: string, sectionText: string, templateGroup: RecordTemplateSlotGroup) {
+  const currentText = (recordText ?? "").trim();
+  const nextSectionText = sectionText.trim();
+  if (!nextSectionText) {
+    return currentText;
+  }
+  const scoreIndex = currentText.indexOf(SCORE_BASIS_MARKER);
+  if (templateGroup === "verification_record") {
+    const scorePart = scoreIndex >= 0 ? currentText.slice(scoreIndex).trim() : "";
+    return [nextSectionText, scorePart].filter(Boolean).join("\n");
+  }
+  const verificationPart = scoreIndex >= 0 ? currentText.slice(0, scoreIndex).trim() : currentText;
+  return [verificationPart, nextSectionText].filter(Boolean).join("\n");
 }
 function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = [], calculateUnitScores = false) {
   const order = new Map(unitOrder.map((unit, index) => [unit, index]));
@@ -485,7 +536,7 @@ export function AssessmentTable({
     ? "当前子系统还没有测评对象。"
     : sectionCode === A4_SECTION_CODE ? "当前章节还没有通过上方分类新增测评对象。" : "当前章节还没有测评对象。";
   const templateSlotCount = recordTemplateSlots.length;
-  const templateTypeCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_type)).length;
+  const templateGroupCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_group)).length;
   const filterActive = Boolean(activeSubsystemName || activeUnitFilter || activeObjectFilter);
   const visibleEvidenceImageIds = referencedEvidenceImageIds(visibleRowEntries.map((entry) => entry.row));
   const groupedUnitOrder = technical && activeUnitFilter ? [activeUnitFilter] : unitOrder;
@@ -732,8 +783,14 @@ export function AssessmentTable({
       return;
     }
 
+    const recordText = replaceRecordTemplateSection(
+      row.record_text,
+      extractTemplateSectionText(slot),
+      slot.template_group
+    );
     updateRow(index, {
-      record_text: slot.record_text
+      record_text: recordText,
+      cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
     });
   }
 
@@ -746,7 +803,7 @@ export function AssessmentTable({
           <div className="editor-toolbar-meta">
             <span className="status-chip">测评对象 {objectCount}</span>
             <span className="status-chip">固定单元 {unitOrder.length}</span>
-            <span className="status-chip">三类模板 {templateTypeCount}</span>
+            <span className="status-chip">分段模板 {templateGroupCount}</span>
             <span className="status-chip">模板槽位 {templateSlotCount}</span>
             <span className="status-chip">证据 {evidenceImages.length}</span>
           </div>
@@ -1019,8 +1076,8 @@ export function AssessmentTable({
                   </tr>
                 ) : (
                   group.entries.map(({ row, index }, entryIndex) => {
-                    const templateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit);
-                    const templateOptionsCount = templateSlots.length;
+                    const verificationTemplateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit, "verification_record");
+                    const scoreBasisTemplateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit, "score_basis");
                     const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     return (
@@ -1072,14 +1129,30 @@ export function AssessmentTable({
                               <select
                                 className="record-template-select"
                                 value=""
-                                disabled={templateOptionsCount === 0}
-                                title={templateOptionsCount === 0 ? "当前测评单元暂无可套用模板" : "选择三类结果记录模板"}
+                                disabled={verificationTemplateSlots.length === 0}
+                                title={verificationTemplateSlots.length === 0 ? "当前测评单元暂无验证记录模板" : "选择测评验证记录模板"}
                                 onChange={(event) => applyRecordTemplate(index, event.target.value)}
                               >
                                 <option value="">
-                                  {templateOptionsCount > 0 ? "套用模板" : "本单元暂无三类模板"}
+                                  {verificationTemplateSlots.length > 0 ? "套用验证记录模板" : "本单元暂无验证记录模板"}
                                 </option>
-                                {templateSlots.map((slot) => (
+                                {verificationTemplateSlots.map((slot) => (
+                                  <option key={slot.id} value={slot.id}>
+                                    {templateSlotOptionLabel(slot)}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                className="record-template-select"
+                                value=""
+                                disabled={scoreBasisTemplateSlots.length === 0}
+                                title={scoreBasisTemplateSlots.length === 0 ? "当前测评单元暂无评分依据模板" : "选择测评对象评分计算依据模板"}
+                                onChange={(event) => applyRecordTemplate(index, event.target.value)}
+                              >
+                                <option value="">
+                                  {scoreBasisTemplateSlots.length > 0 ? "套用评分依据模板" : "本单元暂无评分依据模板"}
+                                </option>
+                                {scoreBasisTemplateSlots.map((slot) => (
                                   <option key={slot.id} value={slot.id}>
                                     {templateSlotOptionLabel(slot)}
                                   </option>

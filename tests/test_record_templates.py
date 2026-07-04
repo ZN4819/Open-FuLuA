@@ -26,7 +26,7 @@ from app.api.record_template_slots import preview_record_template_slot_import as
 from app.api.record_template_slots import reset_record_template_slot_endpoint as api_reset_record_template_slot  # noqa: E402
 from app.api.record_template_slots import update_record_template_slot_endpoint as api_update_record_template_slot  # noqa: E402
 from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateSlotImportItem, RecordTemplateSlotImportPayload, RecordTemplateSlotUpdate, RecordTemplateUpdate  # noqa: E402
-from app.services.record_templates import TEMPLATE_SLOT_TYPES, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
+from app.services.record_templates import TEMPLATE_SLOT_GROUPS, TEMPLATE_SLOT_TYPES_BY_GROUP, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
 
 
 class RecordTemplatesTest(unittest.TestCase):
@@ -303,6 +303,7 @@ class RecordTemplatesTest(unittest.TestCase):
             (template["section_code"], template["unit"])
             for template in source_templates
         }
+        expected_slot_count_per_unit = sum(len(types) for types in TEMPLATE_SLOT_TYPES_BY_GROUP.values())
 
         slots = list_record_template_slots()
         slots_by_unit: dict[tuple[str, str], list[dict]] = {}
@@ -310,15 +311,29 @@ class RecordTemplatesTest(unittest.TestCase):
             slots_by_unit.setdefault((slot["section_code"], slot["unit"]), []).append(slot)
 
         self.assertEqual(set(slots_by_unit), expected_units)
-        self.assertEqual(len(slots), len(expected_units) * len(TEMPLATE_SLOT_TYPES))
+        self.assertEqual(len(slots), len(expected_units) * expected_slot_count_per_unit)
         for unit_slots in slots_by_unit.values():
-            self.assertEqual(
-                {slot["template_type"] for slot in unit_slots},
-                set(TEMPLATE_SLOT_TYPES),
-            )
+            self.assertEqual({slot["template_group"] for slot in unit_slots}, set(TEMPLATE_SLOT_GROUPS))
+            for template_group, template_types in TEMPLATE_SLOT_TYPES_BY_GROUP.items():
+                group_slots = [slot for slot in unit_slots if slot["template_group"] == template_group]
+                self.assertEqual([slot["template_type"] for slot in group_slots], list(template_types))
             self.assertTrue(all(slot["record_text"] for slot in unit_slots))
             self.assertTrue(all(slot["default_record_text"] for slot in unit_slots))
             self.assertTrue(all(slot["title"] for slot in unit_slots))
+
+    def test_template_slot_defaults_split_record_and_score_sections(self) -> None:
+        unit_slots = list_record_template_slots("A-1")
+        unit = unit_slots[0]["unit"]
+        slots = list_record_template_slots("A-1", unit)
+        verification_slots = [slot for slot in slots if slot["template_group"] == "verification_record"]
+        score_slots = [slot for slot in slots if slot["template_group"] == "score_basis"]
+
+        self.assertEqual([slot["template_type"] for slot in verification_slots], ["compliant", "non_compliant", "not_applicable"])
+        self.assertEqual([slot["template_type"] for slot in score_slots], ["fully_compliant", "score_adjusted", "non_compliant"])
+        self.assertTrue(all("测评验证记录：" in slot["record_text"] for slot in verification_slots))
+        self.assertTrue(all("测评对象评分计算依据：" not in slot["record_text"] for slot in verification_slots))
+        self.assertTrue(all("测评对象评分计算依据：" in slot["record_text"] for slot in score_slots))
+        self.assertTrue(all("测评验证记录：" not in slot["record_text"] for slot in score_slots))
 
     def test_record_template_slots_follow_source_template_unit_order(self) -> None:
         expected_units: list[str] = []
@@ -339,8 +354,15 @@ class RecordTemplatesTest(unittest.TestCase):
 
         self.assertEqual(actual_units, expected_units)
         self.assertEqual(
-            [slot["template_type"] for slot in section_slots[: len(TEMPLATE_SLOT_TYPES)]],
-            list(TEMPLATE_SLOT_TYPES),
+            [(slot["template_group"], slot["template_type"]) for slot in section_slots[: 6]],
+            [
+                ("verification_record", "compliant"),
+                ("verification_record", "non_compliant"),
+                ("verification_record", "not_applicable"),
+                ("score_basis", "fully_compliant"),
+                ("score_basis", "score_adjusted"),
+                ("score_basis", "non_compliant"),
+            ],
         )
 
     def test_record_template_slot_seed_is_idempotent_and_keeps_old_templates(self) -> None:
@@ -362,10 +384,20 @@ class RecordTemplatesTest(unittest.TestCase):
 
         unit_slots = list_record_template_slots("A-1", unit)
 
-        self.assertEqual(len(unit_slots), len(TEMPLATE_SLOT_TYPES))
+        self.assertEqual(len(unit_slots), sum(len(types) for types in TEMPLATE_SLOT_TYPES_BY_GROUP.values()))
         self.assertTrue(all(slot["section_code"] == "A-1" for slot in unit_slots))
         self.assertTrue(all(slot["unit"] == unit for slot in unit_slots))
-        self.assertEqual([slot["template_type"] for slot in unit_slots], list(TEMPLATE_SLOT_TYPES))
+        self.assertEqual(
+            [(slot["template_group"], slot["template_type"]) for slot in unit_slots],
+            [
+                ("verification_record", "compliant"),
+                ("verification_record", "non_compliant"),
+                ("verification_record", "not_applicable"),
+                ("score_basis", "fully_compliant"),
+                ("score_basis", "score_adjusted"),
+                ("score_basis", "non_compliant"),
+            ],
+        )
 
     def test_record_template_slot_api_can_read_update_and_reset(self) -> None:
         section_slots = api_get_record_template_slots(section_code="A-1")
@@ -373,6 +405,7 @@ class RecordTemplatesTest(unittest.TestCase):
         filtered = api_get_record_template_slots(
             section_code="A-1",
             unit=unit,
+            template_group="verification_record",
             template_type="non_compliant",
         )
         slot = filtered[0]
@@ -407,6 +440,12 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertEqual(invalid_type_context.exception.status_code, 400)
         self.assertIn("compliant", invalid_type_context.exception.detail)
 
+        with self.assertRaises(HTTPException) as invalid_group_context:
+            api_get_record_template_slots(template_group="extra_group")
+
+        self.assertEqual(invalid_group_context.exception.status_code, 400)
+        self.assertIn("verification_record", invalid_group_context.exception.detail)
+
         with self.assertRaises(HTTPException) as update_context:
             api_update_record_template_slot(
                 999999,
@@ -438,7 +477,8 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertEqual(exported.profile_id, "appendix_a_record_template_slots_v1")
         self.assertEqual(len(exported.templates), len(slots))
         first = exported.templates[0]
-        self.assertIn(first.template_type, TEMPLATE_SLOT_TYPES)
+        self.assertIn(first.template_group, TEMPLATE_SLOT_GROUPS)
+        self.assertIn(first.template_type, TEMPLATE_SLOT_TYPES_BY_GROUP[first.template_group])
         self.assertTrue(first.section_code.startswith("A-"))
         self.assertTrue(first.unit)
         self.assertTrue(first.record_text)
@@ -454,6 +494,7 @@ class RecordTemplatesTest(unittest.TestCase):
                     section_code=update_slot.section_code,
                     table_type=update_slot.table_type,
                     unit=update_slot.unit,
+                    template_group=update_slot.template_group,
                     template_type=update_slot.template_type,
                     title="T3-5 导入预览标题",
                     record_text="T3-5 导入预览正文。",
@@ -463,6 +504,7 @@ class RecordTemplatesTest(unittest.TestCase):
                     section_code=unchanged_slot.section_code,
                     table_type=unchanged_slot.table_type,
                     unit=unchanged_slot.unit,
+                    template_group=unchanged_slot.template_group,
                     template_type=unchanged_slot.template_type,
                     title=unchanged_slot.title,
                     record_text=unchanged_slot.record_text,
@@ -472,6 +514,7 @@ class RecordTemplatesTest(unittest.TestCase):
                     section_code="A-1",
                     table_type="technical",
                     unit=update_slot.unit,
+                    template_group="verification_record",
                     template_type="extra_type",
                     title="非法类型",
                     record_text="非法类型正文。",
@@ -494,7 +537,11 @@ class RecordTemplatesTest(unittest.TestCase):
 
     def test_record_template_slot_import_updates_existing_slots_without_creating_new_ones(self) -> None:
         before_count = len(list_record_template_slots())
-        slot = api_get_record_template_slots(section_code="A-1", template_type="not_applicable")[0]
+        slot = api_get_record_template_slots(
+            section_code="A-1",
+            template_group="verification_record",
+            template_type="not_applicable",
+        )[0]
         payload = RecordTemplateSlotImportPayload(
             profile_id="appendix_a_record_template_slots_v1",
             templates=[
@@ -502,6 +549,7 @@ class RecordTemplatesTest(unittest.TestCase):
                     section_code=slot.section_code,
                     table_type=slot.table_type,
                     unit=slot.unit,
+                    template_group=slot.template_group,
                     template_type=slot.template_type,
                     title="T3-5 不适用导入标题",
                     record_text="T3-5 不适用导入正文。",
@@ -514,6 +562,7 @@ class RecordTemplatesTest(unittest.TestCase):
         updated = api_get_record_template_slots(
             section_code=slot.section_code,
             unit=slot.unit,
+            template_group=slot.template_group,
             template_type=slot.template_type,
         )[0]
 
@@ -532,6 +581,7 @@ class RecordTemplatesTest(unittest.TestCase):
                     section_code="A-1",
                     table_type="technical",
                     unit="不存在的测评单元",
+                    template_group="verification_record",
                     template_type="compliant",
                     title="不会创建",
                     record_text="不会创建新槽位。",
