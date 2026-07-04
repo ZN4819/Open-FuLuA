@@ -10,7 +10,6 @@ from ..config import settings
 from ..schemas import ValidationIssueRead, ValidationResponse, ValidationSummary
 from .docx_analyzer import analyze_docx
 from .docx_generator import DocxGenerationError, generate_project_docx
-from .evidence import image_warnings
 from .template_profile import load_template_profile
 
 
@@ -185,9 +184,6 @@ def _validate_images(section: Any, images: list[Any]) -> list[dict[str, Any]]:
             )
         if not _text(image["caption"]):
             issues.append(_issue("info", "IMAGE_CAPTION_MISSING", f"{image_label} 缺少题注。", "image", image_id))
-        for warning in image_warnings(dict(image)):
-            code = "LOW_IMAGE_DPI" if "DPI" in warning else "IMAGE_WIDTH_AUTOSCALED"
-            issues.append(_issue("warning", code, f"{image_label}：{warning}", "image", image_id))
     return issues
 
 
