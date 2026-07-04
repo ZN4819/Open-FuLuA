@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
-import type { AssessmentRowInput, CrossReferenceInput, EvidenceImage, RecordTemplateSlot, RecordTemplateSlotGroup, TemplateProfile } from "../api/client";
+import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
 
 export type SubsystemUiState = {
   manualSubsystemNames: string[];
@@ -53,6 +53,22 @@ type FigureReferenceOption = {
   token: string;
   displayText: string;
   target_image_id?: number | null;
+};
+
+type FigureReferenceHoverItem = {
+  displayText: string;
+  image: EvidenceImage;
+};
+
+type FigureReferenceOverlayPart = {
+  text: string;
+  item?: FigureReferenceHoverItem;
+};
+
+type FigureReferenceHoverPreview = {
+  label: string;
+  image: EvidenceImage;
+  top: number;
 };
 
 function isTechnicalSection(code: string) {
@@ -233,6 +249,178 @@ function crossReferencesForRecordText(
   }
 
   return references;
+}
+
+function recordFigureReferenceItems(
+  row: AssessmentRowInput,
+  evidenceImages: EvidenceImage[],
+  sectionCode: string,
+  profile: TemplateProfile
+): FigureReferenceHoverItem[] {
+  const imageById = new Map(evidenceImages.map((image) => [image.id, image]));
+  return figureReferenceOptions(row, evidenceImages, sectionCode, profile)
+    .map((reference) => {
+      const image = typeof reference.target_image_id === "number" ? imageById.get(reference.target_image_id) : undefined;
+      if (!image || !reference.displayText.trim()) {
+        return null;
+      }
+      return {
+        displayText: reference.displayText,
+        image
+      };
+    })
+    .filter((item): item is FigureReferenceHoverItem => item !== null);
+}
+
+function hoveredFigureReferenceFromTextarea(
+  textarea: HTMLTextAreaElement,
+  clientX: number,
+  clientY: number,
+  references: FigureReferenceHoverItem[]
+): FigureReferenceHoverPreview | null {
+  if (references.length === 0 || !textarea.value) {
+    return null;
+  }
+  const textareaRect = textarea.getBoundingClientRect();
+  if (
+    clientX < textareaRect.left ||
+    clientX > textareaRect.right ||
+    clientY < textareaRect.top ||
+    clientY > textareaRect.bottom
+  ) {
+    return null;
+  }
+
+  const occurrences = referenceLabelOccurrences(textarea.value, references);
+  if (occurrences.length === 0) {
+    return null;
+  }
+
+  const computedStyle = window.getComputedStyle(textarea);
+  const mirror = document.createElement("div");
+  mirror.className = "record-reference-measure";
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.pointerEvents = "none";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflowWrap = "break-word";
+  mirror.style.boxSizing = computedStyle.boxSizing;
+  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.style.padding = computedStyle.padding;
+  mirror.style.border = computedStyle.border;
+  mirror.style.font = computedStyle.font;
+  mirror.style.lineHeight = computedStyle.lineHeight;
+  mirror.style.letterSpacing = computedStyle.letterSpacing;
+  mirror.style.left = `${textareaRect.left + window.scrollX}px`;
+  mirror.style.top = `${textareaRect.top + window.scrollY}px`;
+
+  let cursor = 0;
+  occurrences.forEach((occurrence, occurrenceIndex) => {
+    if (occurrence.start > cursor) {
+      mirror.append(document.createTextNode(textarea.value.slice(cursor, occurrence.start)));
+    }
+    const span = document.createElement("span");
+    span.dataset.referenceIndex = String(occurrenceIndex);
+    span.textContent = textarea.value.slice(occurrence.start, occurrence.end);
+    mirror.append(span);
+    cursor = occurrence.end;
+  });
+  mirror.append(document.createTextNode(textarea.value.slice(cursor) || "\u200b"));
+  document.body.append(mirror);
+
+  try {
+    const spans = Array.from(mirror.querySelectorAll<HTMLSpanElement>("span[data-reference-index]"));
+    for (const span of spans) {
+      const occurrenceIndex = Number(span.dataset.referenceIndex);
+      const occurrence = occurrences[occurrenceIndex];
+      const spanRect = span.getBoundingClientRect();
+      const adjustedRect = {
+        left: spanRect.left - textarea.scrollLeft,
+        right: spanRect.right - textarea.scrollLeft,
+        top: spanRect.top - textarea.scrollTop,
+        bottom: spanRect.bottom - textarea.scrollTop
+      };
+      const expandedHit = 3;
+      const visibleVertically = adjustedRect.bottom >= textareaRect.top && adjustedRect.top <= textareaRect.bottom;
+      if (
+        visibleVertically &&
+        clientX >= adjustedRect.left - expandedHit &&
+        clientX <= adjustedRect.right + expandedHit &&
+        clientY >= adjustedRect.top - expandedHit &&
+        clientY <= adjustedRect.bottom + expandedHit
+      ) {
+        return {
+          label: occurrence.item.displayText,
+          image: occurrence.item.image,
+          top: figurePreviewTop(clientY)
+        };
+      }
+    }
+  } finally {
+    mirror.remove();
+  }
+
+  return null;
+}
+
+function referenceLabelOccurrences(text: string, references: FigureReferenceHoverItem[]) {
+  const occupiedRanges: Array<{ start: number; end: number }> = [];
+  const occurrences: Array<{ start: number; end: number; item: FigureReferenceHoverItem }> = [];
+  const sortedReferences = [...references].sort((first, second) => second.displayText.length - first.displayText.length);
+
+  sortedReferences.forEach((item) => {
+    let start = text.indexOf(item.displayText);
+    while (start >= 0) {
+      const end = start + item.displayText.length;
+      const overlaps = occupiedRanges.some((range) => start < range.end && end > range.start);
+      if (!overlaps) {
+        occupiedRanges.push({ start, end });
+        occurrences.push({ start, end, item });
+      }
+      start = text.indexOf(item.displayText, end);
+    }
+  });
+
+  return occurrences.sort((first, second) => first.start - second.start);
+}
+
+function recordFigureReferenceParts(text: string, references: FigureReferenceHoverItem[]): FigureReferenceOverlayPart[] {
+  const occurrences = referenceLabelOccurrences(text, references);
+  if (occurrences.length === 0) {
+    return [{ text }];
+  }
+
+  const parts: FigureReferenceOverlayPart[] = [];
+  let cursor = 0;
+  occurrences.forEach((occurrence) => {
+    if (occurrence.start > cursor) {
+      parts.push({ text: text.slice(cursor, occurrence.start) });
+    }
+    parts.push({
+      text: text.slice(occurrence.start, occurrence.end),
+      item: occurrence.item
+    });
+    cursor = occurrence.end;
+  });
+  if (cursor < text.length) {
+    parts.push({ text: text.slice(cursor) });
+  }
+  return parts;
+}
+
+function figurePreviewTop(clientY: number) {
+  const previewHeight = 280;
+  const minTop = 76;
+  const maxTop = Math.max(minTop, window.innerHeight - previewHeight - 16);
+  return Math.min(Math.max(clientY - previewHeight / 2, minTop), maxTop);
+}
+
+function syncRecordReferenceOverlayScroll(textarea: HTMLTextAreaElement) {
+  const overlayContent = textarea.parentElement?.querySelector<HTMLElement>(".record-reference-overlay-content");
+  if (!overlayContent) {
+    return;
+  }
+  overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
 }
 
 function referencedEvidenceImageIds(rows: AssessmentRowInput[]) {
@@ -467,10 +655,12 @@ export function AssessmentTable({
   const [technicalUnitFilter, setTechnicalUnitFilter] = useState("");
   const [technicalObjectFilter, setTechnicalObjectFilter] = useState("");
   const [newSubsystemName, setNewSubsystemName] = useState("");
+  const [figureHoverPreview, setFigureHoverPreview] = useState<FigureReferenceHoverPreview | null>(null);
   useEffect(() => {
     setNewSubsystemName("");
     setTechnicalUnitFilter("");
     setTechnicalObjectFilter("");
+    setFigureHoverPreview(null);
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
@@ -794,8 +984,54 @@ export function AssessmentTable({
     });
   }
 
+  function handleRecordReferenceHover(event: MouseEvent<HTMLTextAreaElement>, row: AssessmentRowInput) {
+    const preview = hoveredFigureReferenceFromTextarea(
+      event.currentTarget,
+      event.clientX,
+      event.clientY,
+      recordFigureReferenceItems(row, evidenceImages, sectionCode, profile)
+    );
+    setFigureHoverPreview(preview);
+  }
+
+  function showFigureReferencePreview(item: FigureReferenceHoverItem, clientY: number) {
+    setFigureHoverPreview({
+      label: item.displayText,
+      image: item.image,
+      top: figurePreviewTop(clientY)
+    });
+  }
+
   return (
     <div className="editor-block">
+      {figureHoverPreview ? (
+        <aside className="figure-hover-preview" style={{ top: `${figureHoverPreview.top}px` }} aria-label="图片引用预览">
+          <div className="figure-hover-preview-heading">
+            <strong>{figureHoverPreview.label}</strong>
+            <span>{figureHoverPreview.image.caption || figureHoverPreview.image.original_name}</span>
+          </div>
+          <div className="figure-hover-preview-image">
+            {figureHoverPreview.image.file_url ? (
+              <img
+                src={resolveFileUrl(figureHoverPreview.image.file_url)}
+                alt={figureHoverPreview.image.alt_text || figureHoverPreview.image.caption || figureHoverPreview.image.original_name}
+              />
+            ) : (
+              <span>暂无图片文件</span>
+            )}
+          </div>
+          <dl className="figure-hover-preview-meta">
+            <div>
+              <dt>尺寸</dt>
+              <dd>{figureHoverPreview.image.pixel_width ?? "-"} x {figureHoverPreview.image.pixel_height ?? "-"}px</dd>
+            </div>
+            <div>
+              <dt>DPI</dt>
+              <dd>{figureHoverPreview.image.dpi_x ?? "未知"} / {figureHoverPreview.image.dpi_y ?? "未知"}</dd>
+            </div>
+          </dl>
+        </aside>
+      ) : null}
       <div className="editor-toolbar">
         <div className="editor-toolbar-main">
           <p className="eyebrow">{technical ? "技术测评表" : "管理测评表"}</p>
@@ -1080,6 +1316,9 @@ export function AssessmentTable({
                     const scoreBasisTemplateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit, "score_basis");
                     const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
+                    const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile);
+                    const figureReferenceItems = recordFigureReferenceItems(row, evidenceImages, sectionCode, profile);
+                    const figureReferenceParts = recordFigureReferenceParts(recordDisplayText, figureReferenceItems);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -1109,22 +1348,48 @@ export function AssessmentTable({
                         </td>
                         <td className="record-cell">
                           <div className="record-input-group">
-                            <textarea
-                              className="record-textarea"
-                              value={displayRecordText(row, evidenceImages, sectionCode, profile)}
-                              onChange={(event) => {
-                                rememberRecordSelection(index, event.target);
-                                const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile);
-                                updateRow(index, {
-                                  record_text: recordText,
-                                  cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
-                                });
-                              }}
-                              onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
-                              onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
-                              onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
-                              rows={5}
-                            />
+                            <div className="record-textarea-shell">
+                              <textarea
+                                className="record-textarea"
+                                value={recordDisplayText}
+                                onChange={(event) => {
+                                  rememberRecordSelection(index, event.target);
+                                  const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile);
+                                  updateRow(index, {
+                                    record_text: recordText,
+                                    cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
+                                  });
+                                }}
+                                onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
+                                onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
+                                onMouseMove={(event) => handleRecordReferenceHover(event, row)}
+                                onMouseLeave={() => setFigureHoverPreview(null)}
+                                onScroll={(event) => syncRecordReferenceOverlayScroll(event.currentTarget)}
+                                onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
+                                rows={5}
+                              />
+                              {figureReferenceItems.length > 0 ? (
+                                <div className="record-reference-overlay" aria-hidden="true">
+                                  <div className="record-reference-overlay-content">
+                                    {figureReferenceParts.map((part, partIndex) =>
+                                      part.item ? (
+                                        <span
+                                          className="record-reference-hotspot"
+                                          key={`${part.item.image.id}-${partIndex}`}
+                                          onMouseEnter={(event) => showFigureReferencePreview(part.item!, event.clientY)}
+                                          onMouseMove={(event) => showFigureReferencePreview(part.item!, event.clientY)}
+                                          onMouseLeave={() => setFigureHoverPreview(null)}
+                                        >
+                                          {part.text}
+                                        </span>
+                                      ) : (
+                                        <span key={`record-text-${partIndex}`}>{part.text}</span>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
                             <div className="record-control-row">
                               <select
                                 className="record-template-select"

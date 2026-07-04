@@ -108,7 +108,8 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("function displayRecordText", table_source)
         self.assertIn("function storedRecordText", table_source)
         self.assertIn("function crossReferencesForRecordText", table_source)
-        self.assertIn("value={displayRecordText(row, evidenceImages, sectionCode, profile)}", table_source)
+        self.assertIn("const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile)", table_source)
+        self.assertIn("value={recordDisplayText}", table_source)
         self.assertIn("const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile)", table_source)
         self.assertIn("record_text: recordText", table_source)
         self.assertIn("cross_references: crossReferencesForRecordText(", table_source)
@@ -174,6 +175,27 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("recordTemplates", table_source)
         self.assertNotIn("optgroup", table_source)
         self.assertNotIn("onSaveRowAsTemplate", table_source)
+
+    def test_assessment_table_previews_evidence_image_when_hovering_reference_label(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("type FigureReferenceHoverPreview", table_source)
+        self.assertIn("function hoveredFigureReferenceFromTextarea", table_source)
+        self.assertIn("function recordFigureReferenceItems", table_source)
+        self.assertIn("function recordFigureReferenceParts", table_source)
+        self.assertIn("const [figureHoverPreview", table_source)
+        self.assertIn("record-textarea-shell", table_source)
+        self.assertIn("record-reference-overlay", table_source)
+        self.assertIn("record-reference-hotspot", table_source)
+        self.assertIn("onMouseMove={(event) => handleRecordReferenceHover(event, row)}", table_source)
+        self.assertIn("onMouseLeave={() => setFigureHoverPreview(null)}", table_source)
+        self.assertIn("figure-hover-preview", table_source)
+        self.assertIn("figure-hover-preview", styles_source)
+        self.assertIn("record-reference-overlay", styles_source)
+        self.assertIn("pointer-events: auto", styles_source)
+        self.assertIn("position: fixed", styles_source)
+        self.assertIn("left: 16px", styles_source)
 
     def test_template_manager_is_fixed_split_slot_editor_with_config_backup(self) -> None:
         panel_source = (FRONTEND_SRC / "components" / "TemplateManagerPanel.tsx").read_text(encoding="utf-8")
