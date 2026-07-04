@@ -109,6 +109,61 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(len(references), 1)
         self.assertEqual(references[0]["display_text"], "图A-1-1")
 
+    def test_replace_section_rows_drops_stale_cross_references_not_in_record_text(self) -> None:
+        project = database.create_project("stale reference save project")
+        image = database.create_evidence_image(
+            project["id"],
+            "A-7",
+            {
+                "file_path": "uploads/stale/current.png",
+                "original_name": "current.png",
+                "caption": "current",
+                "alt_text": "current",
+                "pixel_width": 100,
+                "pixel_height": 100,
+                "dpi_x": 150,
+                "dpi_y": 150,
+                "display_width_in": 1,
+                "display_height_in": 1,
+            },
+        )
+
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-7",
+            rows=[
+                {
+                    "unit": "Unit",
+                    "object_name": "Object",
+                    "record_text": f"record [[FIG:{image['id']}]]",
+                    "metric_result": {
+                        "d": "/",
+                        "a": "/",
+                        "k": "/",
+                        "object_score": "/",
+                        "unit_score": "/",
+                    },
+                    "cross_references": [
+                        {
+                            "target_image_id": None,
+                            "token": "[[FIG:9999]]",
+                            "display_text": "old figure",
+                        },
+                        {
+                            "target_image_id": image["id"],
+                            "token": f"[[FIG:{image['id']}]]",
+                            "display_text": "current figure",
+                        },
+                    ],
+                }
+            ],
+        )
+
+        section = database.get_section(project["id"], "A-7")
+        references = database.list_cross_references(section["id"])
+
+        self.assertEqual([row["token"] for row in references], [f"[[FIG:{image['id']}]]"])
+
     def test_assessment_rows_preserve_subsystem(self) -> None:
         project = database.create_project("subsystem project")
         database.replace_section_rows(

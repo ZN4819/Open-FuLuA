@@ -135,6 +135,48 @@ class ValidationServiceTest(unittest.TestCase):
         self.assertEqual(result.summary.errors, 0)
         self.assertNotIn("INVALID_SCORE", {issue.code for issue in result.issues})
 
+    def test_validation_ignores_stale_stored_references_not_in_record_text(self) -> None:
+        project = database.create_project("stale reference project")
+        image = self._create_image(project["id"], "A-7", "current.png", alt_text="current evidence", dpi=150)
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-7",
+            rows=[
+                {
+                    "unit": "Unit",
+                    "object_name": "Object",
+                    "record_text": f"record uses current image [[FIG:{image['id']}]]",
+                    "metric_result": {
+                        "compliance": "符合",
+                        "unit_score": "1.0000",
+                    },
+                    "cross_references": [
+                        {
+                            "target_image_id": image["id"],
+                            "token": f"[[FIG:{image['id']}]]",
+                            "display_text": "current figure",
+                        }
+                    ],
+                }
+            ],
+        )
+        section = database.get_section(project["id"], "A-7")
+        row = database.list_assessment_rows(section["id"])[0]
+        with database.connect() as db:
+            db.execute(
+                """
+                INSERT INTO cross_references
+                    (source_row_id, target_image_id, token, display_text)
+                VALUES (?, ?, ?, ?)
+                """,
+                (row["id"], None, "[[FIG:9999]]", "old figure"),
+            )
+
+        result = validate_project(project["id"])
+
+        self.assertEqual(result.summary.errors, 0)
+        self.assertNotIn("BROKEN_STORED_REFERENCE", {issue.code for issue in result.issues})
+
     def _create_image(self, project_id: int, section_code: str, filename: str, alt_text: str, dpi: int):
         relative_path = Path("uploads") / str(project_id) / section_code / filename
         absolute_path = settings.storage_path / relative_path

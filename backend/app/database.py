@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import sqlite3
 from contextlib import contextmanager
@@ -10,6 +11,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import settings
+
+
+FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
 
 
 SECTION_SEED = [
@@ -1319,6 +1323,7 @@ def replace_section_rows(
 
         for index, row in enumerate(rows, start=1):
             sort_order = int(row.get("sort_order") or index)
+            record_text = "" if row.get("record_text") is None else str(row.get("record_text"))
             cursor = db.execute(
                 """
                 INSERT INTO assessment_rows
@@ -1330,7 +1335,7 @@ def replace_section_rows(
                     row.get("unit", ""),
                     row.get("object_name", ""),
                     row.get("subsystem", ""),
-                    row.get("record_text", ""),
+                    record_text,
                     sort_order,
                     timestamp,
                     timestamp,
@@ -1354,7 +1359,13 @@ def replace_section_rows(
                     metric.get("compliance"),
                 ),
             )
+            active_reference_tokens = _active_reference_tokens(record_text)
+            inserted_reference_tokens: set[str] = set()
             for reference in row.get("cross_references") or []:
+                token = "" if reference.get("token") is None else str(reference.get("token")).strip()
+                if token not in active_reference_tokens or token in inserted_reference_tokens:
+                    continue
+                inserted_reference_tokens.add(token)
                 db.execute(
                     """
                     INSERT INTO cross_references
@@ -1364,12 +1375,16 @@ def replace_section_rows(
                     (
                         row_id,
                         reference.get("target_image_id"),
-                        reference.get("token", ""),
+                        token,
                         reference.get("display_text", ""),
                     ),
                 )
 
         return get_section(project_id, code, db)
+
+
+def _active_reference_tokens(record_text: str) -> set[str]:
+    return {match.group(0) for match in FIG_TOKEN_RE.finditer(record_text or "")}
 
 
 def _rows_with_calculated_unit_scores(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

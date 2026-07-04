@@ -115,6 +115,10 @@ def _validate_references(section: Any, rows: list[Any], references: list[Any], i
     referenced_image_ids: set[int] = set()
     section_image_ids = {int(image["id"]) for image in images}
     row_by_id = {int(row["id"]): row for row in rows}
+    active_reference_tokens_by_row_id = {
+        int(row["id"]): _reference_tokens(row["record_text"])
+        for row in rows
+    }
 
     for row in rows:
         for image_id in _tokens(row["record_text"]):
@@ -132,6 +136,9 @@ def _validate_references(section: Any, rows: list[Any], references: list[Any], i
 
     for reference in references:
         row = row_by_id.get(int(reference["source_row_id"]))
+        token = _text(reference["token"])
+        if row is not None and token not in active_reference_tokens_by_row_id.get(int(row["id"]), set()):
+            continue
         label = _row_label(section, row) if row is not None else f"{section['code']} 引用"
         target_id = reference["target_image_id"]
         if target_id is None:
@@ -250,6 +257,10 @@ def _section_profile(profile: dict[str, Any], code: str) -> dict[str, Any]:
 
 def _tokens(text: str) -> set[int]:
     return {int(match.group(1)) for match in FIG_TOKEN_RE.finditer(text or "")}
+
+
+def _reference_tokens(text: str) -> set[str]:
+    return {match.group(0) for match in FIG_TOKEN_RE.finditer(text or "")}
 
 
 def _row_label(section: Any, row: Any | None) -> str:
