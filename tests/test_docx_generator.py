@@ -158,6 +158,46 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertEqual(analysis.ref_fields, 1)
         self.assertEqual(analysis.missing_ref_targets, [])
 
+    def test_docx_figure_labels_do_not_expose_global_image_ids_after_delete(self) -> None:
+        project = database.create_project("高 ID 图片导出")
+        first = self._create_evidence_image(project["id"], "A-1", filename="first.png", caption="第一张")
+        second = self._create_evidence_image(project["id"], "A-1", filename="second.png", caption="第二张")
+        database.delete_evidence_image(first["id"])
+
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "身份鉴别",
+                    "object_name": "机房",
+                    "record_text": f"查看证据，见 [[FIG:{second['id']}]]。",
+                    "metric_result": {
+                        "d": "√",
+                        "a": "√",
+                        "k": "√",
+                        "object_score": "1.0000",
+                        "unit_score": "1.0000",
+                    },
+                    "cross_references": [
+                        {
+                            "target_image_id": second["id"],
+                            "token": f"[[FIG:{second['id']}]]",
+                            "display_text": "图A-1-2",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        path = generate_project_docx(project["id"], "final")
+        paragraph_texts = _nonempty_paragraph_texts(path)
+
+        self.assertTrue(any("查看证据，见 图A-1-1。" in text for text in paragraph_texts))
+        self.assertTrue(any(text == "图A-1-1 第二张" for text in paragraph_texts))
+        self.assertFalse(any("图A-1-2" in text for text in paragraph_texts))
+        self.assertNotEqual(first["id"], second["id"])
+
     def _make_project_with_content(self):
         project = database.create_project("DOCX 生成测试")
         image = self._create_evidence_image(project["id"], "A-1")

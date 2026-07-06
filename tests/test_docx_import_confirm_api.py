@@ -70,6 +70,8 @@ class DocxImportConfirmApiTest(unittest.TestCase):
         self.assertNotIn("[[FIG:import:", row.record_text)
         self.assertEqual(reference.target_image_id, image.id)
         self.assertEqual(reference.token, f"[[FIG:{image.id}]]")
+        self.assertEqual(image.project_image_no, 1)
+        self.assertEqual(image.figure_label, "图A-1-1")
         self.assertEqual(reference.display_text, "图A-1-1")
 
         validation = validate_project(int(confirmed.created_project_id))
