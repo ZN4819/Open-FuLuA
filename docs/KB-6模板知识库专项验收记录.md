@@ -25,7 +25,7 @@ KB-6 目标是完成结果记录模板知识库专项整体回归，确认 KB-1 
 - 保存章节：`PUT /api/projects/16/sections/A-1` 成功返回测评行、证据图片和交叉引用。
 - 项目校验：`POST /api/projects/16/validate` 返回 `errors=0`、`warnings=0`、`info=0`。
 - DOCX 导出：`mode=editable` 与 `mode=final` 均成功返回 DOCX 文件，下载文件大小分别约 40 KB。
-- 预览任务：`POST /api/projects/16/render-jobs?mode=final` 创建任务，最终 `status=succeeded`，输出 PDF 页数为 9。
+- 历史后端预览任务：`POST /api/projects/16/render-jobs?mode=final` 曾创建成功并输出 9 页 PDF；当前前端已取消项目级“生成预览”入口。
 
 ## 自动化回归
 

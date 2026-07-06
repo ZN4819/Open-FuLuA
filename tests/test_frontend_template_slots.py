@@ -56,6 +56,22 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("handleDeleteRecordTemplate", page_source)
         self.assertNotIn("handleCopyRecordTemplate", page_source)
 
+    def test_project_page_removes_render_preview_entry(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+
+        self.assertNotIn("createRenderJob", page_source)
+        self.assertNotIn("getRenderJob", page_source)
+        self.assertNotIn("type RenderJob", page_source)
+        self.assertNotIn("isCreatingPreview", page_source)
+        self.assertNotIn("renderJob", page_source)
+        self.assertNotIn("handleCreatePreview", page_source)
+        self.assertNotIn("function PreviewPanel", page_source)
+        self.assertNotIn("renderJob ? <PreviewPanel", page_source)
+        self.assertNotIn("生成预览", page_source)
+        self.assertIn("校验项目", page_source)
+        self.assertIn("导出可编辑版", page_source)
+        self.assertIn("导出最终版", page_source)
+
     def test_technical_filters_drive_visible_evidence_images(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
