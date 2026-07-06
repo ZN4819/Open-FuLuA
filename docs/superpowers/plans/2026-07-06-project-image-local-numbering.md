@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python, FastAPI, SQLite, Pydantic, React, TypeScript, Vite, python-docx, unittest.
 
+**Implementation status:** Completed on branch `codex/project-image-local-numbering`. The implementation keeps global image IDs internally, exposes dynamic `project_image_no` through the API, refreshes cached frontend numbering after deletes, refreshes result-record figure labels from live evidence images, and adds DOCX import/export regression coverage.
+
 ---
 
 ## File Structure
