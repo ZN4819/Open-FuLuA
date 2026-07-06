@@ -9,38 +9,28 @@ import {
   type EvidenceImage
 } from "../api/client";
 
+type ImageDraft = {
+  caption: string;
+};
+
+type EvidenceImagesChangeContext = {
+  deletedImage?: EvidenceImage;
+};
+
+type EvidenceImagesChangeHandler = (images: EvidenceImage[], context?: EvidenceImagesChangeContext) => void;
+
 type EvidencePanelProps = {
   projectId: number;
   sectionCode: string;
   images: EvidenceImage[];
   visibleImageIds?: number[];
   filterActive?: boolean;
-  onImagesChange: (images: EvidenceImage[]) => void;
+  onImagesChange: EvidenceImagesChangeHandler;
   onError: (message: string) => void;
-};
-
-type ImageDraft = {
-  caption: string;
 };
 
 function isAltTextWarning(warning: string): boolean {
   return warning.toLowerCase().includes("alt");
-}
-
-function removeAndReindexProjectImageNumbers(images: EvidenceImage[], deletedImage: EvidenceImage): EvidenceImage[] {
-  const deletedProjectImageNo = deletedImage.project_image_no;
-  return images
-    .filter((item) => item.id !== deletedImage.id)
-    .map((item) => {
-      if (
-        typeof deletedProjectImageNo !== "number" ||
-        typeof item.project_image_no !== "number" ||
-        item.project_image_no <= deletedProjectImageNo
-      ) {
-        return item;
-      }
-      return { ...item, project_image_no: item.project_image_no - 1 };
-    });
 }
 
 export function EvidencePanel({
@@ -150,7 +140,7 @@ export function EvidencePanel({
     setBusyImageId(image.id);
     try {
       await deleteEvidenceImage(image.id);
-      onImagesChange(removeAndReindexProjectImageNumbers(images, image));
+      onImagesChange(images.filter((item) => item.id !== image.id), { deletedImage: image });
     } catch (err) {
       onError(err instanceof Error ? err.message : "删除图片失败");
     } finally {

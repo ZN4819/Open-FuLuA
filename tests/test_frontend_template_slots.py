@@ -113,12 +113,25 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("project_image_no?: number | null;", client_source)
         self.assertIn("项目图片", evidence_source)
         self.assertIn("image.project_image_no", evidence_source)
-        self.assertIn("removeAndReindexProjectImageNumbers", evidence_source)
-        self.assertIn("project_image_no: item.project_image_no - 1", evidence_source)
-        self.assertIn("onImagesChange(removeAndReindexProjectImageNumbers(images, image))", evidence_source)
+        self.assertIn("type EvidenceImagesChangeContext", evidence_source)
+        self.assertIn("deletedImage?: EvidenceImage", evidence_source)
+        self.assertIn("deletedImage: image", evidence_source)
         self.assertIn("image.figure_label ?? `${sectionCode}-${index + 1}`", evidence_source)
         self.assertIn("项目图片 {image.project_image_no ?? globalIndex + 1}", evidence_source)
         self.assertNotIn("图片ID", evidence_source)
+
+    def test_project_page_reindexes_cached_project_image_numbers_after_delete(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("function reindexCachedProjectImageNumbersAfterDelete", page_source)
+        self.assertIn("details: Record<string, SectionDetail>", page_source)
+        self.assertIn("const deletedProjectImageNo = deletedImage.project_image_no", page_source)
+        self.assertIn("Object.entries(details).map", page_source)
+        self.assertIn("evidence_images: detail.evidence_images.map((image)", page_source)
+        self.assertIn("project_image_no: image.project_image_no - 1", page_source)
+        self.assertIn("context?.deletedImage", page_source)
+        self.assertIn("reindexCachedProjectImageNumbersAfterDelete(nextDetails, context.deletedImage)", page_source)
+        self.assertIn("onImagesChange={(images, context) => handleImagesChange(activeCode, images, context)}", page_source)
 
     def test_assessment_table_uses_split_record_and_score_template_slots(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")

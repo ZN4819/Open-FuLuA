@@ -42,6 +42,10 @@ const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
 
 type EvidenceImageFilterBySection = Record<string, EvidenceImageFilterState>;
 
+type EvidenceImagesChangeContext = {
+  deletedImage?: EvidenceImage;
+};
+
 function uniqueNonEmptyValues(values: Array<string | null | undefined>) {
   const result: string[] = [];
   values.forEach((value) => {
@@ -80,6 +84,34 @@ function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
         display_text: reference.display_text
       }))
   }));
+}
+
+function reindexCachedProjectImageNumbersAfterDelete(
+  details: Record<string, SectionDetail>,
+  deletedImage: EvidenceImage
+): Record<string, SectionDetail> {
+  const deletedProjectImageNo = deletedImage.project_image_no;
+  if (typeof deletedProjectImageNo !== "number") {
+    return details;
+  }
+
+  return Object.fromEntries(
+    Object.entries(details).map(([code, detail]) => [
+      code,
+      {
+        ...detail,
+        evidence_images: detail.evidence_images.map((image) => {
+          if (
+            typeof image.project_image_no !== "number" ||
+            image.project_image_no <= deletedProjectImageNo
+          ) {
+            return image;
+          }
+          return { ...image, project_image_no: image.project_image_no - 1 };
+        })
+      }
+    ])
+  );
 }
 
 export function ProjectPage() {
@@ -503,19 +535,23 @@ export function ProjectPage() {
     }
   }
 
-  function handleImagesChange(code: string, images: EvidenceImage[]) {
+  function handleImagesChange(code: string, images: EvidenceImage[], context?: EvidenceImagesChangeContext) {
     setSectionDetails((current) => {
       const detail = current[code];
       if (!detail) {
         return current;
       }
-      return {
+      const nextDetails = {
         ...current,
         [code]: {
           ...detail,
           evidence_images: images
         }
       };
+      if (context?.deletedImage) {
+        return reindexCachedProjectImageNumbersAfterDelete(nextDetails, context.deletedImage);
+      }
+      return nextDetails;
     });
   }
 
@@ -801,7 +837,7 @@ export function ProjectPage() {
               images={activeDetail.evidence_images}
               visibleImageIds={activeEvidenceFilter?.imageIds}
               filterActive={activeEvidenceFilter?.active ?? false}
-              onImagesChange={(images) => handleImagesChange(activeCode, images)}
+              onImagesChange={(images, context) => handleImagesChange(activeCode, images, context)}
               onError={setError}
             />
           ) : null}
