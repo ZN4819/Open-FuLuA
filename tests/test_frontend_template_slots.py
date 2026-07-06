@@ -136,9 +136,13 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
     def test_assessment_table_prefers_live_figure_label_over_stored_reference_display_text(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
 
-        self.assertIn("const storedDisplayText = reference.display_text?.trim();", table_source)
-        self.assertIn("const displayText = existing?.displayText ?? fallbackDisplayText;", table_source)
+        self.assertIn("const displayText = existing?.displayText ?? token;", table_source)
         self.assertIn("displayText: displayText || token", table_source)
+        self.assertIn("target_image_id: existing?.target_image_id ?? null", table_source)
+        self.assertIn("const resolvedTargetImageId = reference ? reference.target_image_id : null;", table_source)
+        self.assertIn("target_image_id: resolvedTargetImageId", table_source)
+        self.assertNotIn("const fallbackDisplayText", table_source)
+        self.assertNotIn("target_image_id: reference.target_image_id ?? existing?.target_image_id ?? null", table_source)
         self.assertNotIn("reference.display_text?.trim() || existing?.displayText || token", table_source)
 
     def test_assessment_table_uses_split_record_and_score_template_slots(self) -> None:

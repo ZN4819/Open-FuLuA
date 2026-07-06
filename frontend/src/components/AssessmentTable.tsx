@@ -181,13 +181,11 @@ function figureReferenceOptions(
       return;
     }
     const existing = optionsByToken.get(token);
-    const storedDisplayText = reference.display_text?.trim();
-    const fallbackDisplayText = reference.target_image_id ? storedDisplayText : "";
-    const displayText = existing?.displayText ?? fallbackDisplayText;
+    const displayText = existing?.displayText ?? token;
     optionsByToken.set(token, {
       token,
       displayText: displayText || token,
-      target_image_id: reference.target_image_id ?? existing?.target_image_id ?? null
+      target_image_id: existing?.target_image_id ?? null
     });
   });
 
@@ -240,10 +238,10 @@ function crossReferencesForRecordText(
     const token = match[0];
     if (!seenTokens.has(token)) {
       seenTokens.add(token);
-      const imageId = Number(match[1]);
       const reference = optionsByToken.get(token);
+      const resolvedTargetImageId = reference ? reference.target_image_id : null;
       references.push({
-        target_image_id: reference?.target_image_id ?? (Number.isFinite(imageId) ? imageId : null),
+        target_image_id: resolvedTargetImageId,
         token,
         display_text: reference?.displayText ?? token
       });
