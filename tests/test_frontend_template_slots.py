@@ -113,6 +113,11 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("project_image_no?: number | null;", client_source)
         self.assertIn("项目图片", evidence_source)
         self.assertIn("image.project_image_no", evidence_source)
+        self.assertIn("removeAndReindexProjectImageNumbers", evidence_source)
+        self.assertIn("project_image_no: item.project_image_no - 1", evidence_source)
+        self.assertIn("onImagesChange(removeAndReindexProjectImageNumbers(images, image))", evidence_source)
+        self.assertIn("image.figure_label ?? `${sectionCode}-${index + 1}`", evidence_source)
+        self.assertIn("项目图片 {image.project_image_no ?? globalIndex + 1}", evidence_source)
         self.assertNotIn("图片ID", evidence_source)
 
     def test_assessment_table_uses_split_record_and_score_template_slots(self) -> None:

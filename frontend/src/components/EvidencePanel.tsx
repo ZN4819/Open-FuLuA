@@ -27,6 +27,22 @@ function isAltTextWarning(warning: string): boolean {
   return warning.toLowerCase().includes("alt");
 }
 
+function removeAndReindexProjectImageNumbers(images: EvidenceImage[], deletedImage: EvidenceImage): EvidenceImage[] {
+  const deletedProjectImageNo = deletedImage.project_image_no;
+  return images
+    .filter((item) => item.id !== deletedImage.id)
+    .map((item) => {
+      if (
+        typeof deletedProjectImageNo !== "number" ||
+        typeof item.project_image_no !== "number" ||
+        item.project_image_no <= deletedProjectImageNo
+      ) {
+        return item;
+      }
+      return { ...item, project_image_no: item.project_image_no - 1 };
+    });
+}
+
 export function EvidencePanel({
   projectId,
   sectionCode,
@@ -134,7 +150,7 @@ export function EvidencePanel({
     setBusyImageId(image.id);
     try {
       await deleteEvidenceImage(image.id);
-      onImagesChange(images.filter((item) => item.id !== image.id));
+      onImagesChange(removeAndReindexProjectImageNumbers(images, image));
     } catch (err) {
       onError(err instanceof Error ? err.message : "删除图片失败");
     } finally {
