@@ -181,9 +181,12 @@ function figureReferenceOptions(
       return;
     }
     const existing = optionsByToken.get(token);
+    const storedDisplayText = reference.display_text?.trim();
+    const fallbackDisplayText = reference.target_image_id ? storedDisplayText : "";
+    const displayText = existing?.displayText ?? fallbackDisplayText;
     optionsByToken.set(token, {
       token,
-      displayText: reference.display_text?.trim() || existing?.displayText || token,
+      displayText: displayText || token,
       target_image_id: reference.target_image_id ?? existing?.target_image_id ?? null
     });
   });
