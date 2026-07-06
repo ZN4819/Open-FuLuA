@@ -43,6 +43,7 @@ export function EvidencePanel({
   const [isUploading, setIsUploading] = useState(false);
   const [busyImageId, setBusyImageId] = useState<number | null>(null);
   const [draggingImageId, setDraggingImageId] = useState<number | null>(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<EvidenceImage | null>(null);
   const visibleImageIdSet = new Set(visibleImageIds);
   const displayImages = filterActive
     ? images.filter((image) => visibleImageIdSet.has(image.id))
@@ -64,6 +65,27 @@ export function EvidencePanel({
       )
     );
   }, [images]);
+
+  useEffect(() => {
+    if (!selectedPreviewImage) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelectedPreviewImage(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedPreviewImage]);
+
+  useEffect(() => {
+    if (selectedPreviewImage && !images.some((image) => image.id === selectedPreviewImage.id)) {
+      setSelectedPreviewImage(null);
+    }
+  }, [images, selectedPreviewImage]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setFiles(Array.from(event.target.files ?? []));
@@ -265,7 +287,18 @@ export function EvidencePanel({
                   <span className="status-chip">排序 {globalIndex + 1}</span>
                 </div>
                 <div className="image-preview">
-                  <img src={resolveFileUrl(image.file_url)} alt={image.alt_text || image.caption || image.original_name} />
+                  <button
+                    type="button"
+                    className="image-preview-button"
+                    aria-label={`放大预览 ${image.figure_label ?? image.original_name}`}
+                    onClick={() => setSelectedPreviewImage(image)}
+                  >
+                    <img
+                      src={resolveFileUrl(image.file_url)}
+                      alt={image.alt_text || image.caption || image.original_name}
+                      draggable={false}
+                    />
+                  </button>
                 </div>
                 <dl className="image-meta">
                   <div>
@@ -328,6 +361,37 @@ export function EvidencePanel({
           })}
         </div>
       )}
+      {selectedPreviewImage ? (
+        <div
+          className="image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${selectedPreviewImage.figure_label ?? selectedPreviewImage.original_name} 全屏预览`}
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div className="image-lightbox-content" onClick={(event) => event.stopPropagation()}>
+            <div className="image-lightbox-header">
+              <div>
+                <strong>{selectedPreviewImage.figure_label ?? "证据图片"}</strong>
+                <span>{selectedPreviewImage.original_name}</span>
+              </div>
+              <button type="button" className="image-lightbox-close" onClick={() => setSelectedPreviewImage(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="image-lightbox-image-shell">
+              <img
+                className="image-lightbox-image"
+                src={resolveFileUrl(selectedPreviewImage.file_url)}
+                alt={selectedPreviewImage.alt_text || selectedPreviewImage.caption || selectedPreviewImage.original_name}
+              />
+            </div>
+            {selectedPreviewImage.caption ? (
+              <p className="image-lightbox-caption">{selectedPreviewImage.caption}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

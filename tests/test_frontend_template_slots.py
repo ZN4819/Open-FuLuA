@@ -200,6 +200,28 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("width: min(420px, calc(100vw - 32px))", styles_source)
         self.assertIn("max-height: 360px", styles_source)
 
+    def test_evidence_panel_opens_fullscreen_image_preview(self) -> None:
+        evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("const [selectedPreviewImage", evidence_source)
+        self.assertIn("setSelectedPreviewImage(image)", evidence_source)
+        self.assertIn("event.key === \"Escape\"", evidence_source)
+        self.assertIn("image-preview-button", evidence_source)
+        self.assertIn("image-lightbox", evidence_source)
+        self.assertIn("role=\"dialog\"", evidence_source)
+        self.assertIn("aria-modal=\"true\"", evidence_source)
+        self.assertIn("onClick={() => setSelectedPreviewImage(null)}", evidence_source)
+        self.assertIn("onClick={(event) => event.stopPropagation()}", evidence_source)
+
+        self.assertIn(".image-preview-button", styles_source)
+        self.assertIn("cursor: zoom-in", styles_source)
+        self.assertIn(".image-lightbox", styles_source)
+        self.assertIn("position: fixed", styles_source)
+        self.assertIn("inset: 0", styles_source)
+        self.assertIn(".image-lightbox-image", styles_source)
+        self.assertIn("max-height: calc(100vh - 180px)", styles_source)
+
     def test_template_manager_is_fixed_split_slot_editor_with_config_backup(self) -> None:
         panel_source = (FRONTEND_SRC / "components" / "TemplateManagerPanel.tsx").read_text(encoding="utf-8")
 
