@@ -10,7 +10,7 @@ from ..schemas import (
     SectionRead,
     SectionUpdate,
 )
-from .evidence import evidence_to_schema
+from .evidence import section_evidence_to_schema
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
 
@@ -66,10 +66,8 @@ def build_section_detail(project_id: int, code: str) -> SectionDetailRead:
         [row["name"] for row in database.list_section_subsystems(project_id, code)] +
         [row.subsystem for row in rows]
     )
-    evidence_images = [
-        evidence_to_schema(row, index)
-        for index, row in enumerate(database.list_evidence_images(project_id, section["code"]), start=1)
-    ]
+    evidence_rows = database.list_evidence_images(project_id, section["code"])
+    evidence_images = section_evidence_to_schema(project_id, evidence_rows)
     cross_references = [
         cross_reference_to_schema(row)
         for row in database.list_cross_references(section["id"])

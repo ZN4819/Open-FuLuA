@@ -15,8 +15,10 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app import database  # noqa: E402
 from app.api.evidence import evidence_to_schema  # noqa: E402
+from app.api.evidence import list_section_evidence  # noqa: E402
 from app.api.evidence import replace_evidence_image_file as api_replace_evidence_image_file  # noqa: E402
 from app.api.evidence import upload_evidence_images  # noqa: E402
+from app.api.sections import build_section_detail  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.services.evidence import image_warnings, inspect_image  # noqa: E402
 
@@ -75,6 +77,29 @@ class EvidenceImagesTest(unittest.TestCase):
                 "display_height_in": 1,
             },
         )
+
+    def create_evidence_row(
+        self,
+        project_id: int,
+        section_code: str,
+        filename: str,
+        sort_order: int | None = None,
+    ):
+        image_data = {
+            "file_path": f"uploads/{project_id}/{section_code}/{filename}",
+            "original_name": filename,
+            "caption": filename,
+            "alt_text": filename,
+            "pixel_width": 100,
+            "pixel_height": 100,
+            "dpi_x": 150,
+            "dpi_y": 150,
+            "display_width_in": 1,
+            "display_height_in": 1,
+        }
+        if sort_order is not None:
+            image_data["sort_order"] = sort_order
+        return database.create_evidence_image(project_id, section_code, image_data)
 
     def test_inspect_image_reads_dimensions_dpi_and_display_size(self) -> None:
         image_path = self.make_image("sample.png", (1200, 600), (300, 300))
@@ -165,6 +190,54 @@ class EvidenceImagesTest(unittest.TestCase):
         self.assertEqual(database.list_evidence_images(project["id"], "A-1"), [])
         stored_files = [path for path in settings.storage_path.rglob("*") if path.is_file()]
         self.assertEqual(stored_files, [])
+
+    def test_project_image_numbers_restart_per_project_and_follow_section_order(self) -> None:
+        first_project = database.create_project("first project")
+        second_project = database.create_project("second project")
+        first_a2 = self.create_evidence_row(first_project["id"], "A-2", "first-a2.png")
+        first_a1_second = self.create_evidence_row(first_project["id"], "A-1", "first-a1-second.png", sort_order=2)
+        first_a1_first = self.create_evidence_row(first_project["id"], "A-1", "first-a1-first.png", sort_order=1)
+        self.create_evidence_row(second_project["id"], "A-1", "second-a1.png")
+
+        first_project_a1 = list_section_evidence(first_project["id"], "A-1")
+        first_project_a2 = list_section_evidence(first_project["id"], "A-2")
+        second_project_a1 = list_section_evidence(second_project["id"], "A-1")
+        section_detail = build_section_detail(first_project["id"], "A-2")
+
+        self.assertEqual([image.id for image in first_project_a1], [first_a1_first["id"], first_a1_second["id"]])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in first_project_a1], [1, 2])
+        self.assertEqual([image.figure_label for image in first_project_a1], ["\u56feA-1-1", "\u56feA-1-2"])
+        self.assertEqual([image.id for image in first_project_a2], [first_a2["id"]])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in first_project_a2], [3])
+        self.assertEqual([image.figure_label for image in first_project_a2], ["\u56feA-2-1"])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in second_project_a1], [1])
+        self.assertEqual([image.figure_label for image in second_project_a1], ["\u56feA-1-1"])
+        self.assertEqual(getattr(section_detail.evidence_images[0], "project_image_no", None), 3)
+
+    def test_section_evidence_reindexes_project_image_numbers_after_delete(self) -> None:
+        project = database.create_project("delete reindex")
+        first = self.create_evidence_row(project["id"], "A-1", "first.png")
+        deleted = self.create_evidence_row(project["id"], "A-1", "deleted.png")
+        third = self.create_evidence_row(project["id"], "A-1", "third.png")
+        a2 = self.create_evidence_row(project["id"], "A-2", "a2.png")
+
+        deleted_row = database.delete_evidence_image(deleted["id"])
+        after_delete_a1 = list_section_evidence(project["id"], "A-1")
+        after_delete_a2 = list_section_evidence(project["id"], "A-2")
+        replacement = self.create_evidence_row(project["id"], "A-1", "replacement.png")
+        after_insert_a1 = list_section_evidence(project["id"], "A-1")
+
+        self.assertEqual(deleted_row["id"], deleted["id"])
+        self.assertEqual([image.id for image in after_delete_a1], [first["id"], third["id"]])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in after_delete_a1], [1, 2])
+        self.assertEqual([image.figure_label for image in after_delete_a1], ["\u56feA-1-1", "\u56feA-1-2"])
+        self.assertEqual([image.id for image in after_delete_a2], [a2["id"]])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in after_delete_a2], [3])
+        self.assertEqual([image.figure_label for image in after_delete_a2], ["\u56feA-2-1"])
+        self.assertGreater(replacement["id"], deleted["id"])
+        self.assertEqual([image.id for image in after_insert_a1], [first["id"], third["id"], replacement["id"]])
+        self.assertEqual([getattr(image, "project_image_no", None) for image in after_insert_a1], [1, 2, 3])
+        self.assertEqual(after_insert_a1[-1].id, replacement["id"])
 
     def test_replace_evidence_image_file_preserves_identity_caption_and_order(self) -> None:
         project = database.create_project("图片替换测试")

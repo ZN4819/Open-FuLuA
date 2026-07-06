@@ -7,13 +7,18 @@ from ..services.evidence import EvidenceImageError, image_warnings, remove_store
 router = APIRouter(tags=["evidence"])
 
 
-def evidence_to_schema(row, section_index: int | None = None) -> EvidenceImageRead:
+def evidence_to_schema(
+    row,
+    section_index: int | None = None,
+    project_image_no: int | None = None,
+) -> EvidenceImageRead:
     raw = dict(row)
     figure_label = None
     if section_index is not None:
         figure_label = f"图{raw['section_code']}-{section_index}"
     return EvidenceImageRead(
         id=raw["id"],
+        project_image_no=project_image_no,
         project_id=raw["project_id"],
         section_code=raw["section_code"],
         file_path=raw["file_path"],
@@ -35,9 +40,37 @@ def evidence_to_schema(row, section_index: int | None = None) -> EvidenceImageRe
     )
 
 
+def project_image_numbers(project_id: int) -> dict[int, int]:
+    rows = database.list_project_evidence_images(project_id)
+    return {int(row["id"]): index for index, row in enumerate(rows, start=1)}
+
+
+def section_evidence_to_schema(project_id: int, rows) -> list[EvidenceImageRead]:
+    number_by_id = project_image_numbers(project_id)
+    return [
+        evidence_to_schema(
+            row,
+            section_index=index,
+            project_image_no=number_by_id.get(int(row["id"])),
+        )
+        for index, row in enumerate(rows, start=1)
+    ]
+
+
 def list_section_evidence(project_id: int, section_code: str) -> list[EvidenceImageRead]:
     rows = database.list_evidence_images(project_id, section_code)
-    return [evidence_to_schema(row, index) for index, row in enumerate(rows, start=1)]
+    return section_evidence_to_schema(project_id, rows)
+
+
+def _section_schemas_for_images(
+    project_id: int,
+    section_code: str,
+    image_ids: list[int],
+) -> list[EvidenceImageRead]:
+    rows = database.list_evidence_images(project_id, section_code)
+    schemas = section_evidence_to_schema(project_id, rows)
+    requested_ids = set(image_ids)
+    return [schema for schema in schemas if schema.id in requested_ids]
 
 
 @router.post("/projects/{project_id}/evidence", response_model=EvidenceImageRead, status_code=201)
@@ -61,9 +94,7 @@ def upload_evidence_image(
     except EvidenceImageError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    rows = database.list_evidence_images(project_id, section_code)
-    index = next((idx for idx, item in enumerate(rows, start=1) if item["id"] == row["id"]), None)
-    return evidence_to_schema(row, index)
+    return _section_schemas_for_images(project_id, section_code, [row["id"]])[0]
 
 
 @router.post("/projects/{project_id}/evidence/batch", response_model=list[EvidenceImageRead], status_code=201)
@@ -95,9 +126,7 @@ def upload_evidence_images(
         _rollback_uploaded_images(created_rows, saved_paths)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    rows = database.list_evidence_images(project_id, section_code)
-    index_by_id = {row["id"]: index for index, row in enumerate(rows, start=1)}
-    return [evidence_to_schema(row, index_by_id.get(row["id"])) for row in created_rows]
+    return _section_schemas_for_images(project_id, section_code, [row["id"] for row in created_rows])
 
 
 @router.put("/evidence/{image_id}", response_model=EvidenceImageRead)
@@ -108,9 +137,7 @@ def update_evidence_image(image_id: int, payload: EvidenceImageUpdate) -> Eviden
     )
     if row is None:
         raise HTTPException(status_code=404, detail="图片不存在")
-    rows = database.list_evidence_images(row["project_id"], row["section_code"])
-    index = next((idx for idx, item in enumerate(rows, start=1) if item["id"] == row["id"]), None)
-    return evidence_to_schema(row, index)
+    return _section_schemas_for_images(row["project_id"], row["section_code"], [row["id"]])[0]
 
 
 @router.post("/evidence/{image_id}/file", response_model=EvidenceImageRead)
@@ -130,9 +157,7 @@ def replace_evidence_image_file(image_id: int, file: UploadFile = File(...)) -> 
         raise HTTPException(status_code=404, detail="图片不存在")
 
     remove_stored_file(existing["file_path"])
-    rows = database.list_evidence_images(row["project_id"], row["section_code"])
-    index = next((idx for idx, item in enumerate(rows, start=1) if item["id"] == row["id"]), None)
-    return evidence_to_schema(row, index)
+    return _section_schemas_for_images(row["project_id"], row["section_code"], [row["id"]])[0]
 
 
 @router.delete("/evidence/{image_id}", response_model=EvidenceImageRead)
@@ -150,7 +175,7 @@ def reorder_evidence_images(project_id: int, section_code: str, payload: Evidenc
         rows = database.reorder_evidence_images(project_id, section_code, payload.image_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return [evidence_to_schema(row, index) for index, row in enumerate(rows, start=1)]
+    return section_evidence_to_schema(project_id, rows)
 
 
 def _rollback_uploaded_images(rows, file_paths: list[str]) -> None:

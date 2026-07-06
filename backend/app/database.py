@@ -1081,6 +1081,38 @@ def list_evidence_images(project_id: int, section_code: str, db: sqlite3.Connect
         return connection.execute(query, (project_id, section_code)).fetchall()
 
 
+def list_project_evidence_images(project_id: int, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    query = """
+        SELECT
+            e.id,
+            e.project_id,
+            e.section_code,
+            e.file_path,
+            e.original_name,
+            e.caption,
+            e.alt_text,
+            e.sort_order,
+            e.pixel_width,
+            e.pixel_height,
+            e.dpi_x,
+            e.dpi_y,
+            e.display_width_in,
+            e.display_height_in,
+            e.created_at,
+            e.updated_at
+        FROM evidence_images e
+        JOIN appendix_sections s
+            ON s.project_id = e.project_id
+            AND s.code = e.section_code
+        WHERE e.project_id = ?
+        ORDER BY s.sort_order, e.sort_order, e.id
+    """
+    if db is not None:
+        return db.execute(query, (project_id,)).fetchall()
+    with connect() as connection:
+        return connection.execute(query, (project_id,)).fetchall()
+
+
 def get_evidence_image(image_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
     query = """
         SELECT

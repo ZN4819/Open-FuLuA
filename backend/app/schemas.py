@@ -127,6 +127,7 @@ class AssessmentRowWrite(BaseModel):
 
 class EvidenceImageRead(BaseModel):
     id: int
+    project_image_no: int | None = None
     project_id: int
     section_code: str
     file_path: str
