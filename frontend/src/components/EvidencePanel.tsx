@@ -284,7 +284,7 @@ export function EvidencePanel({
                     <strong>{image.figure_label ?? `${sectionCode}-${index + 1}`}</strong>
                     <span>{image.original_name}</span>
                   </div>
-                  <span className="status-chip">排序 {globalIndex + 1}</span>
+                  <span className="status-chip">项目图片 {image.project_image_no ?? globalIndex + 1}</span>
                 </div>
                 <div className="image-preview">
                   <button

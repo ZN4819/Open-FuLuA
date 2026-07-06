@@ -106,6 +106,15 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("disabled={filterActive || index === 0}", evidence_source)
         self.assertIn("当前筛选条件下没有被引用的证据图片。", evidence_source)
 
+    def test_evidence_panel_displays_project_local_image_number(self) -> None:
+        client_source = (FRONTEND_SRC / "api" / "client.ts").read_text(encoding="utf-8")
+        evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("project_image_no?: number | null;", client_source)
+        self.assertIn("项目图片", evidence_source)
+        self.assertIn("image.project_image_no", evidence_source)
+        self.assertNotIn("图片ID", evidence_source)
+
     def test_assessment_table_uses_split_record_and_score_template_slots(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
 

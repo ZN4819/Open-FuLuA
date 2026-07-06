@@ -56,6 +56,7 @@ export type EvidenceImage = {
   caption: string;
   alt_text: string;
   sort_order: number;
+  project_image_no?: number | null;
   pixel_width?: number | null;
   pixel_height?: number | null;
   dpi_x?: number | null;
