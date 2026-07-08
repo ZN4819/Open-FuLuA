@@ -2249,6 +2249,63 @@ a:hover {
   pointer-events: none;
 }
 
+.pasted-image-upload-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.pasted-image-upload-dialog {
+  display: grid;
+  width: min(440px, calc(100vw - 32px));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.pasted-image-upload-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.pasted-image-upload-heading h4 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 18px;
+}
+
+.pasted-image-upload-field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pasted-image-upload-field input {
+  width: 100%;
+}
+
+.pasted-image-upload-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pasted-image-upload-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .template-save-button {
   min-height: 34px;
 }

@@ -556,7 +556,7 @@ export function ProjectPage() {
     });
   }
 
-  async function handleInlineEvidenceUpload(code: string, files: File[]) {
+  async function handleInlineEvidenceUpload(code: string, files: File[], options?: { caption?: string }) {
     if (!project || files.length === 0) {
       return [];
     }
@@ -570,7 +570,8 @@ export function ProjectPage() {
     try {
       const uploaded = await uploadEvidenceImages(project.id, {
         section_code: code,
-        files
+        files,
+        caption: options?.caption
       });
       handleImagesChange(code, [...detail.evidence_images, ...uploaded]);
       setSaveMessage(`已上传 ${uploaded.length} 张图片，可在结果记录中插入引用。`);
@@ -852,7 +853,7 @@ export function ProjectPage() {
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
               onSubsystemUiStateChange={(updater, options) => handleSubsystemUiStateChange(activeCode, updater, options)}
               onVisibleEvidenceFilterChange={(filter) => handleEvidenceFilterChange(activeCode, filter)}
-              onUploadEvidenceImages={(files) => handleInlineEvidenceUpload(activeCode, files)}
+              onUploadEvidenceImages={(files, options) => handleInlineEvidenceUpload(activeCode, files, options)}
               onSave={handleSaveSection}
             />
           ) : null}

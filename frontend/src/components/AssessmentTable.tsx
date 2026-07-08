@@ -12,6 +12,16 @@ export type EvidenceImageFilterState = {
   imageIds: number[];
 };
 
+type EvidenceUploadOptions = {
+  caption?: string;
+};
+
+type PendingPastedImageUpload = {
+  rowIndex: number;
+  files: File[];
+  caption: string;
+};
+
 type SubsystemUiStateUpdater = (current: SubsystemUiState) => SubsystemUiState;
 type SubsystemUiStateChangeOptions = {
   dirty?: boolean;
@@ -29,7 +39,7 @@ type AssessmentTableProps = {
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
-  onUploadEvidenceImages?: (files: File[]) => Promise<EvidenceImage[]>;
+  onUploadEvidenceImages?: (files: File[], options?: EvidenceUploadOptions) => Promise<EvidenceImage[]>;
   onSave: () => void;
 };
 
@@ -660,11 +670,13 @@ export function AssessmentTable({
   const [newSubsystemName, setNewSubsystemName] = useState("");
   const [figureHoverPreview, setFigureHoverPreview] = useState<FigureReferenceHoverPreview | null>(null);
   const [inlineImageUploadIndex, setInlineImageUploadIndex] = useState<number | null>(null);
+  const [pendingPastedImageUpload, setPendingPastedImageUpload] = useState<PendingPastedImageUpload | null>(null);
   useEffect(() => {
     setNewSubsystemName("");
     setTechnicalUnitFilter("");
     setTechnicalObjectFilter("");
     setFigureHoverPreview(null);
+    setPendingPastedImageUpload(null);
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
@@ -976,7 +988,12 @@ export function AssessmentTable({
     });
   }
 
-  async function uploadInlineEvidenceImages(index: number, files: FileList | File[] | null, insertUploadedReferences = false) {
+  async function uploadInlineEvidenceImages(
+    index: number,
+    files: FileList | File[] | null,
+    insertUploadedReferences = false,
+    options?: EvidenceUploadOptions
+  ) {
     const selectedFiles = Array.from(files ?? []);
     if (selectedFiles.length === 0 || !onUploadEvidenceImages) {
       return;
@@ -984,7 +1001,10 @@ export function AssessmentTable({
 
     setInlineImageUploadIndex(index);
     try {
-      const uploadedImages = await onUploadEvidenceImages(selectedFiles);
+      const caption = options?.caption;
+      const uploadedImages = caption !== undefined
+        ? await onUploadEvidenceImages(selectedFiles, { caption })
+        : await onUploadEvidenceImages(selectedFiles);
       if (insertUploadedReferences) {
         insertReferenceImages(index, uploadedImages, [...evidenceImages, ...uploadedImages]);
       }
@@ -1000,7 +1020,31 @@ export function AssessmentTable({
     }
     event.preventDefault();
     rememberRecordSelection(index, event.currentTarget);
-    await uploadInlineEvidenceImages(index, selectedFiles, true);
+    setPendingPastedImageUpload({
+      rowIndex: index,
+      files: selectedFiles,
+      caption: ""
+    });
+  }
+
+  function cancelPastedImageUpload() {
+    setPendingPastedImageUpload(null);
+  }
+
+  async function confirmPastedImageUpload() {
+    if (!pendingPastedImageUpload) {
+      return;
+    }
+    const caption = pendingPastedImageUpload.caption.trim();
+    if (!caption) {
+      return;
+    }
+    try {
+      await uploadInlineEvidenceImages(pendingPastedImageUpload.rowIndex, pendingPastedImageUpload.files, true, { caption });
+      setPendingPastedImageUpload(null);
+    } catch {
+      // The parent page already surfaces the upload failure; keep the dialog open so the caption is not lost.
+    }
   }
 
   function applyRecordTemplate(index: number, slotId: string) {
@@ -1040,8 +1084,56 @@ export function AssessmentTable({
     });
   }
 
+  const pastedImageUploadDialog = pendingPastedImageUpload ? (
+    <div className="pasted-image-upload-backdrop">
+      <form
+        className="pasted-image-upload-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pasted-image-upload-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void confirmPastedImageUpload();
+        }}
+      >
+        <div className="pasted-image-upload-heading">
+          <p className="eyebrow">粘贴截图题注</p>
+          <h4 id="pasted-image-upload-title">请输入图片题注</h4>
+        </div>
+        <label className="pasted-image-upload-field">
+          <span>图片题注</span>
+          <input
+            autoFocus
+            value={pendingPastedImageUpload.caption}
+            onChange={(event) => setPendingPastedImageUpload({
+              ...pendingPastedImageUpload,
+              caption: event.target.value
+            })}
+            placeholder="例如：机房门禁截图"
+          />
+        </label>
+        <p className="pasted-image-upload-hint">
+          确认后将上传剪贴板截图，并在当前光标位置插入图片编号。
+        </p>
+        <div className="pasted-image-upload-actions">
+          <button type="button" className="secondary-button" onClick={cancelPastedImageUpload}>
+            取消
+          </button>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!pendingPastedImageUpload.caption.trim() || inlineImageUploadIndex !== null}
+          >
+            {inlineImageUploadIndex !== null ? "上传中..." : "上传并插入"}
+          </button>
+        </div>
+      </form>
+    </div>
+  ) : null;
+
   return (
     <div className="editor-block">
+      {pastedImageUploadDialog}
       {figureHoverPreview ? (
         <aside className="figure-hover-preview" style={{ top: `${figureHoverPreview.top}px` }} aria-label="图片引用预览">
           <div className="figure-hover-preview-heading">
