@@ -255,6 +255,20 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("width: min(420px, calc(100vw - 32px))", styles_source)
         self.assertIn("max-height: 360px", styles_source)
 
+    def test_assessment_table_supports_inline_evidence_upload(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("onUploadEvidenceImages", table_source)
+        self.assertIn("inline-image-upload-button", table_source)
+        self.assertIn("accept=\"image/png,image/jpeg\"", table_source)
+        self.assertIn("multiple", table_source)
+        self.assertIn("handleInlineEvidenceUpload", page_source)
+        self.assertIn("uploadEvidenceImages(project.id", page_source)
+        self.assertIn("onUploadEvidenceImages={(files) => handleInlineEvidenceUpload(activeCode, files)}", page_source)
+        self.assertIn(".inline-image-upload-button", styles_source)
+
     def test_evidence_panel_opens_fullscreen_image_preview(self) -> None:
         evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
         styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")

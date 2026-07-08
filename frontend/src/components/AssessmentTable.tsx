@@ -29,6 +29,7 @@ type AssessmentTableProps = {
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
+  onUploadEvidenceImages?: (files: File[]) => Promise<void>;
   onSave: () => void;
 };
 
@@ -645,6 +646,7 @@ export function AssessmentTable({
   onRowsChange,
   onSubsystemUiStateChange,
   onVisibleEvidenceFilterChange,
+  onUploadEvidenceImages,
   onSave
 }: AssessmentTableProps) {
   const technical = isTechnicalSection(sectionCode);
@@ -657,6 +659,7 @@ export function AssessmentTable({
   const [technicalObjectFilter, setTechnicalObjectFilter] = useState("");
   const [newSubsystemName, setNewSubsystemName] = useState("");
   const [figureHoverPreview, setFigureHoverPreview] = useState<FigureReferenceHoverPreview | null>(null);
+  const [inlineImageUploadIndex, setInlineImageUploadIndex] = useState<number | null>(null);
   useEffect(() => {
     setNewSubsystemName("");
     setTechnicalUnitFilter("");
@@ -964,6 +967,20 @@ export function AssessmentTable({
       record_text: recordText,
       cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
     });
+  }
+
+  async function uploadInlineEvidenceImages(index: number, files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+    if (selectedFiles.length === 0 || !onUploadEvidenceImages) {
+      return;
+    }
+
+    setInlineImageUploadIndex(index);
+    try {
+      await onUploadEvidenceImages(selectedFiles);
+    } finally {
+      setInlineImageUploadIndex(null);
+    }
   }
 
   function applyRecordTemplate(index: number, slotId: string) {
@@ -1436,6 +1453,19 @@ export function AssessmentTable({
                                   </option>
                                 ))}
                               </select>
+                              <label className="inline-image-upload-button">
+                                <span>{inlineImageUploadIndex === index ? "上传中..." : "上传图片"}</span>
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg"
+                                  multiple
+                                  disabled={!onUploadEvidenceImages || inlineImageUploadIndex !== null}
+                                  onChange={(event) => {
+                                    void uploadInlineEvidenceImages(index, event.target.files);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
+                              </label>
                             </div>
                           </div>
                         </td>
