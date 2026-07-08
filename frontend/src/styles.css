@@ -2989,6 +2989,20 @@ textarea:hover {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14);
 }
 
+.workspace-actions .action-group button:not(:disabled):hover,
+.workspace-actions .action-group button:not(:disabled):focus-visible {
+  color: #ffffff;
+  background: #262626;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.workspace-actions .action-group button:disabled {
+  color: #737373;
+  background: #f5f5f5;
+  opacity: 1;
+  box-shadow: var(--shadow-ring);
+}
+
 .danger-button,
 .project-list-actions .danger-button,
 .image-actions .danger-button,
