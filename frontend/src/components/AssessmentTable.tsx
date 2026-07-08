@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type MouseEvent } from "react";
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
 
@@ -285,97 +285,6 @@ function recordFigureReferenceItems(
     .filter((item): item is FigureReferenceHoverItem => item !== null);
 }
 
-function hoveredFigureReferenceFromTextarea(
-  textarea: HTMLTextAreaElement,
-  clientX: number,
-  clientY: number,
-  references: FigureReferenceHoverItem[]
-): FigureReferenceHoverPreview | null {
-  if (references.length === 0 || !textarea.value) {
-    return null;
-  }
-  const textareaRect = textarea.getBoundingClientRect();
-  if (
-    clientX < textareaRect.left ||
-    clientX > textareaRect.right ||
-    clientY < textareaRect.top ||
-    clientY > textareaRect.bottom
-  ) {
-    return null;
-  }
-
-  const occurrences = referenceLabelOccurrences(textarea.value, references);
-  if (occurrences.length === 0) {
-    return null;
-  }
-
-  const computedStyle = window.getComputedStyle(textarea);
-  const mirror = document.createElement("div");
-  mirror.className = "record-reference-measure";
-  mirror.style.position = "absolute";
-  mirror.style.visibility = "hidden";
-  mirror.style.pointerEvents = "none";
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.overflowWrap = "break-word";
-  mirror.style.boxSizing = computedStyle.boxSizing;
-  mirror.style.width = `${textarea.clientWidth}px`;
-  mirror.style.padding = computedStyle.padding;
-  mirror.style.border = computedStyle.border;
-  mirror.style.font = computedStyle.font;
-  mirror.style.lineHeight = computedStyle.lineHeight;
-  mirror.style.letterSpacing = computedStyle.letterSpacing;
-  mirror.style.left = `${textareaRect.left + window.scrollX}px`;
-  mirror.style.top = `${textareaRect.top + window.scrollY}px`;
-
-  let cursor = 0;
-  occurrences.forEach((occurrence, occurrenceIndex) => {
-    if (occurrence.start > cursor) {
-      mirror.append(document.createTextNode(textarea.value.slice(cursor, occurrence.start)));
-    }
-    const span = document.createElement("span");
-    span.dataset.referenceIndex = String(occurrenceIndex);
-    span.textContent = textarea.value.slice(occurrence.start, occurrence.end);
-    mirror.append(span);
-    cursor = occurrence.end;
-  });
-  mirror.append(document.createTextNode(textarea.value.slice(cursor) || "\u200b"));
-  document.body.append(mirror);
-
-  try {
-    const spans = Array.from(mirror.querySelectorAll<HTMLSpanElement>("span[data-reference-index]"));
-    for (const span of spans) {
-      const occurrenceIndex = Number(span.dataset.referenceIndex);
-      const occurrence = occurrences[occurrenceIndex];
-      const spanRect = span.getBoundingClientRect();
-      const adjustedRect = {
-        left: spanRect.left - textarea.scrollLeft,
-        right: spanRect.right - textarea.scrollLeft,
-        top: spanRect.top - textarea.scrollTop,
-        bottom: spanRect.bottom - textarea.scrollTop
-      };
-      const expandedHit = 3;
-      const visibleVertically = adjustedRect.bottom >= textareaRect.top && adjustedRect.top <= textareaRect.bottom;
-      if (
-        visibleVertically &&
-        clientX >= adjustedRect.left - expandedHit &&
-        clientX <= adjustedRect.right + expandedHit &&
-        clientY >= adjustedRect.top - expandedHit &&
-        clientY <= adjustedRect.bottom + expandedHit
-      ) {
-        return {
-          label: occurrence.item.displayText,
-          image: occurrence.item.image,
-          top: figurePreviewTop(clientY)
-        };
-      }
-    }
-  } finally {
-    mirror.remove();
-  }
-
-  return null;
-}
-
 function referenceLabelOccurrences(text: string, references: FigureReferenceHoverItem[]) {
   const occupiedRanges: Array<{ start: number; end: number }> = [];
   const occurrences: Array<{ start: number; end: number; item: FigureReferenceHoverItem }> = [];
@@ -421,26 +330,44 @@ function recordFigureReferenceParts(text: string, references: FigureReferenceHov
   return parts;
 }
 
+function renderRecordRichTextParts(text: string, references: FigureReferenceHoverItem[]) {
+  return recordFigureReferenceParts(text, references);
+}
+
+function recordEditorPlainText(element: HTMLElement) {
+  return (element.innerText ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/\n$/, "");
+}
+
+function textSelectionFromContentEditable(element: HTMLElement): TextSelection | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return undefined;
+  }
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) {
+    return undefined;
+  }
+
+  const startRange = document.createRange();
+  startRange.selectNodeContents(element);
+  startRange.setEnd(range.startContainer, range.startOffset);
+  const endRange = document.createRange();
+  endRange.selectNodeContents(element);
+  endRange.setEnd(range.endContainer, range.endOffset);
+  return {
+    start: startRange.toString().length,
+    end: endRange.toString().length
+  };
+}
+
 function figurePreviewTop(clientY: number) {
   const previewHeight = 480;
   const minTop = 76;
   const maxTop = Math.max(minTop, window.innerHeight - previewHeight - 16);
   return Math.min(Math.max(clientY - previewHeight / 2, minTop), maxTop);
-}
-
-function syncRecordReferenceOverlayScroll(textarea: HTMLTextAreaElement) {
-  const overlayContent = textarea.parentElement?.querySelector<HTMLElement>(".record-reference-overlay-content");
-  if (!overlayContent) {
-    return;
-  }
-  overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
-}
-
-function autoSizeRecordTextarea(textarea: HTMLTextAreaElement) {
-  textarea.style.height = "auto";
-  textarea.style.height = `${Math.max(RECORD_TEXTAREA_MIN_HEIGHT, textarea.scrollHeight)}px`;
-  textarea.scrollTop = 0;
-  syncRecordReferenceOverlayScroll(textarea);
 }
 
 function referencedEvidenceImageIds(rows: AssessmentRowInput[]) {
@@ -677,7 +604,7 @@ export function AssessmentTable({
   const metricOptions = profile.content_controls.technical_metric.options;
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
-  const recordTextareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+  const recordEditorRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [technicalObjectName, setTechnicalObjectName] = useState("");
   const [technicalObjectCategory, setTechnicalObjectCategory] = useState<TechnicalObjectCategoryValue>("user");
   const [technicalUnitFilter, setTechnicalUnitFilter] = useState("");
@@ -773,18 +700,6 @@ export function AssessmentTable({
   });
   const tableColumnCount = technical ? 9 : 6;
   const visibleEvidenceFilterKey = `${filterActive ? "1" : "0"}:${visibleEvidenceImageIds.join(",")}`;
-
-  function autoSizeRecordTextareas() {
-    Object.values(recordTextareaRefs.current).forEach((textarea) => {
-      if (textarea) {
-        autoSizeRecordTextarea(textarea);
-      }
-    });
-  }
-
-  useEffect(() => {
-    autoSizeRecordTextareas();
-  }, [rows, evidenceImages, sectionCode, profile]);
 
   useEffect(() => {
     onVisibleEvidenceFilterChange?.({
@@ -986,11 +901,21 @@ export function AssessmentTable({
     onRowsChange(next);
   }
 
-  function rememberRecordSelection(index: number, target: HTMLTextAreaElement) {
-    recordSelections.current[index] = {
-      start: target.selectionStart,
-      end: target.selectionEnd
-    };
+  function rememberRecordSelection(index: number, target: HTMLElement) {
+    const selection = textSelectionFromContentEditable(target);
+    if (selection) {
+      recordSelections.current[index] = selection;
+    }
+  }
+
+  function updateRecordTextFromEditor(index: number, row: AssessmentRowInput, target: HTMLElement) {
+    rememberRecordSelection(index, target);
+    const displayText = recordEditorPlainText(target);
+    const recordText = storedRecordText(displayText, row, evidenceImages, sectionCode, profile);
+    updateRow(index, {
+      record_text: recordText,
+      cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
+    });
   }
 
   function insertReferenceToken(index: number, imageIdValue: string) {
@@ -1045,9 +970,26 @@ export function AssessmentTable({
     }
   }
 
-  async function uploadPastedEvidenceImages(index: number, event: ClipboardEvent<HTMLTextAreaElement>) {
+  async function uploadPastedEvidenceImages(index: number, event: ClipboardEvent<HTMLElement>) {
     const selectedFiles = clipboardImageFiles(event.clipboardData);
     if (selectedFiles.length === 0) {
+      const pastedText = event.clipboardData.getData("text/plain");
+      if (!pastedText) {
+        return;
+      }
+      event.preventDefault();
+      const row = normalizedRows[index];
+      rememberRecordSelection(index, event.currentTarget);
+      const displayRecordTextValue = insertAtSelectionOrPlaceholder(
+        displayRecordText(row, evidenceImages, sectionCode, profile),
+        pastedText,
+        recordSelections.current[index]
+      );
+      const recordText = storedRecordText(displayRecordTextValue, row, evidenceImages, sectionCode, profile);
+      updateRow(index, {
+        record_text: recordText,
+        cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
+      });
       return;
     }
     event.preventDefault();
@@ -1098,14 +1040,25 @@ export function AssessmentTable({
     });
   }
 
-  function handleRecordReferenceHover(event: MouseEvent<HTMLTextAreaElement>, row: AssessmentRowInput) {
-    const preview = hoveredFigureReferenceFromTextarea(
-      event.currentTarget,
-      event.clientX,
-      event.clientY,
-      recordFigureReferenceItems(row, evidenceImages, sectionCode, profile)
-    );
-    setFigureHoverPreview(preview);
+  function handleRecordReferenceHover(event: MouseEvent<HTMLElement>, row: AssessmentRowInput) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      setFigureHoverPreview(null);
+      return;
+    }
+    const tokenElement = target.closest<HTMLElement>(".record-reference-token");
+    if (!tokenElement || !event.currentTarget.contains(tokenElement)) {
+      setFigureHoverPreview(null);
+      return;
+    }
+    const label = tokenElement.dataset.referenceLabel ?? tokenElement.textContent?.trim() ?? "";
+    const item = recordFigureReferenceItems(row, evidenceImages, sectionCode, profile)
+      .find((reference) => reference.displayText === label);
+    if (!item) {
+      setFigureHoverPreview(null);
+      return;
+    }
+    showFigureReferencePreview(item, event.clientY);
   }
 
   function showFigureReferencePreview(item: FigureReferenceHoverItem, clientY: number) {
@@ -1505,7 +1458,7 @@ export function AssessmentTable({
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile);
                     const figureReferenceItems = recordFigureReferenceItems(row, evidenceImages, sectionCode, profile);
-                    const figureReferenceParts = recordFigureReferenceParts(recordDisplayText, figureReferenceItems);
+                    const figureReferenceParts = renderRecordRichTextParts(recordDisplayText, figureReferenceItems);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -1536,55 +1489,38 @@ export function AssessmentTable({
                         <td className="record-cell">
                           <div className="record-input-group">
                             <div className="record-textarea-shell">
-                              <textarea
-                                className="record-textarea"
+                              <div
+                                className="record-rich-editor"
+                                contentEditable
+                                suppressContentEditableWarning
+                                role="textbox"
+                                aria-multiline="true"
+                                data-placeholder="请输入结果记录"
                                 ref={(node) => {
-                                  recordTextareaRefs.current[index] = node;
-                                  if (node) {
-                                    autoSizeRecordTextarea(node);
-                                  }
+                                  recordEditorRefs.current[index] = node;
                                 }}
-                                value={recordDisplayText}
-                                onChange={(event) => {
-                                  rememberRecordSelection(index, event.target);
-                                  autoSizeRecordTextarea(event.currentTarget);
-                                  const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile);
-                                  updateRow(index, {
-                                    record_text: recordText,
-                                    cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
-                                  });
-                                }}
-                                onInput={(event) => autoSizeRecordTextarea(event.currentTarget)}
+                                onInput={(event: FormEvent<HTMLDivElement>) => updateRecordTextFromEditor(index, row, event.currentTarget)}
                                 onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onMouseMove={(event) => handleRecordReferenceHover(event, row)}
                                 onMouseLeave={() => setFigureHoverPreview(null)}
-                                onScroll={(event) => syncRecordReferenceOverlayScroll(event.currentTarget)}
                                 onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onPaste={(event) => void uploadPastedEvidenceImages(index, event)}
-                                rows={5}
-                              />
-                              {figureReferenceItems.length > 0 ? (
-                                <div className="record-reference-overlay" aria-hidden="true">
-                                  <div className="record-reference-overlay-content">
-                                    {figureReferenceParts.map((part, partIndex) =>
-                                      part.item ? (
-                                        <span
-                                          className="record-reference-hotspot"
-                                          key={`${part.item.image.id}-${partIndex}`}
-                                          onMouseEnter={(event) => showFigureReferencePreview(part.item!, event.clientY)}
-                                          onMouseMove={(event) => showFigureReferencePreview(part.item!, event.clientY)}
-                                          onMouseLeave={() => setFigureHoverPreview(null)}
-                                        >
-                                          {part.text}
-                                        </span>
-                                      ) : (
-                                        <span key={`record-text-${partIndex}`}>{part.text}</span>
-                                      )
-                                    )}
-                                  </div>
-                                </div>
-                              ) : null}
+                              >
+                                {figureReferenceParts.map((part, partIndex) =>
+                                  part.item ? (
+                                    <span
+                                      className="record-reference-token"
+                                      data-reference-label={part.item.displayText}
+                                      key={`${part.item.image.id}-${partIndex}`}
+                                    >
+                                      {part.text}
+                                    </span>
+                                  ) : (
+                                    <span key={`record-text-${partIndex}`}>{part.text}</span>
+                                  )
+                                )}
+                              </div>
                             </div>
                             <div className="record-control-row">
                               <select

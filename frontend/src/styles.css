@@ -2086,41 +2086,35 @@ a:hover {
 
 .record-textarea-shell {
   position: relative;
-  display: grid;
+  display: block;
 }
 
-.record-textarea-shell .record-textarea {
-  grid-area: 1 / 1;
-}
-
-.record-reference-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
+.record-rich-editor {
   box-sizing: border-box;
   width: 100%;
-  padding: 7px 9px;
-  overflow: hidden;
-  color: transparent;
-  font: inherit;
+  min-height: 126px;
+  padding: 8px 10px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  pointer-events: none;
 }
 
-.record-reference-overlay-content {
-  min-width: 0;
-  will-change: transform;
+.record-rich-editor:empty::before {
+  color: var(--color-text-subtle);
+  content: attr(data-placeholder);
 }
 
-.record-reference-hotspot {
+.record-reference-token {
+  color: #0068d6;
   cursor: zoom-in;
-  pointer-events: auto;
-  color: transparent;
-  text-decoration-color: transparent;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 104, 214, 0.35);
+  text-underline-offset: 2px;
 }
 
 .figure-hover-preview {
@@ -2203,12 +2197,6 @@ a:hover {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.record-textarea {
-  min-height: 126px;
-  overflow: hidden;
-  resize: vertical;
 }
 
 .record-control-row {
@@ -3299,7 +3287,7 @@ textarea:hover {
   gap: 10px;
 }
 
-.record-textarea,
+.record-rich-editor,
 .assessment-table textarea,
 .assessment-table input,
 .assessment-table select,
@@ -3311,9 +3299,8 @@ textarea:hover {
   box-shadow: var(--shadow-ring);
 }
 
-.record-reference-hotspot {
-  color: transparent;
-  text-decoration-color: transparent;
+.record-reference-token {
+  color: #0068d6;
 }
 
 .figure-hover-preview,
