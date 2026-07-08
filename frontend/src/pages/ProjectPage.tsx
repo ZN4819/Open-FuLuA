@@ -50,6 +50,8 @@ type EvidenceImagesChangeContext = {
 
 const MIN_UNDO_STEPS = 5;
 const MAX_UNDO_STEPS = 20;
+const TECHNICAL_SCORE_BASIS_SECTION_CODE = "TECHNICAL";
+const TECHNICAL_SECTION_CODES = ["A-1", "A-2", "A-3", "A-4"];
 
 type UndoSnapshot = {
   sectionDetails: Record<string, SectionDetail>;
@@ -58,6 +60,31 @@ type UndoSnapshot = {
   dirtySections: string[];
   activeCode?: string;
 };
+
+function isActiveRecordTemplateSlot(slot: RecordTemplateSlot, activeCode?: string) {
+  if (!activeCode) {
+    return false;
+  }
+  if (slot.section_code === activeCode) {
+    return true;
+  }
+  return (
+    TECHNICAL_SECTION_CODES.includes(activeCode) &&
+    slot.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE &&
+    slot.template_group === "score_basis"
+  );
+}
+
+function isRecordTemplateSlotRefreshTarget(slot: RecordTemplateSlot, sectionCode: string) {
+  return (
+    slot.section_code === sectionCode ||
+    (
+      TECHNICAL_SECTION_CODES.includes(sectionCode) &&
+      slot.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE &&
+      slot.template_group === "score_basis"
+    )
+  );
+}
 
 function uniqueNonEmptyValues(values: Array<string | null | undefined>) {
   const result: string[] = [];
@@ -267,7 +294,7 @@ export function ProjectPage() {
   const activeDetail = activeCode ? sectionDetails[activeCode] : undefined;
   const activeRows = activeCode ? draftRows[activeCode] ?? [] : [];
   const activeRecordTemplateSlots = useMemo(
-    () => recordTemplateSlots.filter((slot) => slot.section_code === activeCode),
+    () => recordTemplateSlots.filter((slot) => isActiveRecordTemplateSlot(slot, activeCode)),
     [activeCode, recordTemplateSlots]
   );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
@@ -385,7 +412,7 @@ export function ProjectPage() {
         return slots;
       }
       return [
-        ...current.filter((slot) => slot.section_code !== sectionCode),
+        ...current.filter((slot) => !isRecordTemplateSlotRefreshTarget(slot, sectionCode)),
         ...slots
       ];
     });

@@ -229,22 +229,30 @@ export function TemplateManagerPanel({
     setDrafts(Object.fromEntries(recordTemplateSlots.map((slot) => [slot.id, draftFromSlot(slot)])));
   }, [recordTemplateSlots]);
 
-  const sectionSlots = useMemo(
+  const sharedScoreBasisSlots = useMemo(
     () =>
       recordTemplateSlots
-        .filter((slot) => slot.section_code === sectionFilter)
+        .filter((slot) => slot.template_group === "score_basis")
+        .sort((first, second) => templateSlotSortValue(first) - templateSlotSortValue(second)),
+    [recordTemplateSlots]
+  );
+
+  const sectionVerificationSlots = useMemo(
+    () =>
+      recordTemplateSlots
+        .filter((slot) => slot.section_code === sectionFilter && slot.template_group === "verification_record")
         .sort((first, second) => {
           return (
             first.unit.localeCompare(second.unit, "zh-CN") ||
-            TEMPLATE_GROUP_ORDER[first.template_group] - TEMPLATE_GROUP_ORDER[second.template_group] ||
             templateSlotSortValue(first) - templateSlotSortValue(second)
           );
         }),
     [recordTemplateSlots, sectionFilter]
   );
 
+  const sectionSlots = sectionVerificationSlots;
   const unitOptions = useMemo(() => uniqueValues(sectionSlots.map((slot) => slot.unit)), [sectionSlots]);
-  const customizedCount = sectionSlots.filter((slot) => slot.is_customized).length;
+  const customizedCount = [...sectionSlots, ...sharedScoreBasisSlots].filter((slot) => slot.is_customized).length;
 
   const visibleUnits = useMemo(() => {
     return unitOptions.filter((unit) => {
@@ -418,6 +426,76 @@ export function TemplateManagerPanel({
     }
   }
 
+  function renderTemplateSlotCard(slot: RecordTemplateSlot) {
+    const draft = drafts[slot.id] ?? draftFromSlot(slot);
+    const isDirty = slotDraftIsDirty(slot, draft);
+    const isSaving = busySlotId === slot.id;
+    const isResetting = resettingSlotId === slot.id;
+    return (
+      <form
+        className={`template-slot-card ${TEMPLATE_TYPE_CLASS[slot.template_type]}`}
+        key={slot.id}
+        onSubmit={(event) => handleSaveSlot(event, slot)}
+      >
+        <div className="template-slot-heading">
+          <div>
+            <p className="eyebrow">{slot.template_type_label}</p>
+            <h5>{draft.title.trim() || slot.template_type_label}</h5>
+          </div>
+          <span className={slot.is_customized ? "dirty-chip" : "clean-chip"}>
+            {slot.is_customized ? "已修改" : "默认"}
+          </span>
+        </div>
+
+        <label>
+          <span>标题</span>
+          <input
+            value={draft.title}
+            onChange={(event) => updateDraft(slot.id, { title: event.target.value })}
+            maxLength={500}
+            placeholder={slot.template_type_label}
+          />
+        </label>
+        <label>
+          <span>{slot.template_group === "score_basis" ? "评分依据正文" : "验证记录正文"}</span>
+          <textarea
+            value={draft.record_text}
+            onChange={(event) => updateDraft(slot.id, { record_text: event.target.value })}
+            rows={8}
+            required
+          />
+        </label>
+        <label>
+          <span>标签</span>
+          <input
+            value={draft.tags}
+            onChange={(event) => updateDraft(slot.id, { tags: event.target.value })}
+            placeholder="多个标签用逗号分隔"
+          />
+        </label>
+
+        <div className="template-slot-meta">
+          <span>更新 {formatTemplateDate(slot.updated_at)}</span>
+          {isDirty ? <span>有未保存修改</span> : null}
+        </div>
+
+        <div className="template-slot-actions">
+          <button type="submit" disabled={isSaving || isResetting || !isDirty || !draft.record_text.trim()}>
+            {isSaving ? "保存中..." : "保存"}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => handleResetSlot(slot)}
+            disabled={isSaving || isResetting}
+          >
+            {isResetting ? "恢复中..." : "恢复默认"}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <section className="feedback-panel template-manager-panel" aria-label="分段结果记录模板管理">
       <div className="feedback-heading template-manager-heading">
@@ -530,7 +608,7 @@ export function TemplateManagerPanel({
             <p className="eyebrow">固定槽位</p>
             <h4>{visibleUnits.length} 个测评单元</h4>
           </div>
-          <span className="status-chip">每个单元 2 组 / 6 模板</span>
+          <span className="status-chip">每个单元 1 组 / 3 模板</span>
         </div>
 
         {unitGroups.length === 0 ? (
@@ -557,80 +635,35 @@ export function TemplateManagerPanel({
                       <span className="status-chip">模板 {slotGroup.slots.length}</span>
                     </div>
                     <div className="template-slot-grid">
-                      {slotGroup.slots.map((slot) => {
-                        const draft = drafts[slot.id] ?? draftFromSlot(slot);
-                        const isDirty = slotDraftIsDirty(slot, draft);
-                        const isSaving = busySlotId === slot.id;
-                        const isResetting = resettingSlotId === slot.id;
-                        return (
-                          <form
-                            className={`template-slot-card ${TEMPLATE_TYPE_CLASS[slot.template_type]}`}
-                            key={slot.id}
-                            onSubmit={(event) => handleSaveSlot(event, slot)}
-                          >
-                            <div className="template-slot-heading">
-                              <div>
-                                <p className="eyebrow">{slot.template_type_label}</p>
-                                <h5>{draft.title.trim() || slot.template_type_label}</h5>
-                              </div>
-                              <span className={slot.is_customized ? "dirty-chip" : "clean-chip"}>
-                                {slot.is_customized ? "已修改" : "默认"}
-                              </span>
-                            </div>
-
-                            <label>
-                              <span>标题</span>
-                              <input
-                                value={draft.title}
-                                onChange={(event) => updateDraft(slot.id, { title: event.target.value })}
-                                maxLength={500}
-                                placeholder={slot.template_type_label}
-                              />
-                            </label>
-                            <label>
-                              <span>{slot.template_group === "score_basis" ? "评分依据正文" : "验证记录正文"}</span>
-                              <textarea
-                                value={draft.record_text}
-                                onChange={(event) => updateDraft(slot.id, { record_text: event.target.value })}
-                                rows={8}
-                                required
-                              />
-                            </label>
-                            <label>
-                              <span>标签</span>
-                              <input
-                                value={draft.tags}
-                                onChange={(event) => updateDraft(slot.id, { tags: event.target.value })}
-                                placeholder="多个标签用逗号分隔"
-                              />
-                            </label>
-
-                            <div className="template-slot-meta">
-                              <span>更新 {formatTemplateDate(slot.updated_at)}</span>
-                              {isDirty ? <span>有未保存修改</span> : null}
-                            </div>
-
-                            <div className="template-slot-actions">
-                              <button type="submit" disabled={isSaving || isResetting || !isDirty || !draft.record_text.trim()}>
-                                {isSaving ? "保存中..." : "保存"}
-                              </button>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => handleResetSlot(slot)}
-                                disabled={isSaving || isResetting}
-                              >
-                                {isResetting ? "恢复中..." : "恢复默认"}
-                              </button>
-                            </div>
-                          </form>
-                        );
-                      })}
+                      {slotGroup.slots.map((slot) => renderTemplateSlotCard(slot))}
                     </div>
                   </div>
                 ))}
               </article>
             ))}
+            {sharedScoreBasisSlots.length > 0 ? (
+              <article className="template-unit-card template-slot-global-card" key="technical-score-basis-global">
+                <div className="template-unit-heading">
+                  <div>
+                    <p className="eyebrow">A-1 至 A-4 通用</p>
+                    <h4>测评对象评分计算依据模板</h4>
+                  </div>
+                  <div className="template-unit-meta">
+                    <span className="status-chip">模板 {sharedScoreBasisSlots.length}</span>
+                    <span className="status-chip">已修改 {sharedScoreBasisSlots.filter((slot) => slot.is_customized).length}</span>
+                  </div>
+                </div>
+                <div className="template-slot-group">
+                  <div className="template-slot-group-heading">
+                    <strong>{sharedScoreBasisSlots[0]?.template_group_label ?? TEMPLATE_GROUP_FALLBACK_LABELS.score_basis}</strong>
+                    <span className="status-chip">所有技术章节共用</span>
+                  </div>
+                  <div className="template-slot-grid">
+                    {sharedScoreBasisSlots.map((slot) => renderTemplateSlotCard(slot))}
+                  </div>
+                </div>
+              </article>
+            ) : null}
           </div>
         )}
       </div>

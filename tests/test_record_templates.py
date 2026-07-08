@@ -26,7 +26,7 @@ from app.api.record_template_slots import preview_record_template_slot_import as
 from app.api.record_template_slots import reset_record_template_slot_endpoint as api_reset_record_template_slot  # noqa: E402
 from app.api.record_template_slots import update_record_template_slot_endpoint as api_update_record_template_slot  # noqa: E402
 from app.schemas import RecordTemplateCreate, RecordTemplateImportItem, RecordTemplateImportPayload, RecordTemplateSlotImportItem, RecordTemplateSlotImportPayload, RecordTemplateSlotUpdate, RecordTemplateUpdate  # noqa: E402
-from app.services.record_templates import TEMPLATE_SLOT_GROUPS, TEMPLATE_SLOT_TYPES_BY_GROUP, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
+from app.services.record_templates import TEMPLATE_SLOT_GROUPS, TEMPLATE_SLOT_TYPES_BY_GROUP, TECHNICAL_SCORE_BASIS_SECTION_CODE, TECHNICAL_SCORE_BASIS_UNIT, ensure_record_template_slots_seeded, list_record_template_slots, list_record_templates, load_record_template_library  # noqa: E402
 
 
 class RecordTemplatesTest(unittest.TestCase):
@@ -297,39 +297,42 @@ class RecordTemplatesTest(unittest.TestCase):
         self.assertEqual(copied.record_text, system_template["record_text"])
         self.assertTrue(any(template["id"] == copied.id for template in list_record_templates("A-5")))
 
-    def test_record_template_slots_are_seeded_for_every_fixed_unit(self) -> None:
+    def test_record_template_slots_are_seeded_for_every_fixed_unit_and_one_shared_score_basis(self) -> None:
         source_templates = list_record_templates()
         expected_units = {
             (template["section_code"], template["unit"])
             for template in source_templates
         }
-        expected_slot_count_per_unit = sum(len(types) for types in TEMPLATE_SLOT_TYPES_BY_GROUP.values())
-
         slots = list_record_template_slots()
+        verification_slots = [slot for slot in slots if slot["template_group"] == "verification_record"]
+        score_slots = list_record_template_slots("A-1", template_group="score_basis")
         slots_by_unit: dict[tuple[str, str], list[dict]] = {}
-        for slot in slots:
+        for slot in verification_slots:
             slots_by_unit.setdefault((slot["section_code"], slot["unit"]), []).append(slot)
 
         self.assertEqual(set(slots_by_unit), expected_units)
-        self.assertEqual(len(slots), len(expected_units) * expected_slot_count_per_unit)
+        self.assertEqual(len(verification_slots), len(expected_units) * len(TEMPLATE_SLOT_TYPES_BY_GROUP["verification_record"]))
+        self.assertEqual(len(score_slots), len(TEMPLATE_SLOT_TYPES_BY_GROUP["score_basis"]))
         for unit_slots in slots_by_unit.values():
-            self.assertEqual({slot["template_group"] for slot in unit_slots}, set(TEMPLATE_SLOT_GROUPS))
-            for template_group, template_types in TEMPLATE_SLOT_TYPES_BY_GROUP.items():
-                group_slots = [slot for slot in unit_slots if slot["template_group"] == template_group]
-                self.assertEqual([slot["template_type"] for slot in group_slots], list(template_types))
+            self.assertEqual({slot["template_group"] for slot in unit_slots}, {"verification_record"})
+            self.assertEqual([slot["template_type"] for slot in unit_slots], list(TEMPLATE_SLOT_TYPES_BY_GROUP["verification_record"]))
             self.assertTrue(all(slot["record_text"] for slot in unit_slots))
             self.assertTrue(all(slot["default_record_text"] for slot in unit_slots))
             self.assertTrue(all(slot["title"] for slot in unit_slots))
+        self.assertEqual({slot["section_code"] for slot in score_slots}, {TECHNICAL_SCORE_BASIS_SECTION_CODE})
+        self.assertEqual({slot["unit"] for slot in score_slots}, {TECHNICAL_SCORE_BASIS_UNIT})
+        self.assertEqual([slot["template_type"] for slot in score_slots], list(TEMPLATE_SLOT_TYPES_BY_GROUP["score_basis"]))
 
     def test_template_slot_defaults_split_record_and_score_sections(self) -> None:
         unit_slots = list_record_template_slots("A-1")
         unit = unit_slots[0]["unit"]
         slots = list_record_template_slots("A-1", unit)
         verification_slots = [slot for slot in slots if slot["template_group"] == "verification_record"]
-        score_slots = [slot for slot in slots if slot["template_group"] == "score_basis"]
+        score_slots = list_record_template_slots("A-1", template_group="score_basis")
 
         self.assertEqual([slot["template_type"] for slot in verification_slots], ["compliant", "non_compliant", "not_applicable"])
         self.assertEqual([slot["template_type"] for slot in score_slots], ["fully_compliant", "score_adjusted", "non_compliant"])
+        self.assertTrue(all(slot["unit"] == TECHNICAL_SCORE_BASIS_UNIT for slot in score_slots))
         self.assertTrue(all("测评验证记录：" in slot["record_text"] for slot in verification_slots))
         self.assertTrue(all("测评对象评分计算依据：" not in slot["record_text"] for slot in verification_slots))
         self.assertTrue(all("测评对象评分计算依据：" in slot["record_text"] for slot in score_slots))
@@ -349,19 +352,18 @@ class RecordTemplatesTest(unittest.TestCase):
         section_slots = list_record_template_slots("A-1")
         actual_units: list[str] = []
         for slot in section_slots:
+            if slot["template_group"] != "verification_record":
+                continue
             if slot["unit"] not in actual_units:
                 actual_units.append(slot["unit"])
 
         self.assertEqual(actual_units, expected_units)
         self.assertEqual(
-            [(slot["template_group"], slot["template_type"]) for slot in section_slots[: 6]],
+            [(slot["template_group"], slot["template_type"]) for slot in section_slots[: 3]],
             [
                 ("verification_record", "compliant"),
                 ("verification_record", "non_compliant"),
                 ("verification_record", "not_applicable"),
-                ("score_basis", "fully_compliant"),
-                ("score_basis", "score_adjusted"),
-                ("score_basis", "non_compliant"),
             ],
         )
 
@@ -375,7 +377,7 @@ class RecordTemplatesTest(unittest.TestCase):
             old_template_count = db.execute("SELECT COUNT(*) AS total FROM record_templates").fetchone()["total"]
 
         self.assertEqual(len(first), len(second))
-        self.assertEqual(slot_count, len(first))
+        self.assertGreaterEqual(slot_count, len(first))
         self.assertEqual(old_template_count, len(load_record_template_library()["templates"]))
 
     def test_record_template_slots_can_be_filtered_by_section_and_unit(self) -> None:
@@ -384,7 +386,7 @@ class RecordTemplatesTest(unittest.TestCase):
 
         unit_slots = list_record_template_slots("A-1", unit)
 
-        self.assertEqual(len(unit_slots), sum(len(types) for types in TEMPLATE_SLOT_TYPES_BY_GROUP.values()))
+        self.assertEqual(len(unit_slots), len(TEMPLATE_SLOT_TYPES_BY_GROUP["verification_record"]))
         self.assertTrue(all(slot["section_code"] == "A-1" for slot in unit_slots))
         self.assertTrue(all(slot["unit"] == unit for slot in unit_slots))
         self.assertEqual(
@@ -393,11 +395,12 @@ class RecordTemplatesTest(unittest.TestCase):
                 ("verification_record", "compliant"),
                 ("verification_record", "non_compliant"),
                 ("verification_record", "not_applicable"),
-                ("score_basis", "fully_compliant"),
-                ("score_basis", "score_adjusted"),
-                ("score_basis", "non_compliant"),
             ],
         )
+        score_slots = list_record_template_slots("A-1", template_group="score_basis")
+        self.assertEqual([slot["template_type"] for slot in score_slots], ["fully_compliant", "score_adjusted", "non_compliant"])
+        self.assertEqual({slot["section_code"] for slot in score_slots}, {TECHNICAL_SCORE_BASIS_SECTION_CODE})
+        self.assertEqual(list_record_template_slots("A-5", template_group="score_basis"), [])
 
     def test_record_template_slot_api_can_read_update_and_reset(self) -> None:
         section_slots = api_get_record_template_slots(section_code="A-1")
@@ -593,6 +596,48 @@ class RecordTemplatesTest(unittest.TestCase):
 
         self.assertEqual(missing_preview.summary.errors, 1)
         self.assertIn("不会创建", missing_preview.items[0].message)
+        self.assertEqual(len(list_record_template_slots()), before_count)
+
+    def test_record_template_slot_import_updates_shared_score_basis_slot(self) -> None:
+        before_count = len(list_record_template_slots())
+        slot = api_get_record_template_slots(
+            section_code="A-1",
+            template_group="score_basis",
+            template_type="score_adjusted",
+        )[0]
+        payload = RecordTemplateSlotImportPayload(
+            profile_id="appendix_a_record_template_slots_v1",
+            templates=[
+                RecordTemplateSlotImportItem(
+                    section_code=TECHNICAL_SCORE_BASIS_SECTION_CODE,
+                    table_type="technical",
+                    unit=TECHNICAL_SCORE_BASIS_UNIT,
+                    template_group="score_basis",
+                    template_type=slot.template_type,
+                    title="T3-8 通用评分修正模板",
+                    record_text="T3-8 通用评分修正正文。",
+                    tags=["T3-8", "通用评分依据"],
+                )
+            ],
+        )
+
+        result = api_import_record_template_slots(payload)
+        updated = api_get_record_template_slots(
+            section_code="A-3",
+            template_group="score_basis",
+            template_type="score_adjusted",
+        )[0]
+
+        self.assertEqual(result.summary.created, 0)
+        self.assertEqual(result.summary.updated, 1)
+        self.assertEqual(result.summary.errors, 0)
+        self.assertEqual(updated.id, slot.id)
+        self.assertEqual(updated.section_code, TECHNICAL_SCORE_BASIS_SECTION_CODE)
+        self.assertEqual(updated.unit, TECHNICAL_SCORE_BASIS_UNIT)
+        self.assertEqual(updated.title, "T3-8 通用评分修正模板")
+        self.assertEqual(updated.record_text, "T3-8 通用评分修正正文。")
+        self.assertEqual(updated.tags, ["T3-8", "通用评分依据"])
+        self.assertTrue(updated.is_customized)
         self.assertEqual(len(list_record_template_slots()), before_count)
 
 

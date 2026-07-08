@@ -548,7 +548,7 @@ function applyCalculatedUnitScores(rows: AssessmentRowInput[], shouldCalculate: 
 }
 function fixedUnitsFromSlots(recordTemplateSlots: RecordTemplateSlot[], rows: AssessmentRowInput[]) {
   return uniqueValues([
-    ...recordTemplateSlots.map((slot) => slot.unit),
+    ...recordTemplateSlots.filter((slot) => slot.template_group === "verification_record").map((slot) => slot.unit),
     ...rows.map((row) => row.unit)
   ]);
 }
@@ -592,6 +592,12 @@ function templateSlotsForUnit(recordTemplateSlots: RecordTemplateSlot[], unit: s
         TEMPLATE_GROUP_ORDER[first.template_group] - TEMPLATE_GROUP_ORDER[second.template_group] ||
         templateSlotSortValue(first) - templateSlotSortValue(second)
     );
+}
+
+function templateSlotsForGroup(recordTemplateSlots: RecordTemplateSlot[], templateGroup: RecordTemplateSlotGroup) {
+  return recordTemplateSlots
+    .filter((slot) => slot.template_group === templateGroup)
+    .sort((first, second) => templateSlotSortValue(first) - templateSlotSortValue(second));
 }
 
 function extractTemplateSectionText(slot: RecordTemplateSlot) {
@@ -1076,8 +1082,8 @@ export function AssessmentTable({
   function applyRecordTemplate(index: number, slotId: string) {
     const row = normalizedRows[index];
     const selectedSlotId = Number(slotId);
-    const slot = recordTemplateSlots.find((item) => item.id === selectedSlotId && item.unit === row.unit);
-    if (!slot) {
+    const slot = recordTemplateSlots.find((item) => item.id === selectedSlotId);
+    if (!slot || (slot.template_group === "verification_record" && slot.unit !== row.unit)) {
       return;
     }
 
@@ -1494,7 +1500,7 @@ export function AssessmentTable({
                 ) : (
                   group.entries.map(({ row, index }, entryIndex) => {
                     const verificationTemplateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit, "verification_record");
-                    const scoreBasisTemplateSlots = templateSlotsForUnit(recordTemplateSlots, row.unit, "score_basis");
+                    const scoreBasisTemplateSlots = templateSlotsForGroup(recordTemplateSlots, "score_basis");
                     const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile);

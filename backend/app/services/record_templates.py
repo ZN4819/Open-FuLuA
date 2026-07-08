@@ -20,6 +20,9 @@ EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
 SLOT_EXPORT_PROFILE_ID = "appendix_a_record_template_slots_v1"
 
 TEMPLATE_SLOT_GROUPS = ("verification_record", "score_basis")
+TECHNICAL_SCORE_BASIS_SECTION_CODE = "TECHNICAL"
+TECHNICAL_SCORE_BASIS_UNIT = "A-1 至 A-4 通用评分依据"
+TECHNICAL_SECTION_CODES = {f"A-{number}" for number in range(1, 5)}
 TEMPLATE_SLOT_GROUP_LABELS = {
     "verification_record": "测评验证记录模板",
     "score_basis": "测评对象评分计算依据模板",
@@ -109,11 +112,10 @@ def list_record_template_slots(
     if template_type is not None:
         _validate_template_slot_type(template_type, template_group)
     rows = database.list_record_template_slot_rows(
-        section_code=section_code,
-        unit=unit,
         template_group=template_group,
         template_type=template_type,
     )
+    rows = _filter_visible_template_slot_rows(rows, section_code, unit)
     return [
         _row_to_template_slot(row)
         for row in _sort_template_slot_rows(rows)
@@ -349,22 +351,46 @@ def _build_template_slot_seed() -> list[dict[str, Any]]:
         representative_by_unit.items(),
         key=lambda item: template_order[item[0]],
     ):
-        for template_group in TEMPLATE_SLOT_GROUPS:
-            for template_type in TEMPLATE_SLOT_TYPES_BY_GROUP[template_group]:
-                default_record_text = _default_slot_record_text(template_group, template_type, row)
-                slots.append(
-                    {
-                        "section_code": section_code,
-                        "table_type": row["table_type"],
-                        "unit": unit,
-                        "template_group": template_group,
-                        "template_type": template_type,
-                        "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
-                        "record_text": default_record_text,
-                        "default_record_text": default_record_text,
-                        "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
-                    }
-                )
+        for template_type in TEMPLATE_SLOT_TYPES_BY_GROUP["verification_record"]:
+            default_record_text = _default_slot_record_text("verification_record", template_type, row)
+            slots.append(
+                {
+                    "section_code": section_code,
+                    "table_type": row["table_type"],
+                    "unit": unit,
+                    "template_group": "verification_record",
+                    "template_type": template_type,
+                    "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
+                    "record_text": default_record_text,
+                    "default_record_text": default_record_text,
+                    "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
+                }
+            )
+
+    technical_representative = next(
+        (
+            row
+            for (section_code, _unit), row in sorted(representative_by_unit.items(), key=lambda item: template_order[item[0]])
+            if section_code in TECHNICAL_SECTION_CODES
+        ),
+        None,
+    )
+    if technical_representative is not None:
+        for template_type in TEMPLATE_SLOT_TYPES_BY_GROUP["score_basis"]:
+            default_record_text = _default_slot_record_text("score_basis", template_type, technical_representative)
+            slots.append(
+                {
+                    "section_code": TECHNICAL_SCORE_BASIS_SECTION_CODE,
+                    "table_type": "technical",
+                    "unit": TECHNICAL_SCORE_BASIS_UNIT,
+                    "template_group": "score_basis",
+                    "template_type": template_type,
+                    "title": TEMPLATE_SLOT_TYPE_LABELS[template_type],
+                    "record_text": default_record_text,
+                    "default_record_text": default_record_text,
+                    "tags": TEMPLATE_SLOT_TYPE_TAGS[template_type],
+                }
+            )
     return slots
 
 
@@ -403,7 +429,42 @@ def _sort_template_slot_rows(rows: list[Any]) -> list[Any]:
     return sorted(rows, key=sort_key)
 
 
+def _filter_visible_template_slot_rows(
+    rows: list[Any],
+    section_code: str | None = None,
+    unit: str | None = None,
+) -> list[Any]:
+    visible_rows: list[Any] = []
+    for row in rows:
+        row_group = row["template_group"]
+        row_section = row["section_code"]
+        row_unit = row["unit"]
+
+        if row_group == "score_basis":
+            is_global_score_basis = (
+                row_section == TECHNICAL_SCORE_BASIS_SECTION_CODE
+                and row_unit == TECHNICAL_SCORE_BASIS_UNIT
+            )
+            if not is_global_score_basis:
+                continue
+            if section_code is not None and section_code not in TECHNICAL_SECTION_CODES and section_code != TECHNICAL_SCORE_BASIS_SECTION_CODE:
+                continue
+            if unit is not None and unit != TECHNICAL_SCORE_BASIS_UNIT:
+                continue
+            visible_rows.append(row)
+            continue
+
+        if section_code is not None and row_section != section_code:
+            continue
+        if unit is not None and row_unit != unit:
+            continue
+        visible_rows.append(row)
+    return visible_rows
+
+
 def _section_number(section_code: str) -> int:
+    if section_code == TECHNICAL_SCORE_BASIS_SECTION_CODE:
+        return 4
     try:
         return int(section_code.split("-", 1)[1])
     except (IndexError, ValueError):
@@ -676,6 +737,16 @@ def _normalize_template_slot_import_item(raw_template: dict[str, Any]) -> dict[s
     title = _clean_text(raw_template.get("title"))
     record_text = _clean_text(raw_template.get("record_text"))
     tags = _normalize_tags(raw_template.get("tags"))
+    is_score_basis_import = template_group == "score_basis"
+    if is_score_basis_import:
+        _validate_template_slot_group(template_group)
+        _validate_template_slot_type(template_type, template_group)
+        if table_type != "technical":
+            raise RecordTemplateValidationError("评分依据模板仅适用于 A-1 至 A-4 技术测评章节。")
+        if section_code not in TECHNICAL_SECTION_CODES and section_code != TECHNICAL_SCORE_BASIS_SECTION_CODE:
+            raise RecordTemplateValidationError("评分依据模板仅适用于 A-1 至 A-4 技术测评章节。")
+        section_code = "A-1"
+        unit = TECHNICAL_SCORE_BASIS_UNIT
 
     if section_code not in {f"A-{number}" for number in range(1, 9)}:
         raise RecordTemplateValidationError("分段模板章节必须为 A-1 至 A-8。")
@@ -685,6 +756,9 @@ def _normalize_template_slot_import_item(raw_template: dict[str, Any]) -> dict[s
         raise RecordTemplateValidationError("分段模板测评单元不能为空。")
     _validate_template_slot_group(template_group)
     _validate_template_slot_type(template_type, template_group)
+    if is_score_basis_import:
+        section_code = TECHNICAL_SCORE_BASIS_SECTION_CODE
+        unit = TECHNICAL_SCORE_BASIS_UNIT
     if not title:
         title = TEMPLATE_SLOT_TYPE_LABELS[template_type]
     if not record_text:
