@@ -56,6 +56,13 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("handleDeleteRecordTemplate", page_source)
         self.assertNotIn("handleCopyRecordTemplate", page_source)
 
+    def test_project_page_hides_editor_regions_when_template_manager_is_open(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("profile && activeCode && activeDetail && !isTemplateManagerOpen", page_source)
+        self.assertIn("project && activeCode && activeDetail && !isTemplateManagerOpen", page_source)
+        self.assertIn("{profile && activeCode && isTemplateManagerOpen ? (", page_source)
+
     def test_project_page_removes_render_preview_entry(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 

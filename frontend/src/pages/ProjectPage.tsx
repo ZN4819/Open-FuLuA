@@ -1037,7 +1037,7 @@ export function ProjectPage() {
             />
           ) : null}
 
-          {profile && activeCode && activeDetail ? (
+          {profile && activeCode && activeDetail && !isTemplateManagerOpen ? (
             <AssessmentTable
               sectionCode={activeCode}
               rows={activeRows}
@@ -1055,7 +1055,7 @@ export function ProjectPage() {
             />
           ) : null}
 
-          {project && activeCode && activeDetail ? (
+          {project && activeCode && activeDetail && !isTemplateManagerOpen ? (
             <EvidencePanel
               projectId={project.id}
               sectionCode={activeCode}
