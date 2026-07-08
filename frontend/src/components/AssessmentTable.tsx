@@ -750,6 +750,7 @@ export function AssessmentTable({
   const technicalObjectEmptyText = sectionSupportsSubsystem && activeSubsystemName
     ? "当前子系统还没有测评对象。"
     : sectionCode === A4_SECTION_CODE ? "当前章节还没有通过上方分类新增测评对象。" : "当前章节还没有测评对象。";
+  const shouldShowTechnicalObjectList = technical && !sectionSupportsSubsystem;
   const templateSlotCount = recordTemplateSlots.length;
   const templateGroupCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_group)).length;
   const filterActive = Boolean(activeSubsystemName || activeUnitFilter || activeObjectFilter);
@@ -1360,7 +1361,7 @@ export function AssessmentTable({
               </div>
             </div>
           ) : null}
-          {technicalObjectEntries.length > 0 ? (
+          {shouldShowTechnicalObjectList && technicalObjectEntries.length > 0 ? (
             <div className="technical-object-list" aria-label="已添加测评对象">
               {technicalObjectEntries.map(({ objectName, objectSubsystemNames }) => {
                 const targetSubsystemName = activeSubsystemName || (objectSubsystemNames.length === 1 ? objectSubsystemNames[0] : "");
@@ -1383,9 +1384,10 @@ export function AssessmentTable({
                 );
               })}
             </div>
-          ) : (
+          ) : null}
+          {shouldShowTechnicalObjectList && technicalObjectEntries.length === 0 ? (
             <p className="technical-object-empty">{technicalObjectEmptyText}</p>
-          )}
+          ) : null}
         </div>
       ) : null}
       {unitOrder.length === 0 ? (

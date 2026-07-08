@@ -316,6 +316,15 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("autoSizeRecordTextareas", table_source)
         self.assertIn("overflow: hidden", styles_source)
 
+    def test_subsystem_sections_hide_assigned_object_list(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("const shouldShowTechnicalObjectList = technical && !sectionSupportsSubsystem", table_source)
+        self.assertIn("{shouldShowTechnicalObjectList && technicalObjectEntries.length > 0 ? (", table_source)
+        self.assertIn("{shouldShowTechnicalObjectList && technicalObjectEntries.length === 0 ? (", table_source)
+        self.assertIn("unassignedTechnicalObjectNames.length > 0", table_source)
+        self.assertNotIn("{technicalObjectEntries.length > 0 ? (", table_source)
+
     def test_project_page_supports_editor_undo_stack(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 
