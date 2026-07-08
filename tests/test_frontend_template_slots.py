@@ -63,6 +63,24 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("project && activeCode && activeDetail && !isTemplateManagerOpen", page_source)
         self.assertIn("{profile && activeCode && isTemplateManagerOpen ? (", page_source)
 
+    def test_project_page_can_import_current_section_to_another_project(self) -> None:
+        client_source = (FRONTEND_SRC / "api" / "client.ts").read_text(encoding="utf-8")
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("export function importSectionToProject", client_source)
+        self.assertIn("/import-to-project", client_source)
+        self.assertIn("isProjectImportDialogOpen", page_source)
+        self.assertIn("selectedImportTargetProjectId", page_source)
+        self.assertIn("handleOpenProjectImportDialog", page_source)
+        self.assertIn("handleImportSectionToProject", page_source)
+        self.assertIn("导入其他项目", page_source)
+        self.assertIn("project-import-dialog", page_source)
+        self.assertIn("importSectionToProject(project.id, activeCode", page_source)
+        self.assertIn("disabled={isSavingAny || isDirty || !activeCode}", page_source)
+        self.assertIn(".project-import-backdrop", styles_source)
+        self.assertIn(".project-import-dialog", styles_source)
+
     def test_project_page_removes_render_preview_entry(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 

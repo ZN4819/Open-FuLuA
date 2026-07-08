@@ -7,6 +7,7 @@ from ..schemas import (
     EvidenceImageRead,
     MetricResultRead,
     SectionDetailRead,
+    SectionProjectImport,
     SectionRead,
     SectionUpdate,
 )
@@ -100,6 +101,21 @@ def update_section_detail(project_id: int, code: str, payload: SectionUpdate) ->
     if updated is None:
         raise HTTPException(status_code=404, detail="章节不存在")
     return build_section_detail(project_id, code)
+
+
+@router.post("/{code}/import-to-project", response_model=SectionDetailRead)
+def import_section_to_project(project_id: int, code: str, payload: SectionProjectImport) -> SectionDetailRead:
+    try:
+        imported = database.append_section_to_project(
+            source_project_id=project_id,
+            target_project_id=payload.target_project_id,
+            code=code,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if imported is None:
+        raise HTTPException(status_code=404, detail="源章节或目标章节不存在。")
+    return build_section_detail(payload.target_project_id, code)
 
 
 def _unique_values(values: list[str]) -> list[str]:

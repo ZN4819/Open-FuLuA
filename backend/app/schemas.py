@@ -176,6 +176,10 @@ class SectionUpdate(BaseModel):
     rows: list[AssessmentRowWrite] = []
 
 
+class SectionProjectImport(BaseModel):
+    target_project_id: int
+
+
 class RecordTemplateRead(BaseModel):
     id: str
     section_code: str

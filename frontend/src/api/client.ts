@@ -389,6 +389,17 @@ export function updateSectionDetail(
   });
 }
 
+export function importSectionToProject(
+  projectId: number,
+  code: string,
+  targetProjectId: number
+): Promise<SectionDetail> {
+  return request<SectionDetail>(`/api/projects/${projectId}/sections/${code}/import-to-project`, {
+    method: "POST",
+    body: JSON.stringify({ target_project_id: targetProjectId })
+  });
+}
+
 export function getTemplateProfile(): Promise<TemplateProfile> {
   return request<TemplateProfile>("/api/template-profile");
 }

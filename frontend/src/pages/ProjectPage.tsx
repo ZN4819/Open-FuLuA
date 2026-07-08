@@ -9,6 +9,7 @@ import {
   getRecordTemplateSlots,
   getSectionDetail,
   getTemplateProfile,
+  importSectionToProject,
   importRecordTemplateSlots,
   listProjects,
   previewRecordTemplateSlotImport,
@@ -254,6 +255,9 @@ export function ProjectPage() {
   const [importProjectName, setImportProjectName] = useState("");
   const [isUploadingImport, setIsUploadingImport] = useState(false);
   const [isConfirmingImport, setIsConfirmingImport] = useState(false);
+  const [isProjectImportDialogOpen, setIsProjectImportDialogOpen] = useState(false);
+  const [selectedImportTargetProjectId, setSelectedImportTargetProjectId] = useState("");
+  const [isImportingSectionToProject, setIsImportingSectionToProject] = useState(false);
 
   const activeSection = useMemo(
     () => project?.sections.find((section) => section.code === activeCode),
@@ -271,6 +275,7 @@ export function ProjectPage() {
   const isSavingAny = isSaving || isSavingAll;
   const activeEvidenceCount = activeDetail?.evidence_images.length ?? 0;
   const activeEvidenceFilter = activeCode ? evidenceFilterBySection[activeCode] : undefined;
+  const importTargetProjects = project ? projects.filter((item) => item.id !== project.id) : [];
 
   useEffect(() => {
     getTemplateProfile()
@@ -613,6 +618,44 @@ export function ProjectPage() {
     setSaveMessage(`分段模板配置导入完成：更新 ${result.summary.updated}，跳过 ${result.summary.skipped}。`);
     return result;
   }
+
+  function handleOpenProjectImportDialog() {
+    if (!project || !activeCode) {
+      return;
+    }
+    if (isDirty) {
+      setError("当前章节有未保存修改，请先保存后再导入其他项目。");
+      return;
+    }
+    setError(undefined);
+    setSaveMessage(undefined);
+    setSelectedImportTargetProjectId(importTargetProjects[0]?.id ? String(importTargetProjects[0].id) : "");
+    setIsProjectImportDialogOpen(true);
+  }
+
+  async function handleImportSectionToProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!project || !activeCode || !selectedImportTargetProjectId) {
+      return;
+    }
+    const targetProjectId = Number(selectedImportTargetProjectId);
+    const targetProject = projects.find((item) => item.id === targetProjectId);
+    setIsImportingSectionToProject(true);
+    setError(undefined);
+    setSaveMessage(undefined);
+    try {
+      await importSectionToProject(project.id, activeCode, targetProjectId);
+      await refreshProjects();
+      setIsProjectImportDialogOpen(false);
+      setSelectedImportTargetProjectId("");
+      setSaveMessage(`${activeCode} 已导入到 ${targetProject?.name ?? "目标项目"} 的同名章节。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导入其他项目失败");
+    } finally {
+      setIsImportingSectionToProject(false);
+    }
+  }
+
   function applySavedSectionDetail(code: string, detail: SectionDetail) {
     setSectionDetails((current) => ({ ...current, [code]: detail }));
     setDraftRows((current) => ({ ...current, [code]: rowsFromDetail(detail) }));
@@ -981,6 +1024,15 @@ export function ProjectPage() {
                 <button
                   type="button"
                   className="secondary-button"
+                  onClick={handleOpenProjectImportDialog}
+                  disabled={isSavingAny || isDirty || !activeCode}
+                  title={isDirty ? "请先保存当前章节后再导入其他项目" : "将当前章节追加导入到其他项目的同名章节"}
+                >
+                  导入其他项目
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
                   onClick={() => setIsTemplateManagerOpen((current) => !current)}
                 >
                   {isTemplateManagerOpen ? "收起模板" : "模板管理"}
@@ -1065,6 +1117,57 @@ export function ProjectPage() {
               onImagesChange={(images, context) => handleImagesChange(activeCode, images, context)}
               onError={setError}
             />
+          ) : null}
+
+          {isProjectImportDialogOpen && project && activeCode ? (
+            <div className="project-import-backdrop">
+              <form
+                className="project-import-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="project-import-title"
+                onSubmit={handleImportSectionToProject}
+              >
+                <div className="project-import-heading">
+                  <p className="eyebrow">导入其他项目</p>
+                  <h3 id="project-import-title">导入当前章节</h3>
+                </div>
+                <p className="project-import-hint">
+                  将 {activeCode} 的测评行、子系统、证据图片和图片引用追加导入到目标项目的同名章节。目标章节如已有同名测评对象，将拒绝导入。
+                </p>
+                <label className="project-import-field">
+                  <span>目标项目</span>
+                  <select
+                    value={selectedImportTargetProjectId}
+                    onChange={(event) => setSelectedImportTargetProjectId(event.target.value)}
+                    disabled={importTargetProjects.length === 0 || isImportingSectionToProject}
+                  >
+                    {importTargetProjects.length === 0 ? (
+                      <option value="">暂无其他项目</option>
+                    ) : (
+                      importTargetProjects.map((targetProject) => (
+                        <option key={targetProject.id} value={targetProject.id}>
+                          {targetProject.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+                <div className="project-import-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setIsProjectImportDialogOpen(false)}
+                    disabled={isImportingSectionToProject}
+                  >
+                    取消
+                  </button>
+                  <button type="submit" disabled={!selectedImportTargetProjectId || isImportingSectionToProject}>
+                    {isImportingSectionToProject ? "导入中..." : "确认导入"}
+                  </button>
+                </div>
+              </form>
+            </div>
           ) : null}
         </section>
       )}

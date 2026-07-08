@@ -12,7 +12,9 @@ from app import database  # noqa: E402
 from app.api.projects import list_projects as list_project_schemas  # noqa: E402
 from app.api.projects import delete_project as delete_project_schema  # noqa: E402
 from app.api.sections import build_section_detail  # noqa: E402
+from app.api.sections import import_section_to_project  # noqa: E402
 from app.api.sections import update_section_detail  # noqa: E402
+from app.schemas import SectionProjectImport  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.schemas import SectionUpdate  # noqa: E402
 
@@ -226,6 +228,106 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(detail.subsystems, ["Core banking"])
         self.assertEqual(detail.rows[0].subsystem, "Core banking")
         self.assertEqual(detail.rows[1].subsystem, "")
+
+    def test_section_can_be_imported_to_another_project_as_new_data(self) -> None:
+        source = database.create_project("source project")
+        target = database.create_project("target project")
+        source_file = settings.storage_path / "uploads" / str(source["id"]) / "A-1" / "source.png"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_bytes(b"source-image")
+        image = database.create_evidence_image(
+            source["id"],
+            "A-1",
+            {
+                "file_path": source_file.relative_to(settings.storage_path).as_posix(),
+                "original_name": "source.png",
+                "caption": "source caption",
+                "alt_text": "source alt",
+                "pixel_width": 100,
+                "pixel_height": 80,
+                "dpi_x": 144,
+                "dpi_y": 144,
+                "display_width_in": 1,
+                "display_height_in": 0.8,
+            },
+        )
+        database.replace_section_rows(
+            project_id=source["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "身份鉴别",
+                    "object_name": "源机房",
+                    "subsystem": "源子系统",
+                    "record_text": f"记录 [[FIG:{image['id']}]]",
+                    "metric_result": {"d": "√", "a": "√", "k": "/", "object_score": "1"},
+                    "cross_references": [
+                        {
+                            "target_image_id": image["id"],
+                            "token": f"[[FIG:{image['id']}]]",
+                            "display_text": "图A-1-1",
+                        }
+                    ],
+                }
+            ],
+        )
+        database.replace_section_rows(
+            project_id=target["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "身份鉴别",
+                    "object_name": "目标机房",
+                    "record_text": "已有记录",
+                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0"},
+                }
+            ],
+        )
+
+        detail = import_section_to_project(
+            source["id"],
+            "A-1",
+            SectionProjectImport(target_project_id=target["id"]),
+        )
+
+        self.assertEqual([row.object_name for row in detail.rows], ["目标机房", "源机房"])
+        self.assertEqual(
+            [row.metric_result.unit_score for row in detail.rows],
+            ["0.5000", "0.5000"],
+        )
+        self.assertEqual(detail.rows[1].subsystem, "源子系统")
+        self.assertEqual(detail.subsystems, ["源子系统"])
+        self.assertEqual(len(detail.evidence_images), 1)
+        self.assertNotEqual(detail.evidence_images[0].id, image["id"])
+        self.assertTrue((settings.storage_path / detail.evidence_images[0].file_path).exists())
+        self.assertIn(f"[[FIG:{detail.evidence_images[0].id}]]", detail.rows[1].record_text)
+        self.assertEqual(detail.cross_references[0].target_image_id, detail.evidence_images[0].id)
+
+    def test_section_import_rejects_duplicate_target_object_names(self) -> None:
+        source = database.create_project("source duplicate project")
+        target = database.create_project("target duplicate project")
+        for project in (source, target):
+            database.replace_section_rows(
+                project_id=project["id"],
+                code="A-3",
+                rows=[
+                    {
+                        "unit": "身份鉴别",
+                        "object_name": "重复对象",
+                        "record_text": "记录",
+                        "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1"},
+                    }
+                ],
+            )
+
+        with self.assertRaises(Exception) as context:
+            import_section_to_project(
+                source["id"],
+                "A-3",
+                SectionProjectImport(target_project_id=target["id"]),
+            )
+
+        self.assertIn("同名测评对象", str(context.exception))
 
     def test_technical_unit_score_is_calculated_on_save(self) -> None:
         project = database.create_project("unit score project")

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import sqlite3
 from contextlib import contextmanager
@@ -1413,6 +1415,282 @@ def replace_section_rows(
                 )
 
         return get_section(project_id, code, db)
+
+
+def append_section_to_project(
+    source_project_id: int,
+    target_project_id: int,
+    code: str,
+) -> sqlite3.Row | None:
+    if source_project_id == target_project_id:
+        raise ValueError("不能导入到当前项目。")
+
+    timestamp = utc_now()
+    with connect() as db:
+        source_section = get_section(source_project_id, code, db)
+        target_section = get_section(target_project_id, code, db)
+        if source_section is None or target_section is None:
+            return None
+
+        source_rows = list_assessment_rows(source_section["id"], db)
+        target_rows = list_assessment_rows(target_section["id"], db)
+        source_object_names = _unique_nonempty_values([row["object_name"] for row in source_rows])
+        target_object_names = set(_unique_nonempty_values([row["object_name"] for row in target_rows]))
+        duplicate_names = [name for name in source_object_names if name in target_object_names]
+        if duplicate_names:
+            raise ValueError(f"目标章节已存在同名测评对象：{', '.join(duplicate_names)}")
+
+        source_images = list_evidence_images(source_project_id, code, db)
+        next_image_order = next_image_sort_order(target_project_id, code, db)
+        image_id_map: dict[int, int] = {}
+        image_display_text_map: dict[int, str] = {}
+        for offset, source_image in enumerate(source_images):
+            target_sort_order = next_image_order + offset
+            target_relative_path = _copy_evidence_file_for_project(
+                source_image["file_path"],
+                target_project_id,
+                code,
+            )
+            cursor = db.execute(
+                """
+                INSERT INTO evidence_images
+                    (
+                        project_id,
+                        section_code,
+                        file_path,
+                        original_name,
+                        caption,
+                        alt_text,
+                        sort_order,
+                        pixel_width,
+                        pixel_height,
+                        dpi_x,
+                        dpi_y,
+                        display_width_in,
+                        display_height_in,
+                        created_at,
+                        updated_at
+                    )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    target_project_id,
+                    code,
+                    target_relative_path,
+                    source_image["original_name"],
+                    source_image["caption"],
+                    source_image["alt_text"],
+                    target_sort_order,
+                    source_image["pixel_width"],
+                    source_image["pixel_height"],
+                    source_image["dpi_x"],
+                    source_image["dpi_y"],
+                    source_image["display_width_in"],
+                    source_image["display_height_in"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            new_image_id = int(cursor.lastrowid)
+            image_id_map[int(source_image["id"])] = new_image_id
+            image_display_text_map[new_image_id] = f"图{code}-{target_sort_order}"
+
+        existing_subsystems = _unique_nonempty_values(
+            [row["name"] for row in list_section_subsystems(target_project_id, code, db)]
+            + [row["subsystem"] for row in target_rows]
+        )
+        imported_subsystems = _unique_nonempty_values([row["subsystem"] for row in source_rows])
+        for subsystem_name in imported_subsystems:
+            if subsystem_name in existing_subsystems:
+                continue
+            existing_subsystems.append(subsystem_name)
+            db.execute(
+                """
+                INSERT INTO section_subsystems
+                    (project_id, section_code, name, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (target_project_id, code, subsystem_name, len(existing_subsystems), timestamp, timestamp),
+            )
+
+        references_by_row: dict[int, list[sqlite3.Row]] = {}
+        for reference in list_cross_references(source_section["id"], db):
+            references_by_row.setdefault(int(reference["source_row_id"]), []).append(reference)
+
+        next_row_order = _next_assessment_row_sort_order(target_section["id"], db)
+        rows_for_scores: list[dict[str, Any]] = []
+        for offset, source_row in enumerate(source_rows):
+            metric = {
+                "d": source_row["d"],
+                "a": source_row["a"],
+                "k": source_row["k"],
+                "object_score": source_row["object_score"],
+                "unit_score": source_row["unit_score"],
+                "compliance": source_row["compliance"],
+            }
+            rows_for_scores.append(
+                {
+                    "unit": source_row["unit"],
+                    "object_name": source_row["object_name"],
+                    "subsystem": source_row["subsystem"],
+                    "record_text": _remap_record_text_image_tokens(source_row["record_text"], image_id_map),
+                    "sort_order": next_row_order + offset,
+                    "metric_result": metric,
+                    "cross_references": [
+                        _remap_cross_reference(reference, image_id_map, image_display_text_map)
+                        for reference in references_by_row.get(int(source_row["id"]), [])
+                    ],
+                }
+            )
+
+        rows_for_scores = _rows_with_calculated_unit_scores(rows_for_scores)
+        for row in rows_for_scores:
+            cursor = db.execute(
+                """
+                INSERT INTO assessment_rows
+                    (section_id, unit, object_name, subsystem, record_text, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    target_section["id"],
+                    row.get("unit", ""),
+                    row.get("object_name", ""),
+                    row.get("subsystem", ""),
+                    row.get("record_text", ""),
+                    int(row.get("sort_order") or next_row_order),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row_id = int(cursor.lastrowid)
+            metric = row.get("metric_result") or {}
+            db.execute(
+                """
+                INSERT INTO metric_results
+                    (row_id, d, a, k, object_score, unit_score, compliance)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row_id,
+                    metric.get("d"),
+                    metric.get("a"),
+                    metric.get("k"),
+                    metric.get("object_score"),
+                    metric.get("unit_score"),
+                    metric.get("compliance"),
+                ),
+            )
+            active_reference_tokens = _active_reference_tokens(str(row.get("record_text", "")))
+            inserted_reference_tokens: set[str] = set()
+            for reference in row.get("cross_references") or []:
+                token = str(reference.get("token") or "").strip()
+                if token not in active_reference_tokens or token in inserted_reference_tokens:
+                    continue
+                inserted_reference_tokens.add(token)
+                db.execute(
+                    """
+                    INSERT INTO cross_references
+                        (source_row_id, target_image_id, token, display_text)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        row_id,
+                        reference.get("target_image_id"),
+                        token,
+                        reference.get("display_text", ""),
+                    ),
+                )
+
+        _refresh_unit_scores_for_section(
+            target_section["id"],
+            [row["unit"] for row in source_rows],
+            db,
+        )
+        db.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (timestamp, target_project_id))
+        return get_section(target_project_id, code, db)
+
+
+def _next_assessment_row_sort_order(section_id: int, db: sqlite3.Connection) -> int:
+    row = db.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM assessment_rows WHERE section_id = ?",
+        (section_id,),
+    ).fetchone()
+    return int(row["next_order"])
+
+
+def _refresh_unit_scores_for_section(
+    section_id: int,
+    affected_units: list[str],
+    db: sqlite3.Connection,
+) -> None:
+    normalized_units = {str(unit or "").strip() for unit in affected_units}
+    if not normalized_units:
+        return
+
+    rows = list_assessment_rows(section_id, db)
+    rows_by_unit: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        unit = str(row["unit"] or "").strip()
+        if unit not in normalized_units:
+            continue
+        rows_by_unit.setdefault(unit, []).append(
+            {
+                "unit": row["unit"],
+                "metric_result": {"object_score": row["object_score"]},
+            }
+        )
+
+    score_by_unit = {
+        unit: _calculate_unit_score(unit_rows)
+        for unit, unit_rows in rows_by_unit.items()
+    }
+    for row in rows:
+        unit = str(row["unit"] or "").strip()
+        if unit not in score_by_unit:
+            continue
+        db.execute(
+            "UPDATE metric_results SET unit_score = ? WHERE row_id = ?",
+            (score_by_unit[unit], row["id"]),
+        )
+
+
+def _copy_evidence_file_for_project(source_file_path: str, target_project_id: int, section_code: str) -> str:
+    source_path = settings.storage_path / source_file_path
+    if not source_path.exists():
+        raise ValueError(f"源证据图片文件不存在：{source_file_path}")
+
+    safe_section = re.sub(r"[^A-Za-z0-9_-]+", "-", section_code)
+    extension = source_path.suffix or ".png"
+    relative_dir = Path("uploads") / str(target_project_id) / safe_section
+    target_dir = settings.storage_path / relative_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    relative_path = relative_dir / f"{uuid.uuid4().hex}{extension}"
+    shutil.copy2(source_path, settings.storage_path / relative_path)
+    return relative_path.as_posix()
+
+
+def _remap_record_text_image_tokens(record_text: str, image_id_map: dict[int, int]) -> str:
+    output = record_text or ""
+    for source_image_id, target_image_id in image_id_map.items():
+        output = output.replace(f"[[FIG:{source_image_id}]]", f"[[FIG:{target_image_id}]]")
+    return output
+
+
+def _remap_cross_reference(
+    reference: sqlite3.Row,
+    image_id_map: dict[int, int],
+    image_display_text_map: dict[int, str],
+) -> dict[str, Any]:
+    source_image_id = reference["target_image_id"]
+    target_image_id = image_id_map.get(int(source_image_id)) if source_image_id is not None else None
+    token = reference["token"]
+    if target_image_id is not None:
+        token = f"[[FIG:{target_image_id}]]"
+    return {
+        "target_image_id": target_image_id,
+        "token": token,
+        "display_text": image_display_text_map.get(target_image_id or -1, reference["display_text"]),
+    }
 
 
 def _active_reference_tokens(record_text: str) -> set[str]:
