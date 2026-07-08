@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type MouseEvent } from "react";
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
 
@@ -29,7 +29,7 @@ type AssessmentTableProps = {
   onRowsChange: (rows: AssessmentRowInput[]) => void;
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
-  onUploadEvidenceImages?: (files: File[]) => Promise<void>;
+  onUploadEvidenceImages?: (files: File[]) => Promise<EvidenceImage[]>;
   onSave: () => void;
 };
 
@@ -955,21 +955,28 @@ export function AssessmentTable({
     if (!image) {
       return;
     }
+    insertReferenceImages(index, [image], evidenceImages);
+  }
+
+  function insertReferenceImages(index: number, images: EvidenceImage[], availableImages: EvidenceImage[]) {
+    if (images.length === 0) {
+      return;
+    }
     const row = normalizedRows[index];
-    const displayText = imageFigureDisplayText(image, sectionCode, profile);
+    const displayText = images.map((image) => imageFigureDisplayText(image, sectionCode, profile)).join("、");
     const displayRecordTextValue = insertAtSelectionOrPlaceholder(
-      displayRecordText(row, evidenceImages, sectionCode, profile),
+      displayRecordText(row, availableImages, sectionCode, profile),
       displayText,
       recordSelections.current[index]
     );
-    const recordText = storedRecordText(displayRecordTextValue, row, evidenceImages, sectionCode, profile);
+    const recordText = storedRecordText(displayRecordTextValue, row, availableImages, sectionCode, profile);
     updateRow(index, {
       record_text: recordText,
-      cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
+      cross_references: crossReferencesForRecordText(recordText, row, availableImages, sectionCode, profile)
     });
   }
 
-  async function uploadInlineEvidenceImages(index: number, files: FileList | null) {
+  async function uploadInlineEvidenceImages(index: number, files: FileList | File[] | null, insertUploadedReferences = false) {
     const selectedFiles = Array.from(files ?? []);
     if (selectedFiles.length === 0 || !onUploadEvidenceImages) {
       return;
@@ -977,10 +984,23 @@ export function AssessmentTable({
 
     setInlineImageUploadIndex(index);
     try {
-      await onUploadEvidenceImages(selectedFiles);
+      const uploadedImages = await onUploadEvidenceImages(selectedFiles);
+      if (insertUploadedReferences) {
+        insertReferenceImages(index, uploadedImages, [...evidenceImages, ...uploadedImages]);
+      }
     } finally {
       setInlineImageUploadIndex(null);
     }
+  }
+
+  async function uploadPastedEvidenceImages(index: number, event: ClipboardEvent<HTMLTextAreaElement>) {
+    const selectedFiles = clipboardImageFiles(event.clipboardData);
+    if (selectedFiles.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    rememberRecordSelection(index, event.currentTarget);
+    await uploadInlineEvidenceImages(index, selectedFiles, true);
   }
 
   function applyRecordTemplate(index: number, slotId: string) {
@@ -1384,6 +1404,7 @@ export function AssessmentTable({
                                 onMouseLeave={() => setFigureHoverPreview(null)}
                                 onScroll={(event) => syncRecordReferenceOverlayScroll(event.currentTarget)}
                                 onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
+                                onPaste={(event) => void uploadPastedEvidenceImages(index, event)}
                                 rows={5}
                               />
                               {figureReferenceItems.length > 0 ? (
@@ -1594,4 +1615,21 @@ function placeholderAroundSelection(text: string, selection: TextSelection): Tex
     index = text.indexOf(FIGURE_PLACEHOLDER, end);
   }
   return undefined;
+}
+
+function clipboardImageFiles(clipboardData: DataTransfer) {
+  const files: File[] = [];
+  Array.from(clipboardData.items).forEach((item, index) => {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) {
+      return;
+    }
+    const file = item.getAsFile();
+    if (!file) {
+      return;
+    }
+    const extension = item.type.includes("jpeg") ? "jpg" : "png";
+    const filename = file.name || `clipboard-screenshot-${Date.now()}-${index + 1}.${extension}`;
+    files.push(new File([file], filename, { type: file.type || item.type }));
+  });
+  return files;
 }

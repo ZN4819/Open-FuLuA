@@ -558,12 +558,12 @@ export function ProjectPage() {
 
   async function handleInlineEvidenceUpload(code: string, files: File[]) {
     if (!project || files.length === 0) {
-      return;
+      return [];
     }
     const detail = sectionDetails[code];
     if (!detail) {
       setError("当前章节还没有加载完成，暂时不能上传图片。");
-      return;
+      return [];
     }
 
     setError(undefined);
@@ -574,6 +574,7 @@ export function ProjectPage() {
       });
       handleImagesChange(code, [...detail.evidence_images, ...uploaded]);
       setSaveMessage(`已上传 ${uploaded.length} 张图片，可在结果记录中插入引用。`);
+      return uploaded;
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传图片失败");
       throw err;
