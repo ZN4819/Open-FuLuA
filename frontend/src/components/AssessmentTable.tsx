@@ -680,12 +680,16 @@ export function AssessmentTable({
   const [figureHoverPreview, setFigureHoverPreview] = useState<FigureReferenceHoverPreview | null>(null);
   const [inlineImageUploadIndex, setInlineImageUploadIndex] = useState<number | null>(null);
   const [pendingPastedImageUpload, setPendingPastedImageUpload] = useState<PendingPastedImageUpload | null>(null);
+  const [showSubsystemList, setShowSubsystemList] = useState(false);
+  const [showTechnicalObjectList, setShowTechnicalObjectList] = useState(false);
   useEffect(() => {
     setNewSubsystemName("");
     setTechnicalUnitFilter("");
     setTechnicalObjectFilter("");
     setFigureHoverPreview(null);
     setPendingPastedImageUpload(null);
+    setShowSubsystemList(false);
+    setShowTechnicalObjectList(false);
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
@@ -750,7 +754,7 @@ export function AssessmentTable({
   const technicalObjectEmptyText = sectionSupportsSubsystem && activeSubsystemName
     ? "当前子系统还没有测评对象。"
     : sectionCode === A4_SECTION_CODE ? "当前章节还没有通过上方分类新增测评对象。" : "当前章节还没有测评对象。";
-  const shouldShowTechnicalObjectList = technical && !sectionSupportsSubsystem;
+  const shouldShowTechnicalObjectList = technical;
   const templateSlotCount = recordTemplateSlots.length;
   const templateGroupCount = uniqueValues(recordTemplateSlots.map((slot) => slot.template_group)).length;
   const filterActive = Boolean(activeSubsystemName || activeUnitFilter || activeObjectFilter);
@@ -1315,22 +1319,35 @@ export function AssessmentTable({
       {technical ? (
         <div className="technical-object-toolbar">
           {sectionSupportsSubsystem ? (
-            <div className="subsystem-list" aria-label="已添加子系统">
-              {subsystemNames.length > 0 ? (
-                subsystemNames.map((subsystemName) => (
-                  <span className={`subsystem-item${activeSubsystemName === subsystemName ? " active" : ""}`} key={subsystemName}>
-                    <button type="button" onClick={() => setActiveSubsystemForSection(subsystemName)}>
-                      {subsystemName}
-                    </button>
-                    <button type="button" className="danger-button object-delete-button" onClick={() => removeSubsystem(subsystemName)}>
-                      删除子系统
-                    </button>
-                  </span>
-                ))
-              ) : (
-                <p className="technical-object-empty">请先新增子系统，再录入测评对象。</p>
-              )}
-            </div>
+            <>
+              <div className="technical-list-toggle-row">
+                <button
+                  type="button"
+                  className="secondary-button technical-list-toggle-button"
+                  onClick={() => setShowSubsystemList((current) => !current)}
+                >
+                  {showSubsystemList ? "隐藏子系统清单" : `显示子系统清单（${subsystemNames.length}）`}
+                </button>
+              </div>
+              {showSubsystemList ? (
+                <div className="subsystem-list" aria-label="已添加子系统">
+                  {subsystemNames.length > 0 ? (
+                    subsystemNames.map((subsystemName) => (
+                      <span className={`subsystem-item${activeSubsystemName === subsystemName ? " active" : ""}`} key={subsystemName}>
+                        <button type="button" onClick={() => setActiveSubsystemForSection(subsystemName)}>
+                          {subsystemName}
+                        </button>
+                        <button type="button" className="danger-button object-delete-button" onClick={() => removeSubsystem(subsystemName)}>
+                          删除子系统
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <p className="technical-object-empty">请先新增子系统，再录入测评对象。</p>
+                  )}
+                </div>
+              ) : null}
+            </>
           ) : null}
           {sectionSupportsSubsystem && unassignedTechnicalObjectNames.length > 0 ? (
             <div className="unassigned-object-panel">
@@ -1361,7 +1378,18 @@ export function AssessmentTable({
               </div>
             </div>
           ) : null}
-          {shouldShowTechnicalObjectList && technicalObjectEntries.length > 0 ? (
+          {shouldShowTechnicalObjectList ? (
+            <div className="technical-list-toggle-row">
+              <button
+                type="button"
+                className="secondary-button technical-list-toggle-button"
+                onClick={() => setShowTechnicalObjectList((current) => !current)}
+              >
+                {showTechnicalObjectList ? "隐藏测评对象清单" : `显示测评对象清单（${technicalObjectEntries.length}）`}
+              </button>
+            </div>
+          ) : null}
+          {shouldShowTechnicalObjectList && showTechnicalObjectList && technicalObjectEntries.length > 0 ? (
             <div className="technical-object-list" aria-label="已添加测评对象">
               {technicalObjectEntries.map(({ objectName, objectSubsystemNames }) => {
                 const targetSubsystemName = activeSubsystemName || (objectSubsystemNames.length === 1 ? objectSubsystemNames[0] : "");
@@ -1385,7 +1413,7 @@ export function AssessmentTable({
               })}
             </div>
           ) : null}
-          {shouldShowTechnicalObjectList && technicalObjectEntries.length === 0 ? (
+          {shouldShowTechnicalObjectList && showTechnicalObjectList && technicalObjectEntries.length === 0 ? (
             <p className="technical-object-empty">{technicalObjectEmptyText}</p>
           ) : null}
         </div>

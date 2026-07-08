@@ -1755,6 +1755,18 @@ a:hover {
   min-width: 0;
 }
 
+.technical-list-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.technical-list-toggle-button {
+  min-height: 34px;
+  padding: 0 14px;
+  font-weight: 800;
+}
+
 .subsystem-list {
   display: flex;
   flex-wrap: wrap;

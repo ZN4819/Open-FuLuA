@@ -316,14 +316,31 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("autoSizeRecordTextareas", table_source)
         self.assertIn("overflow: hidden", styles_source)
 
-    def test_subsystem_sections_hide_assigned_object_list(self) -> None:
+    def test_technical_object_list_is_collapsed_by_default(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
 
-        self.assertIn("const shouldShowTechnicalObjectList = technical && !sectionSupportsSubsystem", table_source)
-        self.assertIn("{shouldShowTechnicalObjectList && technicalObjectEntries.length > 0 ? (", table_source)
-        self.assertIn("{shouldShowTechnicalObjectList && technicalObjectEntries.length === 0 ? (", table_source)
+        self.assertIn("const shouldShowTechnicalObjectList = technical", table_source)
+        self.assertIn("{shouldShowTechnicalObjectList && showTechnicalObjectList && technicalObjectEntries.length > 0 ? (", table_source)
+        self.assertIn("{shouldShowTechnicalObjectList && showTechnicalObjectList && technicalObjectEntries.length === 0 ? (", table_source)
         self.assertIn("unassignedTechnicalObjectNames.length > 0", table_source)
         self.assertNotIn("{technicalObjectEntries.length > 0 ? (", table_source)
+
+    def test_subsystem_and_object_lists_are_collapsible(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("const [showSubsystemList", table_source)
+        self.assertIn("const [showTechnicalObjectList", table_source)
+        self.assertIn("setShowSubsystemList(false)", table_source)
+        self.assertIn("setShowTechnicalObjectList(false)", table_source)
+        self.assertIn("setShowSubsystemList((current) => !current)", table_source)
+        self.assertIn("setShowTechnicalObjectList((current) => !current)", table_source)
+        self.assertIn("{showSubsystemList ? \"隐藏子系统清单\" : `显示子系统清单（${subsystemNames.length}）`}", table_source)
+        self.assertIn("{showTechnicalObjectList ? \"隐藏测评对象清单\" : `显示测评对象清单（${technicalObjectEntries.length}）`}", table_source)
+        self.assertIn("{showSubsystemList ? (", table_source)
+        self.assertIn("{shouldShowTechnicalObjectList && showTechnicalObjectList && technicalObjectEntries.length > 0 ? (", table_source)
+        self.assertIn(".technical-list-toggle-row", styles_source)
+        self.assertIn(".technical-list-toggle-button", styles_source)
 
     def test_project_page_supports_editor_undo_stack(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
