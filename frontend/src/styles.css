@@ -2119,6 +2119,8 @@ a:hover {
 .record-reference-hotspot {
   cursor: zoom-in;
   pointer-events: auto;
+  color: transparent;
+  text-decoration-color: transparent;
 }
 
 .figure-hover-preview {
@@ -3310,8 +3312,8 @@ textarea:hover {
 }
 
 .record-reference-hotspot {
-  color: #0068d6;
-  text-decoration-color: rgba(0, 104, 214, 0.35);
+  color: transparent;
+  text-decoration-color: transparent;
 }
 
 .figure-hover-preview,

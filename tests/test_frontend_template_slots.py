@@ -314,6 +314,8 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("figure-hover-preview", table_source)
         self.assertIn("figure-hover-preview", styles_source)
         self.assertIn("record-reference-overlay", styles_source)
+        self.assertIn(".record-reference-hotspot {\n  cursor: zoom-in;\n  pointer-events: auto;\n  color: transparent;", styles_source)
+        self.assertNotIn(".record-reference-hotspot {\n  color: #0068d6;", styles_source)
         self.assertIn("pointer-events: auto", styles_source)
         self.assertIn("position: fixed", styles_source)
         self.assertIn("left: 16px", styles_source)
