@@ -65,7 +65,7 @@ function isActiveRecordTemplateSlot(slot: RecordTemplateSlot, activeCode?: strin
   if (!activeCode) {
     return false;
   }
-  if (slot.section_code === activeCode) {
+  if (slot.section_code === activeCode && slot.template_group === "verification_record") {
     return true;
   }
   return (

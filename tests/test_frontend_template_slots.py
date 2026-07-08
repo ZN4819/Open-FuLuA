@@ -37,6 +37,8 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("refreshRecordTemplateSlots(activeCode)", page_source)
         self.assertIn("isActiveRecordTemplateSlot", page_source)
         self.assertIn("TECHNICAL_SCORE_BASIS_SECTION_CODE", page_source)
+        self.assertIn("slot.section_code === activeCode && slot.template_group === \"verification_record\"", page_source)
+        self.assertNotIn("slot.section_code === activeCode) {\n    return true;", page_source)
         self.assertIn("recordTemplateSlots={activeRecordTemplateSlots}", page_source)
 
     def test_project_page_wires_template_manager_to_slot_editor(self) -> None:
@@ -438,6 +440,7 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("TEMPLATE_GROUP_ORDER", panel_source)
         self.assertIn("slotsByTemplateGroup", panel_source)
         self.assertIn("sharedScoreBasisSlots", panel_source)
+        self.assertIn("dedupeSharedScoreBasisSlots", panel_source)
         self.assertIn("sectionVerificationSlots", panel_source)
         self.assertIn("template-slot-global-card", panel_source)
         self.assertIn("template_group_label", panel_source)

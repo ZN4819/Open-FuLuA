@@ -37,6 +37,8 @@ const TEMPLATE_GROUP_FALLBACK_LABELS: Record<RecordTemplateSlotGroup, string> = 
   verification_record: "测评验证记录模板",
   score_basis: "测评对象评分计算依据模板"
 };
+const TECHNICAL_SCORE_BASIS_SECTION_CODE = "TECHNICAL";
+const SCORE_BASIS_TEMPLATE_TYPES: RecordTemplateSlot["template_type"][] = ["fully_compliant", "score_adjusted", "non_compliant"];
 
 const TEMPLATE_TYPE_ORDER: Record<RecordTemplateSlotGroup, Partial<Record<RecordTemplateSlot["template_type"], number>>> = {
   verification_record: {
@@ -76,6 +78,31 @@ function slotsByTemplateGroup(slots: RecordTemplateSlot[]) {
       slots: groupSlots
     };
   }).filter((group) => group.slots.length > 0);
+}
+
+function dedupeSharedScoreBasisSlots(slots: RecordTemplateSlot[]) {
+  const preferredSlots = slots
+    .filter((slot) => slot.template_group === "score_basis")
+    .sort((first, second) => {
+      const firstIsGlobal = first.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE;
+      const secondIsGlobal = second.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE;
+      if (firstIsGlobal !== secondIsGlobal) {
+        return firstIsGlobal ? -1 : 1;
+      }
+      if (first.is_customized !== second.is_customized) {
+        return first.is_customized ? -1 : 1;
+      }
+      return templateSlotSortValue(first) - templateSlotSortValue(second) || first.id - second.id;
+    });
+  const slotByType = new Map<RecordTemplateSlot["template_type"], RecordTemplateSlot>();
+  preferredSlots.forEach((slot) => {
+    if (!slotByType.has(slot.template_type)) {
+      slotByType.set(slot.template_type, slot);
+    }
+  });
+  return SCORE_BASIS_TEMPLATE_TYPES
+    .map((templateType) => slotByType.get(templateType))
+    .filter((slot): slot is RecordTemplateSlot => Boolean(slot));
 }
 
 function tagsToText(tags?: string[]) {
@@ -230,10 +257,7 @@ export function TemplateManagerPanel({
   }, [recordTemplateSlots]);
 
   const sharedScoreBasisSlots = useMemo(
-    () =>
-      recordTemplateSlots
-        .filter((slot) => slot.template_group === "score_basis")
-        .sort((first, second) => templateSlotSortValue(first) - templateSlotSortValue(second)),
+    () => dedupeSharedScoreBasisSlots(recordTemplateSlots),
     [recordTemplateSlots]
   );
 
