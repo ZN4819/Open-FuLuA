@@ -268,6 +268,9 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("uploadEvidenceImages(project.id", page_source)
         self.assertIn("onUploadEvidenceImages={(files) => handleInlineEvidenceUpload(activeCode, files)}", page_source)
         self.assertIn(".inline-image-upload-button", styles_source)
+        self.assertIn("background: var(--color-primary-hover)", styles_source)
+        self.assertNotIn("--color-primary-dark", styles_source)
+        self.assertNotIn("--color-primary-muted", styles_source)
 
     def test_evidence_panel_opens_fullscreen_image_preview(self) -> None:
         evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
