@@ -54,6 +54,7 @@ const EMPTY_METRIC = {
 const FIGURE_PLACEHOLDER = "[插入图片引用]";
 const VERIFICATION_MARKER = "测评验证记录：";
 const SCORE_BASIS_MARKER = "测评对象评分计算依据：";
+const RECORD_TEXTAREA_MIN_HEIGHT = 126;
 
 type TextSelection = {
   start: number;
@@ -435,6 +436,13 @@ function syncRecordReferenceOverlayScroll(textarea: HTMLTextAreaElement) {
   overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
 }
 
+function autoSizeRecordTextarea(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.max(RECORD_TEXTAREA_MIN_HEIGHT, textarea.scrollHeight)}px`;
+  textarea.scrollTop = 0;
+  syncRecordReferenceOverlayScroll(textarea);
+}
+
 function referencedEvidenceImageIds(rows: AssessmentRowInput[]) {
   const result: number[] = [];
   rows.forEach((row) => {
@@ -663,6 +671,7 @@ export function AssessmentTable({
   const metricOptions = profile.content_controls.technical_metric.options;
   const complianceOptions = profile.content_controls.management_compliance.options;
   const recordSelections = useRef<Record<number, TextSelection>>({});
+  const recordTextareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
   const [technicalObjectName, setTechnicalObjectName] = useState("");
   const [technicalObjectCategory, setTechnicalObjectCategory] = useState<TechnicalObjectCategoryValue>("user");
   const [technicalUnitFilter, setTechnicalUnitFilter] = useState("");
@@ -753,6 +762,18 @@ export function AssessmentTable({
   });
   const tableColumnCount = technical ? 9 : 6;
   const visibleEvidenceFilterKey = `${filterActive ? "1" : "0"}:${visibleEvidenceImageIds.join(",")}`;
+
+  function autoSizeRecordTextareas() {
+    Object.values(recordTextareaRefs.current).forEach((textarea) => {
+      if (textarea) {
+        autoSizeRecordTextarea(textarea);
+      }
+    });
+  }
+
+  useEffect(() => {
+    autoSizeRecordTextareas();
+  }, [rows, evidenceImages, sectionCode, profile]);
 
   useEffect(() => {
     onVisibleEvidenceFilterChange?.({
@@ -1481,15 +1502,23 @@ export function AssessmentTable({
                             <div className="record-textarea-shell">
                               <textarea
                                 className="record-textarea"
+                                ref={(node) => {
+                                  recordTextareaRefs.current[index] = node;
+                                  if (node) {
+                                    autoSizeRecordTextarea(node);
+                                  }
+                                }}
                                 value={recordDisplayText}
                                 onChange={(event) => {
                                   rememberRecordSelection(index, event.target);
+                                  autoSizeRecordTextarea(event.currentTarget);
                                   const recordText = storedRecordText(event.target.value, row, evidenceImages, sectionCode, profile);
                                   updateRow(index, {
                                     record_text: recordText,
                                     cross_references: crossReferencesForRecordText(recordText, row, evidenceImages, sectionCode, profile)
                                   });
                                 }}
+                                onInput={(event) => autoSizeRecordTextarea(event.currentTarget)}
                                 onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onMouseMove={(event) => handleRecordReferenceHover(event, row)}

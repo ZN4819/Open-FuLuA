@@ -47,6 +47,17 @@ type EvidenceImagesChangeContext = {
   deletedImage?: EvidenceImage;
 };
 
+const MIN_UNDO_STEPS = 5;
+const MAX_UNDO_STEPS = 20;
+
+type UndoSnapshot = {
+  sectionDetails: Record<string, SectionDetail>;
+  draftRows: Record<string, AssessmentRowInput[]>;
+  subsystemUiStateBySection: Record<string, SubsystemUiState>;
+  dirtySections: string[];
+  activeCode?: string;
+};
+
 function uniqueNonEmptyValues(values: Array<string | null | undefined>) {
   const result: string[] = [];
   values.forEach((value) => {
@@ -160,6 +171,58 @@ function removeDeletedImageReferenceText(recordText: string, referenceTexts: str
     .replace(/\s{2,}/g, " ");
 }
 
+function cloneRowsBySection(rowsBySection: Record<string, AssessmentRowInput[]>) {
+  return Object.fromEntries(
+    Object.entries(rowsBySection).map(([code, rows]) => [
+      code,
+      rows.map((row) => ({
+        ...row,
+        metric_result: row.metric_result ? { ...row.metric_result } : row.metric_result,
+        cross_references: (row.cross_references ?? []).map((reference) => ({ ...reference }))
+      }))
+    ])
+  );
+}
+
+function cloneSubsystemUiStateBySection(uiStateBySection: Record<string, SubsystemUiState>) {
+  return Object.fromEntries(
+    Object.entries(uiStateBySection).map(([code, uiState]) => [
+      code,
+      {
+        manualSubsystemNames: [...uiState.manualSubsystemNames],
+        activeSubsystem: uiState.activeSubsystem
+      }
+    ])
+  );
+}
+
+function cloneSectionDetails(details: Record<string, SectionDetail>) {
+  return Object.fromEntries(
+    Object.entries(details).map(([code, detail]) => [
+      code,
+      {
+        ...detail,
+        rows: detail.rows.map((row) => ({ ...row })),
+        cross_references: detail.cross_references.map((reference) => ({ ...reference })),
+        evidence_images: detail.evidence_images.map((image) => ({ ...image })),
+        subsystems: [...(detail.subsystems ?? [])]
+      }
+    ])
+  );
+}
+
+function isUndoShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
 export function ProjectPage() {
   const [projectName, setProjectName] = useState("附录A测评结果记录");
   const [project, setProject] = useState<Project | null>(null);
@@ -172,6 +235,7 @@ export function ProjectPage() {
   const [subsystemUiStateBySection, setSubsystemUiStateBySection] = useState<Record<string, SubsystemUiState>>({});
   const [evidenceFilterBySection, setEvidenceFilterBySection] = useState<EvidenceImageFilterBySection>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
+  const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
   const [error, setError] = useState<string>();
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
@@ -245,6 +309,58 @@ export function ProjectPage() {
       .finally(() => setIsLoadingSection(false));
   }, [activeCode, project, sectionDetails]);
 
+  useEffect(() => {
+    function handleProjectUndoShortcut(event: KeyboardEvent) {
+      const isUndoShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z";
+      if (!isUndoShortcut || event.shiftKey || isUndoShortcutTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      handleUndo();
+    }
+
+    window.addEventListener("keydown", handleProjectUndoShortcut);
+    return () => window.removeEventListener("keydown", handleProjectUndoShortcut);
+  }, [undoStack, isSavingAny]);
+
+  function createUndoSnapshot(): UndoSnapshot {
+    return {
+      sectionDetails: cloneSectionDetails(sectionDetails),
+      draftRows: cloneRowsBySection(draftRows),
+      subsystemUiStateBySection: cloneSubsystemUiStateBySection(subsystemUiStateBySection),
+      dirtySections: Array.from(dirtySections),
+      activeCode
+    };
+  }
+
+  function pushUndoSnapshot() {
+    const snapshot = createUndoSnapshot();
+    setUndoStack((current) => [...current, snapshot].slice(-Math.max(MIN_UNDO_STEPS, MAX_UNDO_STEPS)));
+  }
+
+  function restoreUndoSnapshot(snapshot: UndoSnapshot) {
+    setSectionDetails(snapshot.sectionDetails);
+    setDraftRows(snapshot.draftRows);
+    setSubsystemUiStateBySection(snapshot.subsystemUiStateBySection);
+    setDirtySections(new Set(snapshot.dirtySections));
+    setActiveCode(snapshot.activeCode);
+    setValidation(undefined);
+    setSaveMessage("已撤销上一步操作");
+    setError(undefined);
+  }
+
+  function handleUndo() {
+    if (isSavingAny) {
+      return;
+    }
+    const snapshot = undoStack[undoStack.length - 1];
+    if (!snapshot) {
+      return;
+    }
+    restoreUndoSnapshot(snapshot);
+    setUndoStack((current) => current.slice(0, -1));
+  }
+
   async function refreshProjects() {
     setIsLoadingProjects(true);
     try {
@@ -276,6 +392,7 @@ export function ProjectPage() {
     setSectionDetails({});
     setDraftRows({});
     setSubsystemUiStateBySection({});
+    setUndoStack([]);
     setDirtySections(new Set());
     setValidation(undefined);
     setSaveMessage(undefined);
@@ -325,6 +442,7 @@ export function ProjectPage() {
     setSectionDetails({});
     setDraftRows({});
     setSubsystemUiStateBySection({});
+    setUndoStack([]);
     setValidation(undefined);
     setSaveMessage(undefined);
     refreshProjects();
@@ -420,6 +538,7 @@ export function ProjectPage() {
   }
 
   function handleRowsChange(code: string, rows: AssessmentRowInput[]) {
+    pushUndoSnapshot();
     setDraftRows((current) => ({ ...current, [code]: rows }));
     setDirtySections((current) => new Set([...current, code]));
     setSaveMessage(undefined);
@@ -438,6 +557,9 @@ export function ProjectPage() {
     updater: (current: SubsystemUiState) => SubsystemUiState,
     options: { dirty?: boolean } = {}
   ) {
+    if (options.dirty) {
+      pushUndoSnapshot();
+    }
     setSubsystemUiStateBySection((current) => ({
       ...current,
       [code]: updater(current[code] ?? EMPTY_SUBSYSTEM_UI_STATE)
@@ -843,6 +965,15 @@ export function ProjectPage() {
               <div className="action-group">
                 <button type="button" className="secondary-button" onClick={handleBackToProjects} disabled={isSavingAny}>
                   返回项目列表
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleUndo}
+                  disabled={undoStack.length === 0 || isSavingAny}
+                  title="撤销上一步编辑操作（Ctrl+Z）"
+                >
+                  撤销
                 </button>
                 <button type="button" onClick={handleSaveAllSections} disabled={isSavingAny || dirtyCount === 0}>
                   {isSavingAll ? "全部保存中..." : "全部保存"}

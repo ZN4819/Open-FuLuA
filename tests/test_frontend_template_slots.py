@@ -302,6 +302,38 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("--color-primary-dark", styles_source)
         self.assertNotIn("--color-primary-muted", styles_source)
 
+    def test_assessment_table_auto_sizes_record_textareas(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("const RECORD_TEXTAREA_MIN_HEIGHT = 126", table_source)
+        self.assertIn("function autoSizeRecordTextarea", table_source)
+        self.assertIn("textarea.style.height = \"auto\"", table_source)
+        self.assertIn("Math.max(RECORD_TEXTAREA_MIN_HEIGHT, textarea.scrollHeight)", table_source)
+        self.assertIn("recordTextareaRefs", table_source)
+        self.assertIn("recordTextareaRefs.current[index] = node", table_source)
+        self.assertIn("onInput={(event) => autoSizeRecordTextarea(event.currentTarget)}", table_source)
+        self.assertIn("autoSizeRecordTextareas", table_source)
+        self.assertIn("overflow: hidden", styles_source)
+
+    def test_project_page_supports_editor_undo_stack(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("const MIN_UNDO_STEPS = 5", page_source)
+        self.assertIn("const MAX_UNDO_STEPS = 20", page_source)
+        self.assertIn("type UndoSnapshot", page_source)
+        self.assertIn("const [undoStack", page_source)
+        self.assertIn("function createUndoSnapshot", page_source)
+        self.assertIn("function pushUndoSnapshot", page_source)
+        self.assertIn("function restoreUndoSnapshot", page_source)
+        self.assertIn("function handleUndo", page_source)
+        self.assertIn("function isUndoShortcutTarget", page_source)
+        self.assertIn("event.key.toLowerCase() === \"z\"", page_source)
+        self.assertIn("event.ctrlKey || event.metaKey", page_source)
+        self.assertIn("pushUndoSnapshot()", page_source)
+        self.assertIn("onClick={handleUndo}", page_source)
+        self.assertIn("disabled={undoStack.length === 0 || isSavingAny}", page_source)
+
     def test_evidence_panel_opens_fullscreen_image_preview(self) -> None:
         evidence_source = (FRONTEND_SRC / "components" / "EvidencePanel.tsx").read_text(encoding="utf-8")
         styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")

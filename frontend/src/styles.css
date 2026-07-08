@@ -2193,6 +2193,8 @@ a:hover {
 
 .record-textarea {
   min-height: 126px;
+  overflow: hidden;
+  resize: vertical;
 }
 
 .record-control-row {
