@@ -37,7 +37,9 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("refreshRecordTemplateSlots(activeCode)", page_source)
         self.assertIn("isActiveRecordTemplateSlot", page_source)
         self.assertIn("TECHNICAL_SCORE_BASIS_SECTION_CODE", page_source)
+        self.assertIn("dedupeActiveScoreBasisSlots", page_source)
         self.assertIn("slot.section_code === activeCode && slot.template_group === \"verification_record\"", page_source)
+        self.assertIn("slot.section_code === activeCode && slot.template_group === \"score_basis\"", page_source)
         self.assertNotIn("slot.section_code === activeCode) {\n    return true;", page_source)
         self.assertIn("recordTemplateSlots={activeRecordTemplateSlots}", page_source)
 

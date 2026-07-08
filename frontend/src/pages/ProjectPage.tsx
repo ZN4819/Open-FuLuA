@@ -52,6 +52,7 @@ const MIN_UNDO_STEPS = 5;
 const MAX_UNDO_STEPS = 20;
 const TECHNICAL_SCORE_BASIS_SECTION_CODE = "TECHNICAL";
 const TECHNICAL_SECTION_CODES = ["A-1", "A-2", "A-3", "A-4"];
+const SCORE_BASIS_TEMPLATE_TYPES: RecordTemplateSlot["template_type"][] = ["fully_compliant", "score_adjusted", "non_compliant"];
 
 type UndoSnapshot = {
   sectionDetails: Record<string, SectionDetail>;
@@ -68,11 +69,48 @@ function isActiveRecordTemplateSlot(slot: RecordTemplateSlot, activeCode?: strin
   if (slot.section_code === activeCode && slot.template_group === "verification_record") {
     return true;
   }
+  if (slot.section_code === activeCode && slot.template_group === "score_basis") {
+    return true;
+  }
   return (
     TECHNICAL_SECTION_CODES.includes(activeCode) &&
     slot.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE &&
     slot.template_group === "score_basis"
   );
+}
+
+function dedupeActiveScoreBasisSlots(slots: RecordTemplateSlot[], activeCode?: string) {
+  if (!activeCode || !TECHNICAL_SECTION_CODES.includes(activeCode)) {
+    return [];
+  }
+  const slotByType = new Map<RecordTemplateSlot["template_type"], RecordTemplateSlot>();
+  const preferredSlots = slots
+    .filter((slot) => slot.template_group === "score_basis")
+    .filter((slot) => slot.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE || slot.section_code === activeCode)
+    .sort((first, second) => {
+      const firstTypeOrder = SCORE_BASIS_TEMPLATE_TYPES.indexOf(first.template_type);
+      const secondTypeOrder = SCORE_BASIS_TEMPLATE_TYPES.indexOf(second.template_type);
+      if (firstTypeOrder !== secondTypeOrder) {
+        return firstTypeOrder - secondTypeOrder;
+      }
+      const firstIsGlobal = first.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE;
+      const secondIsGlobal = second.section_code === TECHNICAL_SCORE_BASIS_SECTION_CODE;
+      if (firstIsGlobal !== secondIsGlobal) {
+        return firstIsGlobal ? -1 : 1;
+      }
+      if (first.is_customized !== second.is_customized) {
+        return first.is_customized ? -1 : 1;
+      }
+      return first.id - second.id;
+    });
+  preferredSlots.forEach((slot) => {
+    if (!slotByType.has(slot.template_type)) {
+      slotByType.set(slot.template_type, slot);
+    }
+  });
+  return SCORE_BASIS_TEMPLATE_TYPES
+    .map((templateType) => slotByType.get(templateType))
+    .filter((slot): slot is RecordTemplateSlot => Boolean(slot));
 }
 
 function isRecordTemplateSlotRefreshTarget(slot: RecordTemplateSlot, sectionCode: string) {
@@ -294,7 +332,12 @@ export function ProjectPage() {
   const activeDetail = activeCode ? sectionDetails[activeCode] : undefined;
   const activeRows = activeCode ? draftRows[activeCode] ?? [] : [];
   const activeRecordTemplateSlots = useMemo(
-    () => recordTemplateSlots.filter((slot) => isActiveRecordTemplateSlot(slot, activeCode)),
+    () => [
+      ...recordTemplateSlots.filter(
+        (slot) => slot.template_group === "verification_record" && isActiveRecordTemplateSlot(slot, activeCode)
+      ),
+      ...dedupeActiveScoreBasisSlots(recordTemplateSlots, activeCode)
+    ],
     [activeCode, recordTemplateSlots]
   );
   const isDirty = activeCode ? dirtySections.has(activeCode) : false;
