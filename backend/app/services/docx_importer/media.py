@@ -5,8 +5,11 @@ import re
 import zipfile
 from collections import defaultdict
 from dataclasses import replace
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree as ET
+
+from PIL import Image
 
 from ...config import settings
 from ..evidence import inspect_image
@@ -126,7 +129,8 @@ def _extract_images(
             caption_order = int(caption_match.group(2)) if caption_match else None
             caption = _caption_suffix(caption_text, caption_match)
 
-            for offset, rel_id in enumerate(rel_ids, start=1):
+            media_items: list[tuple[str, str, str]] = []
+            for rel_id in rel_ids:
                 target = relationships.get(rel_id)
                 source_media_path = _resolve_media_path(target or "")
                 extension = Path(source_media_path).suffix.lower()
@@ -141,67 +145,90 @@ def _extract_images(
                         )
                     )
                     continue
+                media_items.append((rel_id, source_media_path, extension))
 
-                section_code = caption_section_code
-                if caption_order is not None and offset == 1:
-                    sort_order = caption_order
-                else:
-                    section_counts[section_code] += 1
-                    sort_order = section_counts[section_code]
-                section_counts[section_code] = max(section_counts[section_code], sort_order)
+            if not media_items:
+                continue
 
-                figure_label = f"图{section_code}-{sort_order}"
-                if caption_match:
-                    figure_label = f"图A-{caption_match.group(1)}-{caption_match.group(2)}"
-                if not caption_match:
-                    issues.append(
-                        DocxImportIssueModel(
-                            severity="warning",
-                            code="IMPORT_IMAGE_CAPTION_MISSING",
-                            message=f"{section_code} 第 {sort_order} 张图片未识别到图题注。",
-                            section_code=section_code,
-                            target=f"relationship:{rel_id}",
-                        )
-                    )
+            section_code = caption_section_code
+            if caption_order is not None:
+                sort_order = caption_order
+            else:
+                section_counts[section_code] += 1
+                sort_order = section_counts[section_code]
+            section_counts[section_code] = max(section_counts[section_code], sort_order)
 
-                label_key = _label_key(figure_label)
-                if label_key in used_labels:
-                    issues.append(
-                        DocxImportIssueModel(
-                            severity="warning",
-                            code="IMPORT_IMAGE_CAPTION_DUPLICATE",
-                            message=f"图题注重复：{figure_label}。",
-                            section_code=section_code,
-                            target=f"relationship:{rel_id}",
-                        )
-                    )
-                used_labels.add(label_key)
-
-                copied_path = _copy_media(package, source_media_path, output_dir, label_key, extension, issues, section_code, rel_id)
-                if copied_path is None:
-                    continue
-                metadata = _inspect_copied_image(copied_path, issues, section_code, rel_id)
-                if metadata is None:
-                    continue
-
-                images.append(
-                    DocxImportEvidenceImageModel(
+            figure_label = f"图{section_code}-{sort_order}"
+            if caption_match:
+                figure_label = f"图A-{caption_match.group(1)}-{caption_match.group(2)}"
+            relationship_id = ",".join(item[0] for item in media_items)
+            if not caption_match:
+                issues.append(
+                    DocxImportIssueModel(
+                        severity="warning",
+                        code="IMPORT_IMAGE_CAPTION_MISSING",
+                        message=f"{section_code} 第 {sort_order} 张图片未识别到图题注。",
                         section_code=section_code,
-                        figure_label=figure_label,
-                        caption=caption,
-                        sort_order=sort_order,
-                        file_path=_display_file_path(copied_path),
-                        original_name=Path(source_media_path).name,
-                        source_media_path=source_media_path,
-                        relationship_id=rel_id,
-                        pixel_width=_int_or_none(metadata.get("pixel_width")),
-                        pixel_height=_int_or_none(metadata.get("pixel_height")),
-                        dpi_x=_float_or_none(metadata.get("dpi_x")),
-                        dpi_y=_float_or_none(metadata.get("dpi_y")),
-                        display_width_in=_float_or_none(metadata.get("display_width_in")),
-                        display_height_in=_float_or_none(metadata.get("display_height_in")),
+                        target=f"relationship:{relationship_id}",
                     )
                 )
+            elif len(media_items) > 1:
+                issues.append(
+                    DocxImportIssueModel(
+                        severity="warning",
+                        code="IMPORT_IMAGE_CAPTION_SHARED",
+                        message=f"同一图题注关联多张图片，已按组合图片导入：{figure_label}。",
+                        section_code=section_code,
+                        target=f"relationship:{relationship_id}",
+                    )
+                )
+
+            label_key = _label_key(figure_label)
+            if label_key in used_labels:
+                issues.append(
+                    DocxImportIssueModel(
+                        severity="warning",
+                        code="IMPORT_IMAGE_CAPTION_DUPLICATE",
+                        message=f"图题注重复：{figure_label}。",
+                        section_code=section_code,
+                        target=f"relationship:{relationship_id}",
+                    )
+                )
+            used_labels.add(label_key)
+
+            if len(media_items) == 1:
+                rel_id, source_media_path, extension = media_items[0]
+                copied_path = _copy_media(package, source_media_path, output_dir, label_key, extension, issues, section_code, rel_id)
+                original_name = Path(source_media_path).name
+                source_media_display = source_media_path
+            else:
+                copied_path = _copy_combined_media(package, media_items, output_dir, label_key, issues, section_code)
+                original_name = f"{figure_label}.png"
+                source_media_display = ",".join(item[1] for item in media_items)
+            if copied_path is None:
+                continue
+            metadata = _inspect_copied_image(copied_path, issues, section_code, relationship_id)
+            if metadata is None:
+                continue
+
+            images.append(
+                DocxImportEvidenceImageModel(
+                    section_code=section_code,
+                    figure_label=figure_label,
+                    caption=caption,
+                    sort_order=sort_order,
+                    file_path=_display_file_path(copied_path),
+                    original_name=original_name,
+                    source_media_path=source_media_display,
+                    relationship_id=relationship_id,
+                    pixel_width=_int_or_none(metadata.get("pixel_width")),
+                    pixel_height=_int_or_none(metadata.get("pixel_height")),
+                    dpi_x=_float_or_none(metadata.get("dpi_x")),
+                    dpi_y=_float_or_none(metadata.get("dpi_y")),
+                    display_width_in=_float_or_none(metadata.get("display_width_in")),
+                    display_height_in=_float_or_none(metadata.get("display_height_in")),
+                )
+            )
     return images
 
 
@@ -336,12 +363,84 @@ def _copy_media(
 
     image_dir = output_dir / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
-    destination = image_dir / f"{label_key}{'.jpeg' if extension == '.jpg' else extension}"
+    destination = _unique_image_path(image_dir, label_key, ".jpeg" if extension == ".jpg" else extension)
+    destination.write_bytes(data)
+    return destination
+
+
+def _copy_combined_media(
+    package: zipfile.ZipFile,
+    media_items: list[tuple[str, str, str]],
+    output_dir: Path,
+    label_key: str,
+    issues: list[DocxImportIssueModel],
+    section_code: str,
+) -> Path | None:
+    images: list[tuple[str, Image.Image]] = []
+    for rel_id, source_media_path, _extension in media_items:
+        try:
+            data = package.read(source_media_path)
+        except KeyError:
+            issues.append(
+                DocxImportIssueModel(
+                    severity="warning",
+                    code="IMPORT_IMAGE_UNSUPPORTED_FORMAT",
+                    message=f"图片文件未在 DOCX 包中找到：{source_media_path}。",
+                    section_code=section_code,
+                    target=f"relationship:{rel_id}",
+                )
+            )
+            continue
+        try:
+            image = Image.open(BytesIO(data))
+            image.load()
+        except Exception:  # noqa: BLE001
+            issues.append(
+                DocxImportIssueModel(
+                    severity="warning",
+                    code="IMPORT_IMAGE_UNSUPPORTED_FORMAT",
+                    message=f"图片无法读取或文件已损坏：{source_media_path}。",
+                    section_code=section_code,
+                    target=f"relationship:{rel_id}",
+                )
+            )
+            continue
+        images.append((rel_id, _normalize_image_for_canvas(image)))
+
+    if not images:
+        return None
+
+    total_width = sum(image.width for _rel_id, image in images)
+    max_height = max(image.height for _rel_id, image in images)
+    canvas = Image.new("RGB", (total_width, max_height), color=(255, 255, 255))
+    offset_x = 0
+    for _rel_id, image in images:
+        offset_y = (max_height - image.height) // 2
+        canvas.paste(image, (offset_x, offset_y))
+        offset_x += image.width
+
+    image_dir = output_dir / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    destination = _unique_image_path(image_dir, label_key, ".png")
+    canvas.save(destination, format="PNG")
+    return destination
+
+
+def _normalize_image_for_canvas(image: Image.Image) -> Image.Image:
+    if image.mode in {"RGBA", "LA"}:
+        background = Image.new("RGB", image.size, color=(255, 255, 255))
+        alpha = image.getchannel("A") if image.mode == "RGBA" else image.getchannel(1)
+        background.paste(image.convert("RGBA"), mask=alpha)
+        return background
+    return image.convert("RGB")
+
+
+def _unique_image_path(image_dir: Path, label_key: str, extension: str) -> Path:
+    destination = image_dir / f"{label_key}{extension}"
     counter = 2
     while destination.exists():
-        destination = image_dir / f"{label_key}-{counter}{'.jpeg' if extension == '.jpg' else extension}"
+        destination = image_dir / f"{label_key}-{counter}{extension}"
         counter += 1
-    destination.write_bytes(data)
     return destination
 
 
