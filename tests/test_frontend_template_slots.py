@@ -120,17 +120,30 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("项目图片 {image.project_image_no ?? globalIndex + 1}", evidence_source)
         self.assertNotIn("图片ID", evidence_source)
 
-    def test_project_page_reindexes_cached_project_image_numbers_after_delete(self) -> None:
+    def test_project_page_reindexes_cached_project_images_and_references_after_delete(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 
         self.assertIn("function reindexCachedProjectImageNumbersAfterDelete", page_source)
         self.assertIn("details: Record<string, SectionDetail>", page_source)
         self.assertIn("const deletedProjectImageNo = deletedImage.project_image_no", page_source)
         self.assertIn("Object.entries(details).map", page_source)
-        self.assertIn("evidence_images: detail.evidence_images.map((image)", page_source)
-        self.assertIn("project_image_no: image.project_image_no - 1", page_source)
+        self.assertIn("evidence_images: detail.evidence_images.map((image, index)", page_source)
+        self.assertIn("const nextProjectImageNo =", page_source)
+        self.assertIn(": image.project_image_no - 1", page_source)
+        self.assertIn("project_image_no: nextProjectImageNo", page_source)
+        self.assertIn("figure_label: `图${code}-${index + 1}`", page_source)
+        self.assertIn("sort_order: index + 1", page_source)
+        self.assertIn("function removeDeletedImageReferencesFromRows", page_source)
+        self.assertIn("const deletedToken = `[[FIG:${deletedImage.id}]]`", page_source)
+        self.assertIn("row.record_text.includes(deletedToken)", page_source)
+        self.assertIn("row.record_text.includes(deletedFigureLabel)", page_source)
+        self.assertIn("reference.target_image_id === deletedImage.id", page_source)
+        self.assertIn("reference.token === deletedToken", page_source)
+        self.assertIn("const deletedImage = context?.deletedImage", page_source)
+        self.assertIn("removeDeletedImageReferencesFromRows(rows, deletedImage)", page_source)
+        self.assertIn("rowsContainDeletedImageReference(rows, deletedImage)", page_source)
         self.assertIn("context?.deletedImage", page_source)
-        self.assertIn("reindexCachedProjectImageNumbersAfterDelete(nextDetails, context.deletedImage)", page_source)
+        self.assertIn("reindexCachedProjectImageNumbersAfterDelete(nextDetails, deletedImage)", page_source)
         self.assertIn("onImagesChange={(images, context) => handleImagesChange(activeCode, images, context)}", page_source)
 
     def test_assessment_table_prefers_live_figure_label_over_stored_reference_display_text(self) -> None:

@@ -101,18 +101,63 @@ function reindexCachedProjectImageNumbersAfterDelete(
       code,
       {
         ...detail,
-        evidence_images: detail.evidence_images.map((image) => {
-          if (
+        evidence_images: detail.evidence_images.map((image, index) => {
+          const nextProjectImageNo =
             typeof image.project_image_no !== "number" ||
             image.project_image_no <= deletedProjectImageNo
-          ) {
-            return image;
-          }
-          return { ...image, project_image_no: image.project_image_no - 1 };
+              ? image.project_image_no
+              : image.project_image_no - 1;
+          return {
+            ...image,
+            sort_order: index + 1,
+            project_image_no: nextProjectImageNo,
+            figure_label: `图${code}-${index + 1}`
+          };
         })
       }
     ])
   );
+}
+
+function rowsContainDeletedImageReference(rows: AssessmentRowInput[], deletedImage: EvidenceImage) {
+  const deletedToken = `[[FIG:${deletedImage.id}]]`;
+  const deletedFigureLabel = deletedImage.figure_label?.trim() ?? "";
+  return rows.some((row) => {
+    const rowReferencesDeletedImage = (row.cross_references ?? []).some(
+      (reference) => reference.target_image_id === deletedImage.id || reference.token === deletedToken
+    );
+    return (
+      rowReferencesDeletedImage ||
+      row.record_text.includes(deletedToken) ||
+      Boolean(deletedFigureLabel && row.record_text.includes(deletedFigureLabel))
+    );
+  });
+}
+
+function removeDeletedImageReferencesFromRows(rows: AssessmentRowInput[], deletedImage: EvidenceImage) {
+  const deletedToken = `[[FIG:${deletedImage.id}]]`;
+  const deletedFigureLabel = deletedImage.figure_label?.trim() ?? "";
+  return rows.map((row) => {
+    const recordText = removeDeletedImageReferenceText(row.record_text, [deletedToken, deletedFigureLabel]);
+    const crossReferences = (row.cross_references ?? []).filter(
+      (reference) => reference.target_image_id !== deletedImage.id && reference.token !== deletedToken
+    );
+    return {
+      ...row,
+      record_text: recordText,
+      cross_references: crossReferences
+    };
+  });
+}
+
+function removeDeletedImageReferenceText(recordText: string, referenceTexts: string[]) {
+  return referenceTexts
+    .filter((text) => text.trim())
+    .reduce((text, referenceText) => text.split(referenceText).join(""), recordText)
+    .replace(/[、，,]\s*[、，,]+/g, "、")
+    .replace(/([、，,])\s*([。；;])/g, "$2")
+    .replace(/[、，,]\s*$/g, "")
+    .replace(/\s{2,}/g, " ");
 }
 
 export function ProjectPage() {
@@ -537,6 +582,11 @@ export function ProjectPage() {
   }
 
   function handleImagesChange(code: string, images: EvidenceImage[], context?: EvidenceImagesChangeContext) {
+    const rows = draftRows[code] ?? [];
+    const deletedImage = context?.deletedImage;
+    const shouldCleanDeletedReferences = Boolean(
+      deletedImage && rowsContainDeletedImageReference(rows, deletedImage)
+    );
     setSectionDetails((current) => {
       const detail = current[code];
       if (!detail) {
@@ -549,11 +599,27 @@ export function ProjectPage() {
           evidence_images: images
         }
       };
-      if (context?.deletedImage) {
-        return reindexCachedProjectImageNumbersAfterDelete(nextDetails, context.deletedImage);
+      if (deletedImage) {
+        return reindexCachedProjectImageNumbersAfterDelete(nextDetails, deletedImage);
       }
       return nextDetails;
     });
+    if (deletedImage) {
+      setDraftRows((current) => {
+        const rows = current[code];
+        if (!rows) {
+          return current;
+        }
+        return {
+          ...current,
+          [code]: removeDeletedImageReferencesFromRows(rows, deletedImage)
+        };
+      });
+      if (shouldCleanDeletedReferences) {
+        setDirtySections((current) => new Set([...current, code]));
+        setSaveMessage(undefined);
+      }
+    }
   }
 
   async function handleInlineEvidenceUpload(code: string, files: File[], options?: { caption?: string }) {
