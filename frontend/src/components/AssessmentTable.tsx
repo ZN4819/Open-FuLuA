@@ -1158,7 +1158,7 @@ export function AssessmentTable({
   ) : null;
 
   return (
-    <div className="editor-block">
+    <div className="editor-block editor-workspace-panel">
       {pastedImageUploadDialog}
       {figureHoverPreview ? (
         <aside className="figure-hover-preview" style={{ top: `${figureHoverPreview.top}px` }} aria-label="图片引用预览">

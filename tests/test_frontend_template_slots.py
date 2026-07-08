@@ -81,6 +81,22 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn(".project-import-backdrop", styles_source)
         self.assertIn(".project-import-dialog", styles_source)
 
+    def test_project_workspace_uses_command_bar_layout(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("project-command-bar", page_source)
+        self.assertIn("project-command-group-primary", page_source)
+        self.assertIn("project-command-group-review", page_source)
+        self.assertIn("project-command-group-export", page_source)
+        self.assertIn("command-group-label", page_source)
+
+        self.assertIn(".project-command-bar", styles_source)
+        self.assertIn(".project-command-group", styles_source)
+        self.assertIn(".project-command-group-primary", styles_source)
+        self.assertIn(".command-group-label", styles_source)
+        self.assertIn(".editor-workspace-panel", styles_source)
+
     def test_project_page_removes_render_preview_entry(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 

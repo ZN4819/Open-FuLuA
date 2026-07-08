@@ -1004,8 +1004,9 @@ export function ProjectPage() {
                 {activeCode ? <span className="status-chip">正在编辑 {activeCode}</span> : null}
               </div>
             </div>
-            <div className="workspace-actions" aria-label="项目操作">
-              <div className="action-group">
+            <div className="workspace-actions project-command-bar" aria-label="项目操作">
+              <div className="action-group project-command-group project-command-group-primary">
+                <span className="command-group-label">编辑</span>
                 <button type="button" className="secondary-button" onClick={handleBackToProjects} disabled={isSavingAny}>
                   返回项目列表
                 </button>
@@ -1038,12 +1039,14 @@ export function ProjectPage() {
                   {isTemplateManagerOpen ? "收起模板" : "模板管理"}
                 </button>
               </div>
-              <div className="action-group">
+              <div className="action-group project-command-group project-command-group-review">
+                <span className="command-group-label">检查</span>
                 <button type="button" className="secondary-button" onClick={handleValidate} disabled={isValidating || isSavingAny}>
                   {isValidating ? "校验中..." : "校验项目"}
                 </button>
               </div>
-              <div className="action-group">
+              <div className="action-group project-command-group project-command-group-export">
+                <span className="command-group-label">交付</span>
                 <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null || isSavingAny}>
                   {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
                 </button>

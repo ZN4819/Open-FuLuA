@@ -2899,8 +2899,15 @@ textarea:hover {
 }
 
 .project-header {
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--color-border);
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
+  padding: 20px;
+  margin: -4px -4px 0;
+  background: #ffffff;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
 }
 
 .project-header h2,
@@ -2912,15 +2919,51 @@ textarea:hover {
 }
 
 .workspace-actions {
-  align-items: center;
+  align-items: stretch;
 }
 
-.action-group {
+.project-command-bar {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(132px, auto) minmax(300px, auto);
+  gap: 10px;
+  align-content: start;
+  justify-content: stretch;
+}
+
+.action-group,
+.project-command-group {
   padding: 3px;
   background: #ffffff;
   border: 0;
   border-radius: 8px;
   box-shadow: var(--shadow-ring);
+}
+
+.project-command-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+}
+
+.project-command-group-primary {
+  justify-content: flex-start;
+}
+
+.project-command-group-review,
+.project-command-group-export {
+  justify-content: flex-end;
+}
+
+.command-group-label {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .export-actions button,
@@ -3103,7 +3146,17 @@ textarea:hover {
 }
 
 .editor-toolbar {
-  padding-top: 4px;
+  align-items: stretch;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.editor-workspace-panel {
+  display: grid;
+  gap: 16px;
 }
 
 .editor-toolbar-main h3 {
@@ -3144,6 +3197,32 @@ textarea:hover {
   background: #ffffff;
 }
 
+.technical-object-toolbar {
+  margin-top: -2px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.technical-filter-controls {
+  width: min(560px, 100%);
+}
+
+.technical-entry-row {
+  gap: 10px;
+}
+
+.technical-entry-row.with-subsystem {
+  align-items: end;
+  width: 100%;
+}
+
+.subsystem-controls,
+.technical-object-add {
+  min-width: 0;
+}
+
 .technical-object-list,
 .subsystem-list,
 .unassigned-object-list {
@@ -3174,7 +3253,17 @@ textarea:hover {
 
 .table-scroll {
   border: 0;
+  margin-top: 2px;
   background: #ffffff;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.evidence-panel {
+  padding: 16px;
+  background: #ffffff;
+  border: 0;
+  border-radius: 10px;
   box-shadow: var(--shadow-card);
 }
 
@@ -3418,6 +3507,17 @@ textarea:hover {
   .project-list-tools,
   .workspace-actions,
   .section-summary-meta {
+    justify-content: flex-start;
+  }
+
+  .project-command-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .project-command-group,
+  .project-command-group-primary,
+  .project-command-group-review,
+  .project-command-group-export {
     justify-content: flex-start;
   }
 
