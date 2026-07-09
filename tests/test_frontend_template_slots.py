@@ -225,11 +225,14 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("function storedRecordText", table_source)
         self.assertIn("function crossReferencesForRecordText", table_source)
         self.assertIn("const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile)", table_source)
-        self.assertIn("const figureReferenceParts = renderRecordRichTextParts(recordDisplayText, figureReferenceItems)", table_source)
+        self.assertIn("function renderRecordRichEditorContent", table_source)
+        self.assertIn("const parts = renderRecordRichTextParts(value, references);", table_source)
+        self.assertIn("value={recordDisplayText}", table_source)
+        self.assertIn("references={figureReferenceItems}", table_source)
         self.assertIn("record-rich-editor", table_source)
         self.assertIn("contentEditable", table_source)
         self.assertIn("function updateRecordTextFromEditor", table_source)
-        self.assertIn("const displayText = recordEditorPlainText(target);", table_source)
+        self.assertIn("onInputChange={(displayText, target) => updateRecordTextFromEditor(index, row, displayText, target)}", table_source)
         self.assertIn("const recordText = storedRecordText(displayText, row, evidenceImages, sectionCode, profile)", table_source)
         self.assertIn("record_text: recordText", table_source)
         self.assertIn("cross_references: crossReferencesForRecordText(", table_source)
@@ -328,6 +331,21 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("const previewHeight = 480", table_source)
         self.assertIn("width: min(420px, calc(100vw - 32px))", styles_source)
         self.assertIn("max-height: 360px", styles_source)
+
+    def test_record_rich_editor_preserves_input_composition_and_caret(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("function RecordRichEditor", table_source)
+        self.assertIn("function renderRecordRichEditorContent", table_source)
+        self.assertIn("function restoreContentEditableSelection", table_source)
+        self.assertIn("useLayoutEffect", table_source)
+        self.assertIn("isComposingRef", table_source)
+        self.assertIn("onCompositionStart", table_source)
+        self.assertIn("onCompositionEnd", table_source)
+        self.assertIn("document.activeElement === editor", table_source)
+        self.assertIn("if (isComposingRef.current)", table_source)
+        self.assertIn("currentText === value", table_source)
+        self.assertNotIn("figureReferenceParts.map((part, partIndex)", table_source)
 
     def test_assessment_table_supports_inline_evidence_upload(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")

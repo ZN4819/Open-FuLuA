@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent, type MouseEvent } from "react";
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
 
@@ -361,6 +361,158 @@ function textSelectionFromContentEditable(element: HTMLElement): TextSelection |
     start: startRange.toString().length,
     end: endRange.toString().length
   };
+}
+
+function textPositionAtOffset(element: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let remainingOffset = Math.max(0, offset);
+  let lastTextNode: Text | null = null;
+  let node = walker.nextNode();
+
+  while (node) {
+    const textNode = node as Text;
+    lastTextNode = textNode;
+    if (remainingOffset <= textNode.data.length) {
+      return { node: textNode, offset: remainingOffset };
+    }
+    remainingOffset -= textNode.data.length;
+    node = walker.nextNode();
+  }
+
+  if (lastTextNode) {
+    return { node: lastTextNode, offset: lastTextNode.data.length };
+  }
+  return { node: element, offset: 0 };
+}
+
+function restoreContentEditableSelection(element: HTMLElement, selection: TextSelection) {
+  const currentSelection = window.getSelection();
+  if (!currentSelection) {
+    return;
+  }
+
+  const range = document.createRange();
+  const start = textPositionAtOffset(element, selection.start);
+  const end = textPositionAtOffset(element, selection.end);
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  currentSelection.removeAllRanges();
+  currentSelection.addRange(range);
+}
+
+function renderRecordRichEditorContent(
+  element: HTMLElement,
+  value: string,
+  references: FigureReferenceHoverItem[]
+) {
+  const fragment = document.createDocumentFragment();
+  const parts = renderRecordRichTextParts(value, references);
+
+  parts.forEach((part, partIndex) => {
+    if (!part.item) {
+      fragment.append(document.createTextNode(part.text));
+      return;
+    }
+
+    const span = document.createElement("span");
+    span.className = "record-reference-token";
+    span.dataset.referenceLabel = part.item.displayText;
+    span.dataset.referenceImageId = String(part.item.image.id);
+    span.dataset.referencePartIndex = String(partIndex);
+    span.textContent = part.text;
+    fragment.append(span);
+  });
+
+  element.replaceChildren(fragment);
+}
+
+type RecordRichEditorProps = {
+  value: string;
+  references: FigureReferenceHoverItem[];
+  onEditorRef: (node: HTMLDivElement | null) => void;
+  onInputChange: (displayText: string, target: HTMLElement) => void;
+  onSelectionChange: (target: HTMLElement) => void;
+  onMouseMove: (event: MouseEvent<HTMLElement>) => void;
+  onMouseLeave: () => void;
+  onPaste: (event: ClipboardEvent<HTMLElement>) => void;
+};
+
+function RecordRichEditor({
+  value,
+  references,
+  onEditorRef,
+  onInputChange,
+  onSelectionChange,
+  onMouseMove,
+  onMouseLeave,
+  onPaste
+}: RecordRichEditorProps) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const isComposingRef = useRef(false);
+  const referenceKey = references.map((item) => `${item.image.id}:${item.displayText}`).join("|");
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const currentText = recordEditorPlainText(editor);
+    if (isComposingRef.current) {
+      return;
+    }
+    if (document.activeElement === editor && currentText === value) {
+      return;
+    }
+
+    const selection = document.activeElement === editor ? textSelectionFromContentEditable(editor) : undefined;
+    renderRecordRichEditorContent(editor, value, references);
+    if (document.activeElement === editor && selection) {
+      restoreContentEditableSelection(editor, selection);
+    }
+  }, [value, referenceKey]);
+
+  function setEditorNode(node: HTMLDivElement | null) {
+    editorRef.current = node;
+    onEditorRef(node);
+  }
+
+  function handleInput(event: FormEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    if (isComposingRef.current) {
+      onSelectionChange(target);
+      return;
+    }
+    onSelectionChange(target);
+    onInputChange(recordEditorPlainText(target), target);
+  }
+
+  return (
+    <div
+      className="record-rich-editor"
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      data-placeholder="请输入结果记录"
+      ref={setEditorNode}
+      onInput={handleInput}
+      onClick={(event) => onSelectionChange(event.currentTarget)}
+      onKeyUp={(event) => onSelectionChange(event.currentTarget)}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      onSelect={(event) => onSelectionChange(event.currentTarget)}
+      onPaste={onPaste}
+      onCompositionStart={() => {
+        isComposingRef.current = true;
+      }}
+      onCompositionEnd={(event) => {
+        isComposingRef.current = false;
+        onSelectionChange(event.currentTarget);
+        onInputChange(recordEditorPlainText(event.currentTarget), event.currentTarget);
+      }}
+    />
+  );
 }
 
 function figurePreviewTop(clientY: number) {
@@ -908,9 +1060,8 @@ export function AssessmentTable({
     }
   }
 
-  function updateRecordTextFromEditor(index: number, row: AssessmentRowInput, target: HTMLElement) {
+  function updateRecordTextFromEditor(index: number, row: AssessmentRowInput, displayText: string, target: HTMLElement) {
     rememberRecordSelection(index, target);
-    const displayText = recordEditorPlainText(target);
     const recordText = storedRecordText(displayText, row, evidenceImages, sectionCode, profile);
     updateRow(index, {
       record_text: recordText,
@@ -1458,7 +1609,6 @@ export function AssessmentTable({
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
                     const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile);
                     const figureReferenceItems = recordFigureReferenceItems(row, evidenceImages, sectionCode, profile);
-                    const figureReferenceParts = renderRecordRichTextParts(recordDisplayText, figureReferenceItems);
                     return (
                       <tr key={`${sectionCode}-${group.unit}-${index}`}>
                         {entryIndex === 0 ? (
@@ -1489,38 +1639,18 @@ export function AssessmentTable({
                         <td className="record-cell">
                           <div className="record-input-group">
                             <div className="record-textarea-shell">
-                              <div
-                                className="record-rich-editor"
-                                contentEditable
-                                suppressContentEditableWarning
-                                role="textbox"
-                                aria-multiline="true"
-                                data-placeholder="请输入结果记录"
-                                ref={(node) => {
+                              <RecordRichEditor
+                                value={recordDisplayText}
+                                references={figureReferenceItems}
+                                onEditorRef={(node) => {
                                   recordEditorRefs.current[index] = node;
                                 }}
-                                onInput={(event: FormEvent<HTMLDivElement>) => updateRecordTextFromEditor(index, row, event.currentTarget)}
-                                onClick={(event) => rememberRecordSelection(index, event.currentTarget)}
-                                onKeyUp={(event) => rememberRecordSelection(index, event.currentTarget)}
+                                onInputChange={(displayText, target) => updateRecordTextFromEditor(index, row, displayText, target)}
+                                onSelectionChange={(target) => rememberRecordSelection(index, target)}
                                 onMouseMove={(event) => handleRecordReferenceHover(event, row)}
                                 onMouseLeave={() => setFigureHoverPreview(null)}
-                                onSelect={(event) => rememberRecordSelection(index, event.currentTarget)}
                                 onPaste={(event) => void uploadPastedEvidenceImages(index, event)}
-                              >
-                                {figureReferenceParts.map((part, partIndex) =>
-                                  part.item ? (
-                                    <span
-                                      className="record-reference-token"
-                                      data-reference-label={part.item.displayText}
-                                      key={`${part.item.image.id}-${partIndex}`}
-                                    >
-                                      {part.text}
-                                    </span>
-                                  ) : (
-                                    <span key={`record-text-${partIndex}`}>{part.text}</span>
-                                  )
-                                )}
-                              </div>
+                              />
                             </div>
                             <div className="record-control-row">
                               <select
