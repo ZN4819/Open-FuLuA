@@ -188,7 +188,13 @@ docs/DOCX导入新项目功能实施计划.md
 .\scripts\start_dev.ps1
 ```
 
-脚本会启动后端 `http://127.0.0.1:8000` 和前端 `http://127.0.0.1:5173`，并将日志写入 `storage/backend-dev.*.log` 与 `storage/frontend-dev.*.log`。
+脚本会启动后端 `http://127.0.0.1:8000` 和前端 `http://127.0.0.1:5174`，并将日志写入 `storage/backend-dev.*.log` 与 `storage/frontend-dev.*.log`。
+
+如需临时使用其他前端端口，可运行：
+
+```powershell
+.\scripts\start_dev.ps1 -FrontendPort 5180
+```
 
 ```powershell
 cd backend
@@ -314,7 +320,7 @@ npm run dev
 默认前端地址：
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:5174
 ```
 
 如需调整后端地址，可设置：

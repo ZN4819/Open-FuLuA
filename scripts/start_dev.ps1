@@ -1,3 +1,8 @@
+param(
+    [int] $FrontendPort = 5174,
+    [int] $BackendPort = 8000
+)
+
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -43,21 +48,21 @@ function Start-Backend {
         throw 'Backend virtual environment was not found. Create backend/.venv and install requirements.txt first.'
     }
 
-    if (Test-HttpReady -Url 'http://127.0.0.1:8000/api/health') {
-        Write-Host 'Backend already responds on http://127.0.0.1:8000.'
+    if (Test-HttpReady -Url "http://127.0.0.1:$BackendPort/api/health") {
+        Write-Host "Backend already responds on http://127.0.0.1:$BackendPort."
         return
     }
 
     $process = Start-Process `
         -FilePath $BackendPython `
-        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000') `
+        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', $BackendPort) `
         -WorkingDirectory $BackendDir `
         -RedirectStandardOutput $BackendOut `
         -RedirectStandardError $BackendErr `
         -WindowStyle Hidden `
         -PassThru
 
-    Write-Host "Backend started on http://127.0.0.1:8000 (PID: $($process.Id))."
+    Write-Host "Backend started on http://127.0.0.1:$BackendPort (PID: $($process.Id))."
 }
 
 function Start-Frontend {
@@ -66,21 +71,21 @@ function Start-Frontend {
         throw 'npm.cmd was not found. Install Node.js and npm first.'
     }
 
-    if (Test-HttpReady -Url 'http://127.0.0.1:5173/') {
-        Write-Host 'Frontend already responds on http://127.0.0.1:5173.'
+    if (Test-HttpReady -Url "http://127.0.0.1:$FrontendPort/") {
+        Write-Host "Frontend already responds on http://127.0.0.1:$FrontendPort."
         return
     }
 
     $process = Start-Process `
         -FilePath $npm.Source `
-        -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173') `
+        -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', $FrontendPort) `
         -WorkingDirectory $FrontendDir `
         -RedirectStandardOutput $FrontendOut `
         -RedirectStandardError $FrontendErr `
         -WindowStyle Hidden `
         -PassThru
 
-    Write-Host "Frontend started on http://127.0.0.1:5173 (PID: $($process.Id))."
+    Write-Host "Frontend started on http://127.0.0.1:$FrontendPort (PID: $($process.Id))."
 }
 
 New-Item -ItemType Directory -Force -Path $StorageDir | Out-Null
@@ -91,8 +96,8 @@ Start-Frontend
 
 Write-Host ''
 Write-Host 'Local development services are ready:'
-Write-Host '  Frontend: http://127.0.0.1:5173'
-Write-Host '  Backend:  http://127.0.0.1:8000'
+Write-Host "  Frontend: http://127.0.0.1:$FrontendPort"
+Write-Host "  Backend:  http://127.0.0.1:$BackendPort"
 Write-Host ''
 Write-Host 'Logs:'
 Write-Host "  Backend stdout:  $BackendOut"
