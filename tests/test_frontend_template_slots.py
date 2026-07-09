@@ -170,14 +170,14 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
     def test_project_page_reindexes_cached_project_images_and_references_after_delete(self) -> None:
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
 
+        self.assertIn("function reindexCachedProjectImages", page_source)
         self.assertIn("function reindexCachedProjectImageNumbersAfterDelete", page_source)
         self.assertIn("details: Record<string, SectionDetail>", page_source)
         self.assertIn("const deletedProjectImageNo = deletedImage.project_image_no", page_source)
         self.assertIn("Object.entries(details).map", page_source)
-        self.assertIn("evidence_images: detail.evidence_images.map((image, index)", page_source)
-        self.assertIn("const nextProjectImageNo =", page_source)
-        self.assertIn(": image.project_image_no - 1", page_source)
-        self.assertIn("project_image_no: nextProjectImageNo", page_source)
+        self.assertIn("const evidenceImages = detail.evidence_images.map((image, index)", page_source)
+        self.assertIn("let projectImageNo = 1", page_source)
+        self.assertIn("project_image_no: projectImageNo++", page_source)
         self.assertIn("figure_label: `图${code}-${index + 1}`", page_source)
         self.assertIn("sort_order: index + 1", page_source)
         self.assertIn("function removeDeletedImageReferencesFromRows", page_source)
@@ -192,6 +192,26 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("context?.deletedImage", page_source)
         self.assertIn("reindexCachedProjectImageNumbersAfterDelete(nextDetails, deletedImage)", page_source)
         self.assertIn("onImagesChange={(images, context) => handleImagesChange(activeCode, images, context)}", page_source)
+
+    def test_deleting_assessment_objects_removes_only_orphaned_referenced_images(self) -> None:
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("deleteEvidenceImage", page_source)
+        self.assertIn("function referencedImageIdsFromRows", page_source)
+        self.assertIn("function orphanedImageIdsForDeletedRows", page_source)
+        self.assertIn("const remainingImageIds = referencedImageIdsFromRows(remainingRows, images);", page_source)
+        self.assertIn("!remainingImageIds.has(imageId)", page_source)
+        self.assertIn("function handleRemoveUnusedImagesForRows", page_source)
+        self.assertIn("await deleteEvidenceImage(image.id)", page_source)
+        self.assertIn("reindexCachedProjectImages(nextDetails)", page_source)
+        self.assertIn("onRemoveUnusedImagesForRows={(deletedRows, remainingRows) =>", page_source)
+
+        self.assertIn("onRemoveUnusedImagesForRows?:", table_source)
+        self.assertIn("function removeRowsAndCleanupImages", table_source)
+        self.assertIn("onRemoveUnusedImagesForRows?.(deletedRows, nextRows);", table_source)
+        self.assertIn("removeRowsAndCleanupImages(removedRows, nextRows);", table_source)
+        self.assertIn("removeRowsAndCleanupImages([deletedRow], nextRows);", table_source)
 
     def test_assessment_table_prefers_live_figure_label_over_stored_reference_display_text(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")

@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import {
   createProjectFromDocxImport,
   createProject,
+  deleteEvidenceImage,
   deleteProject,
   exportProjectDocx,
   exportRecordTemplateSlots,
@@ -164,6 +165,74 @@ function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   }));
 }
 
+function referencedImageIdsFromRows(rows: AssessmentRowInput[], images: EvidenceImage[]) {
+  const imageIds = new Set<number>();
+  const imagesByToken = new Map(images.map((image) => [`[[FIG:${image.id}]]`, image.id]));
+  const imagesByLabel = new Map(
+    images
+      .map((image) => [image.figure_label?.trim() ?? "", image.id] as const)
+      .filter(([label]) => Boolean(label))
+  );
+
+  rows.forEach((row) => {
+    (row.cross_references ?? []).forEach((reference) => {
+      if (typeof reference.target_image_id === "number") {
+        imageIds.add(reference.target_image_id);
+      }
+      const tokenImageId = imagesByToken.get(reference.token);
+      if (typeof tokenImageId === "number") {
+        imageIds.add(tokenImageId);
+      }
+    });
+
+    imagesByToken.forEach((imageId, token) => {
+      if (row.record_text.includes(token)) {
+        imageIds.add(imageId);
+      }
+    });
+    imagesByLabel.forEach((imageId, label) => {
+      if (row.record_text.includes(label)) {
+        imageIds.add(imageId);
+      }
+    });
+  });
+
+  return imageIds;
+}
+
+function orphanedImageIdsForDeletedRows(
+  deletedRows: AssessmentRowInput[],
+  remainingRows: AssessmentRowInput[],
+  images: EvidenceImage[]
+) {
+  const deletedImageIds = referencedImageIdsFromRows(deletedRows, images);
+  const remainingImageIds = referencedImageIdsFromRows(remainingRows, images);
+  return Array.from(deletedImageIds).filter((imageId) => !remainingImageIds.has(imageId));
+}
+
+function reindexCachedProjectImages(details: Record<string, SectionDetail>): Record<string, SectionDetail> {
+  let projectImageNo = 1;
+  const entries = Object.entries(details).sort(
+    ([, first], [, second]) => first.section.sort_order - second.section.sort_order
+  );
+  const reindexedEntries = entries.map(([code, detail]) => {
+    const evidenceImages = detail.evidence_images.map((image, index) => ({
+      ...image,
+      sort_order: index + 1,
+      project_image_no: projectImageNo++,
+      figure_label: `图${code}-${index + 1}`
+    }));
+    return [
+      code,
+      {
+        ...detail,
+        evidence_images: evidenceImages
+      }
+    ] as const;
+  });
+  return Object.fromEntries(reindexedEntries);
+}
+
 function reindexCachedProjectImageNumbersAfterDelete(
   details: Record<string, SectionDetail>,
   deletedImage: EvidenceImage
@@ -173,27 +242,7 @@ function reindexCachedProjectImageNumbersAfterDelete(
     return details;
   }
 
-  return Object.fromEntries(
-    Object.entries(details).map(([code, detail]) => [
-      code,
-      {
-        ...detail,
-        evidence_images: detail.evidence_images.map((image, index) => {
-          const nextProjectImageNo =
-            typeof image.project_image_no !== "number" ||
-            image.project_image_no <= deletedProjectImageNo
-              ? image.project_image_no
-              : image.project_image_no - 1;
-          return {
-            ...image,
-            sort_order: index + 1,
-            project_image_no: nextProjectImageNo,
-            figure_label: `图${code}-${index + 1}`
-          };
-        })
-      }
-    ])
-  );
+  return reindexCachedProjectImages(details);
 }
 
 function rowsContainDeletedImageReference(rows: AssessmentRowInput[], deletedImage: EvidenceImage) {
@@ -857,6 +906,63 @@ export function ProjectPage() {
     }
   }
 
+  async function handleRemoveUnusedImagesForRows(
+    code: string,
+    deletedRows: AssessmentRowInput[],
+    remainingRows: AssessmentRowInput[]
+  ) {
+    const detail = sectionDetails[code];
+    if (!detail || deletedRows.length === 0) {
+      return;
+    }
+
+    const orphanedImageIds = new Set(
+      orphanedImageIdsForDeletedRows(deletedRows, remainingRows, detail.evidence_images)
+    );
+    const imagesToRemove = detail.evidence_images.filter((image) => orphanedImageIds.has(image.id));
+    if (imagesToRemove.length === 0) {
+      return;
+    }
+
+    setError(undefined);
+    try {
+      for (const image of imagesToRemove) {
+        await deleteEvidenceImage(image.id);
+      }
+      const removedImageIds = new Set(imagesToRemove.map((image) => image.id));
+      setSectionDetails((current) => {
+        const nextDetails = Object.fromEntries(
+          Object.entries(current).map(([sectionCode, sectionDetail]) => [
+            sectionCode,
+            {
+              ...sectionDetail,
+              evidence_images: sectionDetail.evidence_images.filter((image) => !removedImageIds.has(image.id))
+            }
+          ])
+        );
+        return reindexCachedProjectImages(nextDetails);
+      });
+      setDraftRows((current) => {
+        const rows = current[code];
+        if (!rows) {
+          return current;
+        }
+        const cleanedRows = imagesToRemove.reduce(
+          (nextRows, image) => removeDeletedImageReferencesFromRows(nextRows, image),
+          rows
+        );
+        return {
+          ...current,
+          [code]: cleanedRows
+        };
+      });
+      setDirtySections((current) => new Set([...current, code]));
+      setSaveMessage(undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除测评对象关联图片失败");
+    }
+  }
+
   async function handleInlineEvidenceUpload(code: string, files: File[], options?: { caption?: string }) {
     if (!project || files.length === 0) {
       return [];
@@ -1176,6 +1282,9 @@ export function ProjectPage() {
               onSubsystemUiStateChange={(updater, options) => handleSubsystemUiStateChange(activeCode, updater, options)}
               onVisibleEvidenceFilterChange={(filter) => handleEvidenceFilterChange(activeCode, filter)}
               onUploadEvidenceImages={(files, options) => handleInlineEvidenceUpload(activeCode, files, options)}
+              onRemoveUnusedImagesForRows={(deletedRows, remainingRows) =>
+                handleRemoveUnusedImagesForRows(activeCode, deletedRows, remainingRows)
+              }
               onSave={handleSaveSection}
             />
           ) : null}

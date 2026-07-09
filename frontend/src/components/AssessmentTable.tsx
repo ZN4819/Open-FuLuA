@@ -40,6 +40,7 @@ type AssessmentTableProps = {
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
   onUploadEvidenceImages?: (files: File[], options?: EvidenceUploadOptions) => Promise<EvidenceImage[]>;
+  onRemoveUnusedImagesForRows?: (deletedRows: AssessmentRowInput[], remainingRows: AssessmentRowInput[]) => void | Promise<void>;
   onSave: () => void;
 };
 
@@ -773,6 +774,7 @@ export function AssessmentTable({
   onSubsystemUiStateChange,
   onVisibleEvidenceFilterChange,
   onUploadEvidenceImages,
+  onRemoveUnusedImagesForRows,
   onSave
 }: AssessmentTableProps) {
   const technical = isTechnicalSection(sectionCode);
@@ -906,6 +908,12 @@ export function AssessmentTable({
     onRowsChange(next);
   }
 
+  function removeRowsAndCleanupImages(deletedRows: AssessmentRowInput[], nextRows: AssessmentRowInput[]) {
+    recordSelections.current = {};
+    onRowsChange(nextRows);
+    onRemoveUnusedImagesForRows?.(deletedRows, nextRows);
+  }
+
   function updateMetric(index: number, key: string, value: string) {
     const row = normalizedRows[index];
     updateRow(index, {
@@ -936,18 +944,17 @@ export function AssessmentTable({
     if (!sectionSupportsSubsystem || !subsystemName) {
       return;
     }
-    recordSelections.current = {};
     setManualSubsystemNamesForSection((current) => current.filter((item) => item.trim() !== subsystemName));
     if (activeSubsystemName === subsystemName) {
       setActiveSubsystemForSection("");
     }
-    onRowsChange(
-      normalizeRows(
-        normalizedRows.filter((row) => row.subsystem?.trim() !== subsystemName),
-        unitOrder,
-        technical
-      )
+    const removedRows = normalizedRows.filter((row) => row.subsystem?.trim() === subsystemName);
+    const nextRows = normalizeRows(
+      normalizedRows.filter((row) => row.subsystem?.trim() !== subsystemName),
+      unitOrder,
+      technical
     );
+    removeRowsAndCleanupImages(removedRows, nextRows);
   }
 
   function assignUnassignedObjectsToSubsystem(objectNameValue?: string) {
@@ -1037,23 +1044,27 @@ export function AssessmentTable({
     if (!technical || !objectName) {
       return;
     }
-    recordSelections.current = {};
-    onRowsChange(
-      normalizeRows(
-        normalizedRows.filter(
-          (row) =>
-            row.object_name.trim() !== objectName ||
-            !isSectionManagedTechnicalObjectUnit(sectionCode, row.unit) ||
-            (sectionSupportsSubsystem && activeSubsystemName && row.subsystem?.trim() !== activeSubsystemName)
-        ),
-        unitOrder,
-        technical
-      )
+    const shouldRemoveRow = (row: AssessmentRowInput) =>
+      row.object_name.trim() === objectName &&
+      isSectionManagedTechnicalObjectUnit(sectionCode, row.unit) &&
+      !(sectionSupportsSubsystem && activeSubsystemName && row.subsystem?.trim() !== activeSubsystemName);
+    const removedRows = normalizedRows.filter(shouldRemoveRow);
+    const nextRows = normalizeRows(
+      normalizedRows.filter((row) => !shouldRemoveRow(row)),
+      unitOrder,
+      technical
     );
+    removeRowsAndCleanupImages(removedRows, nextRows);
   }
 
   function removeRow(index: number) {
-    onRowsChange(normalizeRows(normalizedRows.filter((_, rowIndex) => rowIndex !== index), unitOrder, technical));
+    const deletedRow = normalizedRows[index];
+    const nextRows = normalizeRows(normalizedRows.filter((_, rowIndex) => rowIndex !== index), unitOrder, technical);
+    if (deletedRow) {
+      removeRowsAndCleanupImages([deletedRow], nextRows);
+      return;
+    }
+    onRowsChange(nextRows);
   }
 
   function updateUnitScoreForUnit(unit: string, value: string) {
