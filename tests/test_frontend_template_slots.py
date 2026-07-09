@@ -347,6 +347,18 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertIn("currentText === value", table_source)
         self.assertNotIn("figureReferenceParts.map((part, partIndex)", table_source)
 
+    def test_record_rich_editor_splits_plain_text_typed_after_reference_token(self) -> None:
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("function normalizeRecordReferenceTokenText", table_source)
+        self.assertIn('querySelectorAll<HTMLElement>(".record-reference-token")', table_source)
+        self.assertIn("const suffix = tokenText.slice(referenceLabel.length);", table_source)
+        self.assertIn("token.textContent = referenceLabel;", table_source)
+        self.assertIn("token.after(document.createTextNode(suffix));", table_source)
+        self.assertIn("normalizeRecordReferenceTokenText(target);", table_source)
+        self.assertIn("normalizeRecordReferenceTokenText(event.currentTarget);", table_source)
+        self.assertIn("restoreContentEditableSelection(element, selection);", table_source)
+
     def test_assessment_table_supports_inline_evidence_upload(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
         page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")

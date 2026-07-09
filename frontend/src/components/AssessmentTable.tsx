@@ -426,6 +426,27 @@ function renderRecordRichEditorContent(
   element.replaceChildren(fragment);
 }
 
+function normalizeRecordReferenceTokenText(element: HTMLElement) {
+  const selection = document.activeElement === element ? textSelectionFromContentEditable(element) : undefined;
+  element.querySelectorAll<HTMLElement>(".record-reference-token").forEach((token) => {
+    const referenceLabel = token.dataset.referenceLabel ?? "";
+    const tokenText = token.textContent ?? "";
+    if (!referenceLabel || tokenText === referenceLabel || !tokenText.startsWith(referenceLabel)) {
+      return;
+    }
+
+    const suffix = tokenText.slice(referenceLabel.length);
+    token.textContent = referenceLabel;
+    if (suffix) {
+      token.after(document.createTextNode(suffix));
+    }
+  });
+
+  if (selection && document.activeElement === element) {
+    restoreContentEditableSelection(element, selection);
+  }
+}
+
 type RecordRichEditorProps = {
   value: string;
   references: FigureReferenceHoverItem[];
@@ -483,6 +504,7 @@ function RecordRichEditor({
       onSelectionChange(target);
       return;
     }
+    normalizeRecordReferenceTokenText(target);
     onSelectionChange(target);
     onInputChange(recordEditorPlainText(target), target);
   }
@@ -508,6 +530,7 @@ function RecordRichEditor({
       }}
       onCompositionEnd={(event) => {
         isComposingRef.current = false;
+        normalizeRecordReferenceTokenText(event.currentTarget);
         onSelectionChange(event.currentTarget);
         onInputChange(recordEditorPlainText(event.currentTarget), event.currentTarget);
       }}
