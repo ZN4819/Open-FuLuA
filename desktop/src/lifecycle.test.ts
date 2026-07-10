@@ -43,3 +43,9 @@ test("诊断页面脱敏命令行和 JSON 形式的 session token", () => {
   }
   assert.match(page, /已隐藏/);
 });
+
+test("诊断页面脱敏失败消息中的 session token", () => {
+  const page = diagnosticsPage('侧车失败：{"session_token":"message-secret"}', "无额外输出");
+  assert.doesNotMatch(page, /message-secret/);
+  assert.match(page, /已隐藏/);
+});

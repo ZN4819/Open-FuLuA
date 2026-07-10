@@ -7,6 +7,9 @@ import time
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
+from unittest.mock import patch
+
+from app import desktop_server
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +96,18 @@ class DesktopServerTests(unittest.TestCase):
             self.assertNotIn("must-not-leak", result.stdout)
             self.assertNotIn("must-not-leak", result.stderr)
             self.assertTrue((Path(temporary_directory) / "fulua-desktop-failures" / "logs" / "desktop-server.log").is_file())
+
+    def test_conservative_data_root_expand_failure_still_emits_failed_event(self) -> None:
+        with patch.object(desktop_server.Path, "expanduser", side_effect=RuntimeError("path expansion failed")), patch.object(
+            desktop_server, "_write_failure_log"
+        ) as write_log, patch.object(desktop_server.sys, "argv", ["desktop_server", "--data-root", "data", "--web-dist", "web", "--session-token", "must-not-leak"]), patch(
+            "sys.stdout"
+        ) as stdout:
+            self.assertEqual(desktop_server.main(), 1)
+
+        self.assertIn('"event": "FULUA_FAILED"', "".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertNotIn("must-not-leak", "".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(write_log.call_args.args[0], desktop_server._fallback_data_root())
 
 
 if __name__ == "__main__":

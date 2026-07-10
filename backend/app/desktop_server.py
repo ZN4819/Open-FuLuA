@@ -23,7 +23,7 @@ def _conservative_data_root(arguments: list[str]) -> Path:
     try:
         index = arguments.index("--data-root")
         return Path(arguments[index + 1]).expanduser()
-    except (ValueError, IndexError, OSError):
+    except Exception:
         return _fallback_data_root()
 
 
@@ -73,8 +73,9 @@ def _arguments() -> argparse.Namespace:
 
 
 def main() -> int:
-    data_root = _conservative_data_root(sys.argv[1:])
+    data_root = _fallback_data_root()
     try:
+        data_root = _conservative_data_root(sys.argv[1:])
         arguments = _arguments()
         data_root = Path(arguments.data_root).expanduser().resolve()
         # app.main 在其后导入，确保配置模块首次读取时就是桌面运行时路径。
