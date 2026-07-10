@@ -101,13 +101,39 @@ class DesktopStaticFrontendTests(unittest.TestCase):
             ):
                 app = self._load_app()
                 root_status, _, root_body = self._request(app, "/")
-                route_status, _, route_body = self._request(app, "/projects/42")
+                html_navigation = {"accept": "text/html,application/xhtml+xml"}
+                route_status, _, route_body = self._request(app, "/projects/42", headers=html_navigation)
                 asset_status, _, asset_body = self._request(app, "/assets/app.js")
-                head_status, _, head_body = self._request(app, "/projects/42", method="HEAD")
+                head_status, _, head_body = self._request(
+                    app,
+                    "/projects/42",
+                    method="HEAD",
+                    headers=html_navigation,
+                )
                 health_status, health_headers, health_body = self._request(app, "/api/health")
                 files_status, _, files_body = self._request(app, "/api/files/missing.png")
                 missing_api_status, _, missing_api_body = self._request(app, "/api/not-found")
                 missing_asset_status, _, missing_asset_body = self._request(app, "/assets/missing.js")
+                missing_static_status, _, missing_static_body = self._request(
+                    app,
+                    "/static/missing",
+                    headers={"accept": "*/*"},
+                )
+                missing_icon_status, _, missing_icon_body = self._request(
+                    app,
+                    "/icons/app",
+                    headers={"accept": "application/json"},
+                )
+                missing_manifest_status, _, missing_manifest_body = self._request(
+                    app,
+                    "/manifest",
+                    headers={"accept": "*/*"},
+                )
+                non_html_route_status, _, non_html_route_body = self._request(
+                    app,
+                    "/projects/42",
+                    headers={"accept": "*/*"},
+                )
 
         self.assertEqual(root_status, 200)
         self.assertEqual(root_body, index)
@@ -126,6 +152,14 @@ class DesktopStaticFrontendTests(unittest.TestCase):
         self.assertNotEqual(missing_api_body, index)
         self.assertEqual(missing_asset_status, 404)
         self.assertNotEqual(missing_asset_body, index)
+        self.assertEqual(missing_static_status, 404)
+        self.assertNotEqual(missing_static_body, index)
+        self.assertEqual(missing_icon_status, 404)
+        self.assertNotEqual(missing_icon_body, index)
+        self.assertEqual(missing_manifest_status, 404)
+        self.assertNotEqual(missing_manifest_body, index)
+        self.assertEqual(non_html_route_status, 404)
+        self.assertNotEqual(non_html_route_body, index)
 
     def test_frontend_api_base_prefers_override_then_dev_fallback_then_same_origin(self) -> None:
         client_source = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")

@@ -34,6 +34,10 @@ class FrontendAssets:
             await PlainTextResponse("Not Found", status_code=404)(scope, receive, send)
             return
 
+        if request_path == "/" and scope["method"] in {"GET", "HEAD"}:
+            await FileResponse(self._index_path)(scope, receive, send)
+            return
+
         try:
             response = await self._static_files.get_response(request_path.lstrip("/"), scope)
         except HTTPException as error:
@@ -49,12 +53,10 @@ class FrontendAssets:
         if scope["method"] not in {"GET", "HEAD"}:
             return False
 
-        path = scope["path"].lstrip("/")
-        if not path:
-            return True
-
-        first_segment = path.split("/", 1)[0]
-        return first_segment != "assets" and "." not in path.rsplit("/", 1)[-1]
+        return any(
+            name.lower() == b"accept" and b"text/html" in value.lower()
+            for name, value in scope.get("headers", [])
+        )
 
 
 def mount_frontend_assets(app: FastAPI) -> None:
