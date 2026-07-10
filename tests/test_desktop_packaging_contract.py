@@ -54,6 +54,117 @@ class DesktopPackagingContractTests(unittest.TestCase):
         for forbidden in ("storage/", "backend/data", "tests/", "*.db", "*.log"):
             self.assertNotIn(forbidden, config)
 
+    def test_builder_configures_unsigned_per_user_nsis_with_uninstall_data_retention(self) -> None:
+        config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
+
+        self.assertRegex(config, r"(?m)^\s*-\s*target:\s*nsis\s*$")
+        self.assertRegex(config, r"(?m)^nsis:\s*$")
+        for setting, expected in (
+            ("oneClick", "false"),
+            ("perMachine", "false"),
+            ("allowElevation", "false"),
+            ("allowToChangeInstallationDirectory", "true"),
+            ("createDesktopShortcut", "true"),
+            ("createStartMenuShortcut", "true"),
+            ("deleteAppDataOnUninstall", "false"),
+        ):
+            self.assertRegex(config, rf"(?m)^\s*{setting}:\s*{expected}\s*$")
+        self.assertRegex(config, r"(?m)^\s*uninstallDisplayName:\s*.+$")
+        self.assertRegex(config, r"(?m)^\s*executableName:\s*FuLuA\s*$")
+        self.assertIn("asar: true", config)
+        for resource in ("../frontend/dist", "../artifacts/desktop/backend/fulua-backend"):
+            self.assertIn(resource, config)
+
+    def test_build_script_supports_nsis_and_verifies_both_expected_artifacts(self) -> None:
+        script = (ROOT / "scripts" / "build_desktop.ps1").read_text(encoding="utf-8")
+        package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
+
+        self.assertRegex(script, r"ValidateSet\([^)]*['\"]nsis['\"]")
+        self.assertIn("package:nsis", script)
+        self.assertIn("Setup executable was not generated", script)
+        self.assertIn("win-unpacked\\FuLuA.exe", script)
+        self.assertRegex(package["scripts"].get("package:nsis", ""), r"electron-builder.*--win\s+nsis\s+dir")
+
+    def test_install_acceptance_script_is_safe_and_covers_uninstall_reinstall_data_retention(self) -> None:
+        script_path = ROOT / "scripts" / "test_desktop_install.ps1"
+        self.assertTrue(script_path.is_file(), "缺少桌面安装验收脚本")
+        script = script_path.read_text(encoding="utf-8")
+
+        for required in (
+            "BuildIfMissing",
+            "Resolve-SafeChildPath",
+            "LOCALAPPDATA",
+            "Get-NetTCPConnection",
+            "/api/health",
+            "/api/projects",
+            "uninstall.exe",
+            "数据保留",
+            "重新安装",
+            "taskkill",
+        ):
+            self.assertIn(required, script)
+        self.assertIn("/S", script)
+        self.assertIn("/D=", script)
+        self.assertNotIn("Remove-Item -Recurse -Force $env:LOCALAPPDATA", script)
+
+        command = (
+            "$null = [scriptblock]::Create((Get-Content -Raw -LiteralPath '"
+            + str(script_path).replace("'", "''")
+            + "'))"
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_install_acceptance_waits_for_installer_and_uninstaller_processes(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertRegex(
+            script,
+            r"Start-Process\s+-FilePath\s+\$installer\s+-ArgumentList\s+@\([^)]*'/S'[^)]*\)\s+-Wait\s+-PassThru",
+        )
+        self.assertRegex(
+            script,
+            r"Start-Process\s+-FilePath\s+\$uninstaller\s+-ArgumentList\s+@\('/S'\)\s+-Wait\s+-PassThru",
+        )
+
+    def test_install_acceptance_decodes_health_json_as_utf8(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Add-Type -AssemblyName System.Net.Http", script)
+        self.assertIn("System.Net.Http.HttpClient", script)
+        self.assertIn("GetStringAsync", script)
+        self.assertIn("ConvertFrom-Json", script)
+
+    def test_install_acceptance_uses_ascii_project_marker_for_powershell_compatibility(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertRegex(script, r'\$ProjectName\s*=\s*"CD6-install-\$\(')
+
+    def test_install_acceptance_checks_reinstalled_projects_item_by_item(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Where-Object { $_.name -eq $ProjectName }", script)
+
+    def test_install_acceptance_rejects_reparse_points_before_cleanup(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-NoReparsePoint", script)
+        self.assertIn("FileAttributes]::ReparsePoint", script)
+        self.assertIn("Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot", script)
+
+    def test_user_installation_guide_discloses_default_test_icon(self) -> None:
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("默认图标", guide)
+        self.assertIn("临时", guide)
+
     def test_pyinstaller_spec_imports_app_and_collects_runtime_assets(self) -> None:
         spec = (ROOT / "backend" / "packaging" / "fulua_backend.spec").read_text(encoding="utf-8")
         entrypoint = ROOT / "backend" / "packaging" / "backend_entry.py"
