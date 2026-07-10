@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import uuid
@@ -35,9 +34,6 @@ def utc_now() -> str:
 
 
 def current_database_path() -> Path:
-    override = os.getenv("FULUA_DATABASE_PATH")
-    if override:
-        return Path(override)
     return settings.database_path
 
 

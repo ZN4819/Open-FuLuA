@@ -1,21 +1,33 @@
 from dataclasses import dataclass
-import os
 from pathlib import Path
 
+from .runtime import RuntimePaths, resolve_runtime_paths
 
-def default_database_path() -> Path:
-    override = os.getenv("FULUA_DATABASE_PATH")
-    if override:
-        return Path(override)
-    return Path(__file__).resolve().parents[1] / "data" / "app.db"
+
+_DEVELOPMENT_STORAGE_PATH = Path(__file__).resolve().parents[2] / "storage"
 
 
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "附录A编写工具"
     api_prefix: str = "/api"
-    database_path: Path = default_database_path()
-    storage_path: Path = Path(__file__).resolve().parents[2] / "storage"
+    database_path: Path | None = None
+    storage_path: Path | None = None
+
+    @property
+    def runtime_paths(self) -> RuntimePaths:
+        return resolve_runtime_paths()
+
+    def __getattribute__(self, name: str):
+        if name in {"database_path", "storage_path"}:
+            override = object.__getattribute__(self, name)
+            if name == "storage_path" and override == _DEVELOPMENT_STORAGE_PATH:
+                override = None
+            if override is not None:
+                return override
+            runtime_paths = object.__getattribute__(self, "runtime_paths")
+            return getattr(runtime_paths, name)
+        return object.__getattribute__(self, name)
 
 
 settings = Settings()
