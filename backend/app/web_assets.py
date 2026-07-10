@@ -53,10 +53,38 @@ class FrontendAssets:
         if scope["method"] not in {"GET", "HEAD"}:
             return False
 
-        return any(
-            name.lower() == b"accept" and b"text/html" in value.lower()
-            for name, value in scope.get("headers", [])
-        )
+        path = scope["path"].lstrip("/")
+        if path.split("/", 1)[0] in {"assets", "static", "icons"}:
+            return False
+        if "." in path.rsplit("/", 1)[-1]:
+            return False
+
+        return FrontendAssets._accepts_html(scope)
+
+    @staticmethod
+    def _accepts_html(scope: Scope) -> bool:
+        for name, value in scope.get("headers", []):
+            if name.lower() != b"accept":
+                continue
+            for media_range in value.lower().split(b","):
+                parts = [part.strip() for part in media_range.split(b";")]
+                if parts[0] != b"text/html":
+                    continue
+
+                quality = 1.0
+                for parameter in parts[1:]:
+                    key, separator, raw_value = parameter.partition(b"=")
+                    if key.strip() != b"q" or not separator:
+                        continue
+                    try:
+                        quality = float(raw_value.strip())
+                    except ValueError:
+                        quality = 0.0
+                    break
+
+                if 0.0 < quality <= 1.0:
+                    return True
+        return False
 
 
 def mount_frontend_assets(app: FastAPI) -> None:

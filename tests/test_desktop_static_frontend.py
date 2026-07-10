@@ -128,6 +128,16 @@ class DesktopStaticFrontendTests(unittest.TestCase):
                     headers=html_api_request,
                 )
                 missing_asset_status, _, missing_asset_body = self._request(app, "/assets/missing.js")
+                html_missing_asset_status, _, html_missing_asset_body = self._request(
+                    app,
+                    "/assets/missing.js",
+                    headers=html_navigation,
+                )
+                html_missing_static_status, _, html_missing_static_body = self._request(
+                    app,
+                    "/static/missing",
+                    headers=html_navigation,
+                )
                 missing_static_status, _, missing_static_body = self._request(
                     app,
                     "/static/missing",
@@ -148,6 +158,11 @@ class DesktopStaticFrontendTests(unittest.TestCase):
                     "/projects/42",
                     headers={"accept": "*/*"},
                 )
+                rejected_html_route_status, _, rejected_html_route_body = self._request(
+                    app,
+                    "/projects/42",
+                    headers={"accept": "text/html;q=0"},
+                )
 
         self.assertEqual(root_status, 200)
         self.assertEqual(root_body, index)
@@ -166,6 +181,10 @@ class DesktopStaticFrontendTests(unittest.TestCase):
         self.assertNotEqual(missing_api_body, index)
         self.assertEqual(missing_asset_status, 404)
         self.assertNotEqual(missing_asset_body, index)
+        self.assertEqual(html_missing_asset_status, 404)
+        self.assertNotEqual(html_missing_asset_body, index)
+        self.assertEqual(html_missing_static_status, 404)
+        self.assertNotEqual(html_missing_static_body, index)
         self.assertEqual(missing_static_status, 404)
         self.assertNotEqual(missing_static_body, index)
         self.assertEqual(missing_icon_status, 404)
@@ -174,6 +193,8 @@ class DesktopStaticFrontendTests(unittest.TestCase):
         self.assertNotEqual(missing_manifest_body, index)
         self.assertEqual(non_html_route_status, 404)
         self.assertNotEqual(non_html_route_body, index)
+        self.assertEqual(rejected_html_route_status, 404)
+        self.assertNotEqual(rejected_html_route_body, index)
 
     def test_frontend_api_base_prefers_override_then_dev_fallback_then_same_origin(self) -> None:
         client_source = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")

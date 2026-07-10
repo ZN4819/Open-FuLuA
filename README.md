@@ -251,7 +251,7 @@ GET http://127.0.0.1:8000/api/health
 
 构建前端后，桌面启动器可将构建目录通过 `FULUA_WEB_DIST_PATH` 传给后端。只要该目录包含 `index.html`，同一个后端进程便会同时提供页面、前端资源和 `/api` 接口；不需要额外启动 Vite 服务，也不依赖跨域请求。
 
-浏览器页面导航（GET/HEAD 且 `Accept` 包含 `text/html`）会回退到前端入口页，但 `/api`、`/api/files` 和所有非 HTML 资源请求不会被入口页覆盖。未设置 `FULUA_WEB_DIST_PATH` 时，后端保持原有仅提供 API 的开发行为。
+浏览器页面导航（GET/HEAD、`Accept` 中 `text/html` 的质量值大于 0，且不是静态资源候选）会回退到前端入口页，但 `/api`、`/api/files`、带扩展名路径以及 `assets/`、`static/`、`icons/` 下的请求不会被入口页覆盖。未设置 `FULUA_WEB_DIST_PATH` 时，后端保持原有仅提供 API 的开发行为。
 
 模板 profile 接口：
 
