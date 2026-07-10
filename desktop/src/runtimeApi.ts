@@ -7,7 +7,7 @@ type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 export class RuntimeApiClient {
   private readonly origin: string;
 
-  constructor(origin: string, private readonly fetchImpl: Fetch = globalThis.fetch) {
+  constructor(origin: string, private readonly sessionToken: string, private readonly fetchImpl: Fetch = globalThis.fetch) {
     const url = new URL(origin);
     if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.pathname !== "/" || url.search || url.hash) {
       throw new Error("仅允许连接本机侧车");
@@ -34,7 +34,7 @@ export class RuntimeApiClient {
   private async request<T>(path: string, method: "GET" | "POST", body?: object): Promise<T> {
     const response = await this.fetchImpl(`${this.origin}${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: { ...(body ? { "content-type": "application/json" } : {}), "x-fulua-session-token": this.sessionToken },
       body: body ? JSON.stringify(body) : undefined,
     });
     const payload: unknown = await response.json().catch(() => ({}));

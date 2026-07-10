@@ -5,7 +5,7 @@ import { RuntimeApiClient } from "./runtimeApi.js";
 
 test("运行时 API 仅请求同源受控端点并在失败时给出脱敏诊断", async () => {
   const requests: Array<{ url: string; method: string; body?: string }> = [];
-  const api = new RuntimeApiClient("http://127.0.0.1:43123", async (input, init) => {
+  const api = new RuntimeApiClient("http://127.0.0.1:43123", "test-token", async (input, init) => {
     requests.push({ url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? "") });
     return new Response(JSON.stringify({ can_migrate: true, blocking_reasons: [] }), { status: 200 });
   });
@@ -19,5 +19,5 @@ test("运行时 API 仅请求同源受控端点并在失败时给出脱敏诊断
 });
 
 test("运行时 API 拒绝非本机侧车地址", () => {
-  assert.throws(() => new RuntimeApiClient("https://example.com"), /本机侧车/);
+  assert.throws(() => new RuntimeApiClient("https://example.com", "test-token"), /本机侧车/);
 });

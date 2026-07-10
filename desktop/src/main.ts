@@ -33,6 +33,7 @@ app.setAppLogsPath(path.join(dataRoot, "logs"));
 let mainWindow: BrowserWindow | undefined;
 let backend: BackendProcessController | undefined;
 let backendOrigin: string | undefined;
+let sessionToken = "";
 let quitApproved = false;
 
 function createWindow(): BrowserWindow {
@@ -64,13 +65,14 @@ function backendController(): BackendProcessController {
     ? path.join(process.resourcesPath, "backend", "fulua-backend.exe")
     : process.env.FULUA_BACKEND_PYTHON?.trim() || path.resolve(app.getAppPath(), "..", "backend", ".venv", "Scripts", "python.exe");
   const commandArguments = app.isPackaged ? [] : ["-m", "app.desktop_server"];
+  sessionToken = randomBytes(32).toString("hex");
   const controller = new BackendProcessController({
     executable,
     commandArguments,
     cwd: app.isPackaged ? undefined : path.resolve(app.getAppPath(), "..", "backend"),
     dataRoot,
     webDist,
-    sessionToken: randomBytes(32).toString("hex"),
+    sessionToken,
   });
   controller.onUnexpectedExit((error) => void recoverOrDiagnose(error));
   return controller;
@@ -91,7 +93,7 @@ async function loadBackendPage(): Promise<void> {
 
 function runtimeApi(): RuntimeApiClient {
   if (!backendOrigin) throw new Error("本地服务尚未就绪");
-  return new RuntimeApiClient(backendOrigin);
+  return new RuntimeApiClient(backendOrigin, sessionToken);
 }
 
 async function restartSidecarAndReload(): Promise<void> {

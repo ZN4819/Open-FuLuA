@@ -1,4 +1,6 @@
 import logging
+import hmac
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -37,8 +39,15 @@ app.add_middleware(
 
 @app.middleware("http")
 async def reject_business_writes_during_maintenance(request: Request, call_next):
-    if runtime_operations.writes_blocked() and request.method in {"POST", "PUT", "PATCH", "DELETE"} and not request.url.path.startswith("/api/runtime"):
-        return JSONResponse(status_code=409, content={"detail": "正在进行数据迁移或恢复，请等待本地服务重新启动"})
+    token = os.getenv("FULUA_SESSION_TOKEN")
+    if request.url.path.startswith("/api/runtime") and token and not hmac.compare_digest(request.headers.get("x-fulua-session-token", ""), token):
+        return JSONResponse(status_code=403, content={"detail": "本机操作验证失败"})
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not request.url.path.startswith("/api/runtime"):
+        try:
+            with runtime_operations.business_write():
+                return await call_next(request)
+        except RuntimeError as exc:
+            return JSONResponse(status_code=409, content={"detail": str(exc)})
     return await call_next(request)
 
 

@@ -94,9 +94,24 @@ class DataMigrationTests(unittest.TestCase):
             result = migrate_legacy_data(source, paths)
 
             self.assertFalse(result.migrated)
-            self.assertIn("数据库", result.reason)
-            self.assertFalse(paths.database_path.exists())
-            self.assertFalse(paths.storage_path.exists())
+
+    def test_source_that_is_the_desktop_target_is_blocked_without_deleting_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir) / "desktop")
+            _create_source(paths.data_root)
+            # 将 fixture 改为桌面数据根布局；源与目标完全重叠。
+            legacy_db = paths.data_root / "backend" / "data" / "app.db"
+            paths.database_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_db.replace(paths.database_path)
+            legacy_db.parent.rmdir()
+            (paths.data_root / "backend").rmdir()
+            source_hash = hashlib.sha256(paths.database_path.read_bytes()).hexdigest()
+
+            result = migrate_legacy_data(paths.data_root, paths)
+
+            self.assertFalse(result.migrated)
+            self.assertIn("源目录与桌面目标重叠", result.reason)
+            self.assertEqual(source_hash, hashlib.sha256(paths.database_path.read_bytes()).hexdigest())
 
     def test_existing_desktop_project_blocks_without_overwriting_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

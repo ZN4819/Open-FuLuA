@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.runtime import RuntimePaths
-from app.services.data_migration import file_manifest, sqlite_backup, validate_database_and_evidence
+from app.services.data_migration import file_manifest, remove_sqlite_sidecars, sqlite_backup, validate_database_and_evidence
 
 
 _BACKUP_KINDS = {"daily", "pre_upgrade", "pre_migration", "pre_restore"}
@@ -144,6 +144,7 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResul
 
             rollback = paths.backup_path / f"restore-rollback-{uuid.uuid4()}"
             rollback.mkdir(parents=True)
+            remove_sqlite_sidecars(paths.database_path)
             if paths.database_path.exists():
                 os.replace(paths.database_path, rollback / "app.db")
             if paths.storage_path.exists():
@@ -162,6 +163,7 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResul
             try:
                 if rollback is not None:
                     if (rollback / "app.db").exists():
+                        remove_sqlite_sidecars(paths.database_path)
                         if paths.database_path.exists():
                             paths.database_path.unlink()
                         os.replace(rollback / "app.db", paths.database_path)

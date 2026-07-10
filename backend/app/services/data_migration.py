@@ -82,6 +82,12 @@ def sqlite_backup(source_path: Path, destination_path: Path) -> None:
         source.close()
 
 
+def remove_sqlite_sidecars(database_path: Path) -> None:
+    """已由 backup API 固化后，删除即将被替换数据库的旧 WAL/SHM。"""
+    database_path.with_name(f"{database_path.name}-wal").unlink(missing_ok=True)
+    database_path.with_name(f"{database_path.name}-shm").unlink(missing_ok=True)
+
+
 def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]]:
     db = sqlite3.connect(database_path)
     try:
@@ -218,6 +224,12 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         return MigrationResult(False, reason=preflight.reason)
     source_db = Path(preflight.database_path or "")
     source_storage = Path(preflight.storage_path or "")
+    target_db = _safe_resolve(paths.database_path)
+    target_storage = _safe_resolve(paths.storage_path)
+    if source_db == target_db or source_storage == target_storage or source_db.is_relative_to(target_storage) or target_db.is_relative_to(source_storage):
+        reason = "源目录与桌面目标重叠，不能迁移"
+        _write_state(paths, source_root=_safe_resolve(Path(source_root)), started_at=started_at, status="failed", reason=reason, projects=preflight.project_count, images=preflight.image_count, manifest={})
+        return MigrationResult(False, reason=reason)
     source_files = file_manifest(source_storage)
     source_database_hash = _sha256(source_db)
     source_fingerprint = hashlib.sha256((str(source_db) + source_database_hash + json.dumps(source_files, sort_keys=True)).encode()).hexdigest()
@@ -259,6 +271,7 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         sqlite_backup(published_snapshot / "data" / "app.db", install / "data" / "app.db")
         shutil.copytree(published_snapshot / "storage", install / "storage")
         paths.database_path.parent.mkdir(parents=True, exist_ok=True)
+        remove_sqlite_sidecars(paths.database_path)
         if paths.database_path.exists():
             paths.database_path.unlink()
         _remove_empty_storage_tree(paths.storage_path)
@@ -275,6 +288,7 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
     except (OSError, RuntimeError, sqlite3.Error) as exc:
         shutil.rmtree(staging, ignore_errors=True)
         if installed or database_installed:
+            remove_sqlite_sidecars(paths.database_path)
             paths.database_path.unlink(missing_ok=True)
             shutil.rmtree(paths.storage_path, ignore_errors=True)
         _write_state(
