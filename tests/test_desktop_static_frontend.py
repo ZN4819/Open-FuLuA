@@ -199,6 +199,7 @@ function apiBase(environment) {
 for (const [environment, expected] of [
   [{ VITE_API_BASE_URL: " https://example.test/base/ ", DEV: false }, "https://example.test/base"],
   [{ VITE_API_BASE_URL: "https://example.test/base///", DEV: false }, "https://example.test/base"],
+  [{ VITE_API_BASE_URL: "/", DEV: true }, ""],
   [{ VITE_API_BASE_URL: "   ", DEV: true }, "http://127.0.0.1:8000"],
   [{ DEV: false }, ""]
 ]) {
