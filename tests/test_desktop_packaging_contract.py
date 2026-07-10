@@ -70,6 +70,14 @@ class DesktopPackagingContractTests(unittest.TestCase):
     def test_pyinstaller_datas_are_an_explicit_program_resource_allowlist(self) -> None:
         spec_path = ROOT / "backend" / "packaging" / "fulua_backend.spec"
         tree = ast.parse(spec_path.read_text(encoding="utf-8"))
+
+        def assigns_name(target: ast.expr, name: str) -> bool:
+            if isinstance(target, ast.Name):
+                return target.id == name
+            if isinstance(target, (ast.List, ast.Tuple)):
+                return any(assigns_name(element, name) for element in target.elts)
+            return False
+
         assignment = next(
             (
                 node
@@ -107,6 +115,47 @@ class DesktopPackagingContractTests(unittest.TestCase):
             "user",
         ):
             self.assertNotIn(forbidden, serialized_sources)
+
+        datas_assignments = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            and (
+                any(assigns_name(target, "datas") for target in node.targets)
+                if isinstance(node, ast.Assign)
+                else assigns_name(node.target, "datas")
+            )
+        ]
+        self.assertEqual(len(datas_assignments), 1, "datas 必须且只能赋值一次")
+
+        datas_assignment = datas_assignments[0]
+        self.assertIsInstance(datas_assignment, ast.Assign)
+        assert isinstance(datas_assignment, ast.Assign)
+        self.assertIsInstance(datas_assignment.value, ast.ListComp)
+        assert isinstance(datas_assignment.value, ast.ListComp)
+        self.assertEqual(len(datas_assignment.value.generators), 1)
+        generator = datas_assignment.value.generators[0]
+        self.assertIsInstance(generator.iter, ast.Name)
+        assert isinstance(generator.iter, ast.Name)
+        self.assertEqual(generator.iter.id, "PACKAGED_DATA_SOURCES")
+
+        datas_augmented_assignments = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AugAssign) and assigns_name(node.target, "datas")
+        ]
+        self.assertEqual(datas_augmented_assignments, [], "禁止使用 += 修改 datas")
+
+        datas_mutations = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "datas"
+            and node.func.attr in {"append", "extend"}
+        ]
+        self.assertEqual(datas_mutations, [], "禁止在白名单推导后追加或扩展 datas")
 
     def test_build_script_runs_frontend_before_pyinstaller_and_fails_fast(self) -> None:
         script = (ROOT / "scripts" / "build_desktop.ps1").read_text(encoding="utf-8")
