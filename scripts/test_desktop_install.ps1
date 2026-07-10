@@ -130,6 +130,35 @@ function Assert-InstalledProgramResources {
     }
 }
 
+function Assert-PackagedAsarContents {
+    param([Parameter(Mandatory = $true)][string]$InstallRoot)
+
+    $asarFile = Join-Path $InstallRoot 'resources\app.asar'
+    $asarCli = Join-Path $Root 'desktop\node_modules\@electron\asar\bin\asar.js'
+    if (-not (Test-Path -LiteralPath $asarFile -PathType Leaf)) {
+        throw "安装目录缺少 app.asar：$asarFile"
+    }
+    if (-not (Test-Path -LiteralPath $asarCli -PathType Leaf)) {
+        throw "缺少 asar 验收工具：$asarCli"
+    }
+    $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
+    $asarEntries = @(& $nodeExecutable $asarCli list $asarFile)
+    if ($LASTEXITCODE -ne 0) {
+        throw "无法列出 app.asar 内容（退出码 $LASTEXITCODE）。"
+    }
+    $normalizedEntries = @($asarEntries | ForEach-Object { $_.Replace('\', '/').TrimStart('/') })
+    foreach ($entry in $normalizedEntries) {
+        if ($entry -like '*.test.js' -or $entry -like '*.test.js.map' -or $entry -like '*.map' -or $entry -match '(^|/)(test|tests)(/|$)') {
+            throw "app.asar 包含禁止的测试或开发资源：$entry"
+        }
+    }
+    foreach ($requiredModule in @('dist/main.js', 'dist/preload.js', 'dist/runtimeApi.js')) {
+        if ($normalizedEntries -notcontains $requiredModule) {
+            throw "app.asar 缺少生产运行模块：$requiredModule"
+        }
+    }
+}
+
 function Wait-DesktopHealth {
     param(
         [Parameter(Mandatory = $true)][string]$ExpectedDataRoot,
@@ -243,6 +272,7 @@ try {
         throw "安装后缺少客户端可执行文件：$installedExecutable"
     }
     Assert-InstalledProgramResources -InstallRoot $InstallRoot
+    Assert-PackagedAsarContents -InstallRoot $InstallRoot
 
     $env:LOCALAPPDATA = $TemporaryLocalAppData
     $FirstLaunch = Start-Process -FilePath $installedExecutable -PassThru

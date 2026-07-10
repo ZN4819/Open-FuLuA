@@ -7,6 +7,9 @@ directories:
 
 files:
   - dist/**/*
+  - "!dist/**/*.test.js"
+  - "!dist/**/*.test.js.map"
+  - "!dist/**/*.map"
   - package.json
 
 extraResources:

@@ -54,6 +54,13 @@ class DesktopPackagingContractTests(unittest.TestCase):
         for forbidden in ("storage/", "backend/data", "tests/", "*.db", "*.log"):
             self.assertNotIn(forbidden, config)
 
+    def test_builder_excludes_compiled_desktop_tests_and_source_maps_from_asar(self) -> None:
+        config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
+
+        self.assertIn('"!dist/**/*.test.js"', config)
+        self.assertIn('"!dist/**/*.test.js.map"', config)
+        self.assertIn('"!dist/**/*.map"', config)
+
     def test_builder_configures_unsigned_per_user_nsis_with_uninstall_data_retention(self) -> None:
         config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
 
@@ -197,6 +204,18 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("resources\\backend", script)
         self.assertIn("_internal\\docx\\templates\\default.docx", script)
         self.assertIn("Assert-InstalledProgramResources -InstallRoot $InstallRoot", script)
+
+    def test_install_acceptance_inspects_asar_and_rejects_test_content(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-PackagedAsarContents", script)
+        self.assertIn("@electron\\asar\\bin\\asar.js", script)
+        self.assertIn(" list ", script)
+        self.assertIn("*.test.js", script)
+        self.assertIn("(^|/)(test|tests)(/|$)", script)
+        for required_module in ("dist/main.js", "dist/preload.js", "dist/runtimeApi.js"):
+            self.assertIn(required_module, script)
+        self.assertIn("Assert-PackagedAsarContents -InstallRoot $InstallRoot", script)
 
     def test_user_installation_guide_discloses_default_test_icon(self) -> None:
         guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
