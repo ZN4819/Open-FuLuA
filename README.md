@@ -186,9 +186,9 @@ docs/DOCX导入新项目功能实施计划.md
 
 原始样本文档 `附录A编写.docx` 仅作为格式分析和回归基准，不应被覆盖或直接修改。
 
-## Windows 桌面构建（CD-1）
+## Windows 桌面客户端（CD-4）
 
-CD-1 仅提供可启动的最小 Electron 窗口和构建基座，不会启动 FastAPI 侧车，也不会改变现有 Web 开发方式。首次构建需要 Node.js 22.12 至 24.x，以及本仓库的 Python 3.11 虚拟环境：
+Windows 客户端会自动启动本机服务并随机选择仅本机可用的端口，您不需要输入或配置端口。连续打开客户端时会保留同一个窗口和同一套本机服务；关闭客户端会一并停止服务。首次构建需要 Node.js 22.12 至 24.x，以及本仓库的 Python 3.11 虚拟环境：
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pip install -r backend\requirements-packaging.txt
@@ -202,6 +202,8 @@ npm --prefix desktop install
 ```
 
 可执行文件生成在 `artifacts/desktop/electron/win-unpacked/FuLuA.exe`。`artifacts/` 是本地构建目录，不纳入版本控制；构建配置不会收集 `storage/`、数据库、日志、测试 fixture 或用户导入文件。
+
+客户端数据默认保存在 Windows 的本地应用数据目录 `附录A编写工具` 下，不会写入安装目录。若本机服务启动失败，页面会提供“重试”“复制诊断信息”和“打开日志目录”操作；诊断信息不会显示内部访问凭据。
 
 ## 后端运行
 
