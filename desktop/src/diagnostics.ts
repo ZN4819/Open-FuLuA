@@ -1,0 +1,15 @@
+const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+
+export function sanitizeDiagnostics(value: string): string {
+  const assignedToken = /((?:["']?)(?:--)?session[-_ ]?token(?:["']?)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}\]]+)/gi;
+  const spacedToken = /((?:--)?session[-_ ]?token\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
+  return value
+    .replace(assignedToken, "$1[已隐藏]")
+    .replace(spacedToken, "$1[已隐藏]");
+}
+
+export function diagnosticsPage(message: string, details: string): string {
+  const safeMessage = escapeHtml(sanitizeDiagnostics(message));
+  const safeDetails = escapeHtml(sanitizeDiagnostics(details));
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><title>附录A编写工具</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:"Microsoft YaHei UI",sans-serif;background:#f7f7f7;color:#171717}main{max-width:600px;padding:32px 40px;border:1px solid #e5e5e5;border-radius:12px;background:#fff;box-shadow:0 12px 32px rgba(0,0,0,.08)}button{margin:8px 8px 0 0;padding:8px 14px}pre{white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:6px}</style></head><body><main><h1>客户端服务未能启动</h1><p>${safeMessage}</p><p>请重试；如果问题持续存在，可复制诊断信息或打开日志目录后联系支持人员。</p><pre id="details">${safeDetails}</pre><button id="retry">重试</button><button id="copy">复制诊断信息</button><button id="logs">打开日志目录</button><script>const api=window.fuluaDesktop;document.querySelector('#retry').onclick=()=>api.retryBackend();document.querySelector('#copy').onclick=()=>api.copyDiagnostics(document.querySelector('#details').textContent);document.querySelector('#logs').onclick=()=>api.openLogsDirectory();</script></main></body></html>`;
+}
