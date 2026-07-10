@@ -15,6 +15,21 @@ from app.services.docx_generator.generator import generate_project_docx
 
 
 class RuntimePathsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        files_app = self._files_application()
+        self._original_files_directory = files_app.directory
+        self._original_files_directories = files_app.all_directories
+        self._original_files_config_checked = files_app.config_checked
+
+    def tearDown(self) -> None:
+        files_app = self._files_application()
+        files_app.directory = self._original_files_directory
+        files_app.all_directories = self._original_files_directories
+        files_app.config_checked = self._original_files_config_checked
+        self.assertEqual(files_app.directory, self._original_files_directory)
+        self.assertEqual(files_app.all_directories, self._original_files_directories)
+        self.assertEqual(files_app.config_checked, self._original_files_config_checked)
+
     @staticmethod
     def _files_application():
         return next(route.app for route in app.routes if getattr(route, "name", None) == "files")
