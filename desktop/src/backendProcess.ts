@@ -76,14 +76,9 @@ export class BackendProcessController {
     }
     this.stopping = true;
     try {
-      child.kill("SIGTERM");
-      await this.waitForExit(child, this.options.stopTimeoutMs);
-    } catch {
-      if (process.platform === "win32" && child.pid) {
-        await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"]).catch(() => undefined);
-      }
+      await this.stopChild(child);
     } finally {
-      this.child = undefined;
+      if (this.child === child) this.child = undefined;
       this.stopping = false;
     }
   }
@@ -108,15 +103,22 @@ export class BackendProcessController {
       let stdoutBuffer = "";
       let settled = false;
       const timeout = setTimeout(() => finish(new Error("侧车未能在 15 秒内完成健康检查")), this.options.startTimeoutMs);
-      const finish = (result: string | Error): void => {
+      const finish = (result: string | Error, waitForChildExit = true): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         if (result instanceof Error) {
-          const failedChild = this.child;
-          this.child = undefined;
-          failedChild?.kill("SIGTERM");
-          reject(result);
+          if (!waitForChildExit) {
+            if (this.child === child) this.child = undefined;
+            reject(result);
+            return;
+          }
+          this.stopping = true;
+          void this.stopChild(child).finally(() => {
+            if (this.child === child) this.child = undefined;
+            this.stopping = false;
+            reject(result);
+          });
         } else {
           resolve(result);
         }
@@ -143,7 +145,7 @@ export class BackendProcessController {
       child.once("error", (error) => finish(error));
       child.once("exit", (code) => {
         if (!settled) {
-          finish(new Error(`侧车在就绪前退出（代码 ${code ?? "未知"}）`));
+          finish(new Error(`侧车在就绪前退出（代码 ${code ?? "未知"}）`), false);
           return;
         }
         if (!this.stopping && this.child === child) {
@@ -188,6 +190,17 @@ export class BackendProcessController {
         resolve();
       });
     });
+  }
+
+  private async stopChild(child: ChildProcess): Promise<void> {
+    try {
+      child.kill("SIGTERM");
+      await this.waitForExit(child, this.options.stopTimeoutMs);
+    } catch {
+      if (process.platform === "win32" && child.pid) {
+        await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"]).catch(() => undefined);
+      }
+    }
   }
 
   private appendStderr(value: string): void {
