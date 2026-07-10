@@ -35,8 +35,7 @@ function Remove-OwnedTree {
 
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        Remove-Item -LiteralPath $item.FullName -Force
-        return
+        throw "拒绝清理包含重解析点的临时树：$($item.FullName)"
     }
     if ($item.PSIsContainer) {
         foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force)) {
@@ -78,13 +77,56 @@ function Stop-TestProcessTree {
     param([System.Diagnostics.Process]$Process)
 
     if ($null -eq $Process) { return }
-    try {
-        if (-not $Process.HasExited) {
-            & taskkill /pid $Process.Id /t /f | Out-Null
+    $Process.Refresh()
+    if ($Process.HasExited) { return }
+
+    & taskkill /pid $Process.Id /t /f | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "无法结束本次 Electron 进程树（PID $($Process.Id)，taskkill 退出码 $LASTEXITCODE）。"
+    }
+    if (-not $Process.WaitForExit(10000)) {
+        throw "无法确认本次 Electron 根进程已退出（PID $($Process.Id)）。"
+    }
+    $Process.Refresh()
+    if (-not $Process.HasExited) {
+        throw "本次 Electron 根进程仍在运行（PID $($Process.Id)）。"
+    }
+}
+
+function Assert-InstalledProgramResources {
+    param([Parameter(Mandatory = $true)][string]$InstallRoot)
+
+    $resourcesRoot = Join-Path $InstallRoot 'resources'
+    if (-not (Test-Path -LiteralPath $resourcesRoot -PathType Container)) {
+        throw "安装目录缺少程序资源目录：$resourcesRoot"
+    }
+    $allowedResourcePaths = @(
+        (Join-Path $InstallRoot 'resources\app.asar'),
+        (Join-Path $InstallRoot 'resources\frontend'),
+        (Join-Path $InstallRoot 'resources\backend'),
+        (Join-Path $InstallRoot 'resources\elevate.exe')
+    )
+    foreach ($entry in @(Get-ChildItem -LiteralPath $resourcesRoot -Force)) {
+        if ($allowedResourcePaths -notcontains $entry.FullName) {
+            throw "安装资源白名单之外的项目：$($entry.FullName)"
         }
     }
-    catch {
-        Write-Warning "无法结束本次 Electron 进程树（PID $($Process.Id)）：$($_.Exception.Message)"
+
+    $forbiddenDirectoryNames = @('storage', 'logs', 'backups', 'backup', 'migration', 'migrations', 'fixture', 'fixtures', 'import', 'imports', 'user')
+    $forbiddenFilePatterns = @('*.sqlite', '*.sqlite3', '*.db', '*-wal', '*-shm', '*.docx', '~$*.docx')
+    $allowedProgramDocx = Join-Path $InstallRoot 'resources\backend\_internal\docx\templates\default.docx'
+    foreach ($entry in @(Get-ChildItem -LiteralPath $InstallRoot -Force -Recurse)) {
+        if ($entry.PSIsContainer -and $forbiddenDirectoryNames -contains $entry.Name.ToLowerInvariant()) {
+            throw "安装目录包含禁止的用户或测试目录：$($entry.FullName)"
+        }
+        if (-not $entry.PSIsContainer) {
+            if ($entry.FullName -ieq $allowedProgramDocx) { continue }
+            foreach ($pattern in $forbiddenFilePatterns) {
+                if ($entry.Name -like $pattern) {
+                    throw "安装目录包含禁止的用户数据或文档：$($entry.FullName)"
+                }
+            }
+        }
     }
 }
 
@@ -177,6 +219,7 @@ $ProjectName = "CD6-install-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $OriginalLocalAppData = $env:LOCALAPPDATA
 $FirstLaunch = $null
 $SecondLaunch = $null
+$ProcessTerminationFailed = $false
 $Result = [ordered]@{
     status = 'failed'
     installer = $installer
@@ -199,6 +242,7 @@ try {
     if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
         throw "安装后缺少客户端可执行文件：$installedExecutable"
     }
+    Assert-InstalledProgramResources -InstallRoot $InstallRoot
 
     $env:LOCALAPPDATA = $TemporaryLocalAppData
     $FirstLaunch = Start-Process -FilePath $installedExecutable -PassThru
@@ -207,8 +251,14 @@ try {
     Assert-DesktopPageAndCreateProject -BaseUri $firstServer.BaseUri -ProjectName $ProjectName
     $Result.root_page_checked = $true
     $Result.project_created = $true
-    Stop-TestProcessTree $FirstLaunch
-    $FirstLaunch = $null
+    try {
+        Stop-TestProcessTree $FirstLaunch
+        $FirstLaunch = $null
+    }
+    catch {
+        $ProcessTerminationFailed = $true
+        throw
+    }
 
     $uninstallers = @(Get-ChildItem -LiteralPath $InstallRoot -File -Filter '*uninstall*.exe')
     if ($uninstallers.Count -ne 1) {
@@ -234,10 +284,26 @@ try {
     $Result.status = 'passed'
 }
 finally {
-    Stop-TestProcessTree $SecondLaunch
-    Stop-TestProcessTree $FirstLaunch
-    $env:LOCALAPPDATA = $OriginalLocalAppData
-    Remove-SafeTestPath -Path $RunRoot -SafeRoot $SafetyRoot
-    Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot
-    [pscustomobject]$Result | ConvertTo-Json -Depth 4
+    $cleanupAllowed = $false
+    try {
+        if (-not $ProcessTerminationFailed) {
+            try {
+                Stop-TestProcessTree $SecondLaunch
+                Stop-TestProcessTree $FirstLaunch
+                $cleanupAllowed = $true
+            }
+            catch {
+                $ProcessTerminationFailed = $true
+                throw
+            }
+        }
+    }
+    finally {
+        $env:LOCALAPPDATA = $OriginalLocalAppData
+        if ($cleanupAllowed) {
+            Remove-SafeTestPath -Path $RunRoot -SafeRoot $SafetyRoot
+            Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot
+        }
+        [pscustomobject]$Result | ConvertTo-Json -Depth 4
+    }
 }

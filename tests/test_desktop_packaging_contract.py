@@ -66,9 +66,9 @@ class DesktopPackagingContractTests(unittest.TestCase):
             ("allowToChangeInstallationDirectory", "true"),
             ("createDesktopShortcut", "true"),
             ("createStartMenuShortcut", "true"),
-            ("deleteAppDataOnUninstall", "false"),
         ):
             self.assertRegex(config, rf"(?m)^\s*{setting}:\s*{expected}\s*$")
+        self.assertNotIn("deleteAppDataOnUninstall", config)
         self.assertRegex(config, r"(?m)^\s*uninstallDisplayName:\s*.+$")
         self.assertRegex(config, r"(?m)^\s*executableName:\s*FuLuA\s*$")
         self.assertIn("asar: true", config)
@@ -158,12 +158,57 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("Assert-NoReparsePoint", script)
         self.assertIn("FileAttributes]::ReparsePoint", script)
         self.assertIn("Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot", script)
+        owned_tree = re.search(r"function Remove-OwnedTree \{(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(owned_tree)
+        assert owned_tree is not None
+        reparse_handler = re.search(
+            r"if \(\(\$item\.Attributes -band \[System\.IO\.FileAttributes\]::ReparsePoint\) -ne 0\) \{(?P<body>.*?)^    \}",
+            owned_tree.group("body"),
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(reparse_handler)
+        assert reparse_handler is not None
+        self.assertIn("throw", reparse_handler.group("body"))
+        self.assertNotIn("Remove-Item", reparse_handler.group("body"))
+
+    def test_install_acceptance_fails_and_preserves_tree_when_process_termination_cannot_be_confirmed(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+        stop_tree = re.search(r"function Stop-TestProcessTree \{(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(stop_tree)
+        assert stop_tree is not None
+        body = stop_tree.group("body")
+        self.assertIn("$LASTEXITCODE", body)
+        self.assertIn("WaitForExit", body)
+        self.assertRegex(body, r"LASTEXITCODE\s*-ne\s*0\)\s*\{\s*throw")
+        self.assertRegex(body, r"-not\s+\$Process\.HasExited\)\s*\{\s*throw")
+        self.assertIn("$ProcessTerminationFailed = $false", script)
+        self.assertIn("$ProcessTerminationFailed = $true", script)
+        self.assertIn("if (-not $ProcessTerminationFailed)", script)
+        self.assertIn("if ($cleanupAllowed)", script)
+
+    def test_install_acceptance_rejects_non_program_resources_after_installation(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-InstalledProgramResources", script)
+        for forbidden in ("*.sqlite", "*.db", "storage", "logs", "backups", "migration", "fixtures", "*.docx", "~$*.docx"):
+            self.assertIn(forbidden, script)
+        self.assertIn("resources\\app.asar", script)
+        self.assertIn("resources\\frontend", script)
+        self.assertIn("resources\\backend", script)
+        self.assertIn("_internal\\docx\\templates\\default.docx", script)
+        self.assertIn("Assert-InstalledProgramResources -InstallRoot $InstallRoot", script)
 
     def test_user_installation_guide_discloses_default_test_icon(self) -> None:
         guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
 
         self.assertIn("默认图标", guide)
         self.assertIn("临时", guide)
+
+    def test_user_installation_guide_marks_clean_environment_validation_as_pending(self) -> None:
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("本机临时用户目录验收", guide)
+        self.assertIn("干净 Windows 用户/VM 验收待执行", guide)
 
     def test_pyinstaller_spec_imports_app_and_collects_runtime_assets(self) -> None:
         spec = (ROOT / "backend" / "packaging" / "fulua_backend.spec").read_text(encoding="utf-8")

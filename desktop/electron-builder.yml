@@ -32,4 +32,3 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: 附录A编写工具
   uninstallDisplayName: 附录A编写工具
-  deleteAppDataOnUninstall: false
