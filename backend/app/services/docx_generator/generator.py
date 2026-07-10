@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -58,7 +59,7 @@ def generate_project_docx(project_id: int, mode: ExportMode = "editable") -> Pat
         add_assessment_table(document, section, rows, profile, mode, figure_refs)
         add_section_images(document, section["code"], images, profile, bookmark_writer, figure_refs)
 
-    export_path = _export_path(project_id, mode)
+    export_path = _export_path(project, mode)
     document.save(export_path)
     _validate_generated_docx(export_path)
     return export_path
@@ -88,7 +89,7 @@ def _add_appendix_title(document: Document, profile: dict[str, Any]) -> None:
 def _add_section_title(document: Document, section: Any, profile: dict[str, Any]) -> None:
     paragraph = document.add_paragraph()
     set_paragraph_format(paragraph, profile, "section_title")
-    run = paragraph.add_run(section["title"])
+    run = paragraph.add_run(f"{_section_heading_number(section['code'])} {section['title']}")
     apply_run_font(run, profile, "section_title")
 
 
@@ -118,11 +119,25 @@ def _add_table_caption(
         apply_run_font(suffix_run, profile, "caption")
 
 
-def _export_path(project_id: int, mode: ExportMode) -> Path:
+def _export_path(project: Any, mode: ExportMode) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    project_id = int(project["id"])
     export_dir = settings.storage_path / "exports" / str(project_id)
     export_dir.mkdir(parents=True, exist_ok=True)
-    return export_dir / f"appendix_a_project_{project_id}_{mode}_{timestamp}.docx"
+    mode_label = "可编辑版" if mode == "editable" else "最终版"
+    project_name = _safe_filename_stem(str(project["name"] or "")) or f"project_{project_id}"
+    return export_dir / f"{project_name}_{mode_label}_{timestamp}.docx"
+
+
+def _section_heading_number(section_code: str) -> str:
+    section_number = section_code.split("-", 1)[-1]
+    return f"A.{section_number}"
+
+
+def _safe_filename_stem(value: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", value).strip(" ._")
+    cleaned = re.sub(r"_+", "_", cleaned)
+    return cleaned[:80].strip(" ._")
 
 
 def _validate_generated_docx(path: Path) -> None:

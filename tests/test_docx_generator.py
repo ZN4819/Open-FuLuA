@@ -55,7 +55,7 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertIn("4x8", analysis.table_shapes)
         self.assertTrue(_all_tables_have_grid(path))
         paragraph_texts = _nonempty_paragraph_texts(path)
-        self.assertEqual(paragraph_texts[:3], ["附录A测评结果记录", "物理和环境安全", "表A-1物理和环境安全测评结果记录"])
+        self.assertEqual(paragraph_texts[:3], ["附录A测评结果记录", "A.1 物理和环境安全", "表A-1物理和环境安全测评结果记录"])
         self.assertNotIn("A-1 物理和环境安全", paragraph_texts[:3])
         self.assertTrue(_first_table_uses_template_header(path))
         self.assertEqual(
@@ -197,6 +197,17 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertTrue(any(text == "图A-1-1 第二张" for text in paragraph_texts))
         self.assertFalse(any("图A-1-2" in text for text in paragraph_texts))
         self.assertNotEqual(first["id"], second["id"])
+
+    def test_export_filename_starts_with_sanitized_project_name(self) -> None:
+        project = database.create_project("XX银行:核心/系统")
+
+        path = generate_project_docx(project["id"], "final")
+
+        self.assertTrue(path.name.startswith("XX银行_核心_系统_最终版_"))
+        self.assertTrue(path.name.endswith(".docx"))
+        self.assertNotIn("appendix_a_project", path.name)
+        self.assertNotIn(":", path.name)
+        self.assertNotIn("/", path.name)
 
     def _make_project_with_content(self):
         project = database.create_project("DOCX 生成测试")
