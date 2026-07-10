@@ -142,6 +142,22 @@ class DataMigrationTests(unittest.TestCase):
             self.assertFalse(result.migrated)
             self.assertIn("已有用户数据", result.reason)
 
+    def test_template_state_variants_block_migration_without_replacing_target(self) -> None:
+        variants = [
+            ("CREATE TABLE record_templates (source_type TEXT, deleted_at TEXT); INSERT INTO record_templates VALUES ('user', NULL);", "user"),
+            ("CREATE TABLE record_templates (source_type TEXT, deleted_at TEXT); INSERT INTO record_templates VALUES ('user', '2026-01-01');", "soft-deleted"),
+            ("CREATE TABLE record_template_slots (is_customized INTEGER); INSERT INTO record_template_slots VALUES (1);", "customized-slot"),
+        ]
+        for script, name in variants:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir); source = _create_source(root / "legacy"); paths = _runtime_paths(root / "desktop")
+                paths.database_path.parent.mkdir(parents=True)
+                db = sqlite3.connect(paths.database_path); db.executescript("CREATE TABLE projects (id INTEGER PRIMARY KEY); " + script); db.commit(); db.close()
+                before = hashlib.sha256(paths.database_path.read_bytes()).hexdigest()
+                result = migrate_legacy_data(source, paths)
+                self.assertFalse(result.migrated)
+                self.assertEqual(before, hashlib.sha256(paths.database_path.read_bytes()).hexdigest())
+
 
     def test_migration_copies_consistent_data_then_is_idempotent_without_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
