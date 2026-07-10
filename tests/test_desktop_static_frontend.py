@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -110,9 +111,22 @@ class DesktopStaticFrontendTests(unittest.TestCase):
                     method="HEAD",
                     headers=html_navigation,
                 )
-                health_status, health_headers, health_body = self._request(app, "/api/health")
-                files_status, _, files_body = self._request(app, "/api/files/missing.png")
-                missing_api_status, _, missing_api_body = self._request(app, "/api/not-found")
+                html_api_request = {"accept": "text/html"}
+                health_status, health_headers, health_body = self._request(
+                    app,
+                    "/api/health",
+                    headers=html_api_request,
+                )
+                files_status, _, files_body = self._request(
+                    app,
+                    "/api/files/missing.png",
+                    headers=html_api_request,
+                )
+                missing_api_status, _, missing_api_body = self._request(
+                    app,
+                    "/api/not-found",
+                    headers=html_api_request,
+                )
                 missing_asset_status, _, missing_asset_body = self._request(app, "/assets/missing.js")
                 missing_static_status, _, missing_static_body = self._request(
                     app,
@@ -164,7 +178,47 @@ class DesktopStaticFrontendTests(unittest.TestCase):
     def test_frontend_api_base_prefers_override_then_dev_fallback_then_same_origin(self) -> None:
         client_source = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")
 
-        self.assertIn("import.meta.env.VITE_API_BASE_URL?.trim()", client_source)
+        node_script = r"""
+const fs = require("fs");
+const vm = require("vm");
+const typescript = require("./frontend/node_modules/typescript");
+const source = fs.readFileSync(0, "utf8")
+  .replace("const API_BASE_URL =", "export const API_BASE_URL =")
+  .replaceAll("import.meta.env", "environment");
+const compiled = typescript.transpileModule(source, {
+  compilerOptions: {
+    module: typescript.ModuleKind.CommonJS,
+    target: typescript.ScriptTarget.ES2020
+  }
+}).outputText;
+function apiBase(environment) {
+  const module = { exports: {} };
+  vm.runInNewContext(compiled, { module, exports: module.exports, environment });
+  return module.exports.API_BASE_URL;
+}
+for (const [environment, expected] of [
+  [{ VITE_API_BASE_URL: " https://example.test/base/ ", DEV: false }, "https://example.test/base"],
+  [{ VITE_API_BASE_URL: "https://example.test/base///", DEV: false }, "https://example.test/base"],
+  [{ VITE_API_BASE_URL: "   ", DEV: true }, "http://127.0.0.1:8000"],
+  [{ DEV: false }, ""]
+]) {
+  const actual = apiBase(environment);
+  if (actual !== expected) {
+    throw new Error(`Expected ${expected}, received ${actual}`);
+  }
+}
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            input=client_source,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("import.meta.env.DEV", client_source)
         self.assertIn('"http://127.0.0.1:8000"', client_source)
         self.assertIn(': ""', client_source)
