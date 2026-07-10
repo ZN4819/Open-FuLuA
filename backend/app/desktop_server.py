@@ -84,6 +84,7 @@ def main() -> int:
 
         os.environ["FULUA_DATA_DIR"] = str(data_root)
         os.environ["FULUA_WEB_DIST_PATH"] = str(Path(arguments.web_dist).expanduser().resolve())
+        os.environ["FULUA_SESSION_TOKEN"] = arguments.session_token
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket_handle:
             socket_handle.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

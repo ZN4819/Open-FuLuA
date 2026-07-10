@@ -1,6 +1,9 @@
 import logging
+import hmac
+import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -11,6 +14,7 @@ from .api.projects import router as projects_router
 from .api.record_template_slots import router as record_template_slots_router
 from .api.record_templates import router as record_templates_router
 from .api.render_jobs import router as render_jobs_router
+from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
 from .api.templates import router as templates_router
 from .api.validation import router as validation_router
@@ -31,6 +35,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def reject_business_writes_during_maintenance(request: Request, call_next):
+    token = os.getenv("FULUA_SESSION_TOKEN")
+    if request.url.path.startswith("/api/runtime") and token and not hmac.compare_digest(request.headers.get("x-fulua-session-token", ""), token):
+        return JSONResponse(status_code=403, content={"detail": "本机操作验证失败"})
+    is_business_api = request.url.path.startswith("/api/") and not request.url.path.startswith(("/api/runtime", "/api/health", "/api/files"))
+    if is_business_api:
+        try:
+            with runtime_operations.business_write():
+                return await call_next(request)
+        except RuntimeError as exc:
+            return JSONResponse(status_code=409, content={"detail": str(exc)})
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -72,5 +91,6 @@ app.include_router(imports_router, prefix=settings.api_prefix)
 app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(templates_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
+app.include_router(runtime_router, prefix=f"{settings.api_prefix}/runtime")
 app.mount(f"{settings.api_prefix}/files", StaticFiles(directory=settings.storage_path, check_dir=False), name="files")
 mount_frontend_assets(app)

@@ -1,11 +1,16 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
 import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
 import { BackendProcessController } from "./backendProcess.js";
+import { BackupCoordinator } from "./backupActions.js";
 import { diagnosticsPage, sanitizeDiagnostics } from "./diagnostics.js";
 import { focusExistingWindow, QuitGuard, runSingleInstance } from "./lifecycle.js";
+import { MigrationCoordinator, type MigrationOutcome } from "./migrationWindow.js";
+import { RestoreWindowCoordinator } from "./restoreWindow.js";
+import { RuntimeApiClient } from "./runtimeApi.js";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -28,6 +33,8 @@ app.setAppLogsPath(path.join(dataRoot, "logs"));
 
 let mainWindow: BrowserWindow | undefined;
 let backend: BackendProcessController | undefined;
+let backendOrigin: string | undefined;
+let sessionToken = "";
 let quitApproved = false;
 
 function createWindow(): BrowserWindow {
@@ -59,23 +66,143 @@ function backendController(): BackendProcessController {
     ? path.join(process.resourcesPath, "backend", "fulua-backend.exe")
     : process.env.FULUA_BACKEND_PYTHON?.trim() || path.resolve(app.getAppPath(), "..", "backend", ".venv", "Scripts", "python.exe");
   const commandArguments = app.isPackaged ? [] : ["-m", "app.desktop_server"];
+  sessionToken = randomBytes(32).toString("hex");
   const controller = new BackendProcessController({
     executable,
     commandArguments,
     cwd: app.isPackaged ? undefined : path.resolve(app.getAppPath(), "..", "backend"),
     dataRoot,
     webDist,
-    sessionToken: randomBytes(32).toString("hex"),
+    sessionToken,
   });
   controller.onUnexpectedExit((error) => void recoverOrDiagnose(error));
   return controller;
 }
 
+async function startBackend(): Promise<string> {
+  if (backendOrigin) return backendOrigin;
+  backend ??= backendController();
+  backendOrigin = await backend.start();
+  return backendOrigin;
+}
+
 async function loadBackendPage(): Promise<void> {
   const window = mainWindow ?? createWindow();
-  backend ??= backendController();
-  const url = await backend.start();
+  const url = await startBackend();
   await window.loadURL(url);
+}
+
+function runtimeApi(): RuntimeApiClient {
+  if (!backendOrigin) throw new Error("本地服务尚未就绪");
+  return new RuntimeApiClient(backendOrigin, sessionToken);
+}
+
+async function restartSidecarAndReload(): Promise<void> {
+  const controller = backend;
+  if (controller) await controller.stop();
+  if (backend === controller) backend = undefined;
+  backendOrigin = undefined;
+  await loadBackendPage();
+}
+
+async function runMigrationFlow(): Promise<MigrationOutcome> {
+  const coordinator = new MigrationCoordinator({
+    chooseSourceDirectory: async () => {
+      const result = await dialog.showOpenDialog(mainWindow ?? createWindow(), {
+        title: "选择旧版附录A数据目录",
+        properties: ["openDirectory"],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
+    },
+    preflight: async (sourceRoot) => await runtimeApi().preflight(sourceRoot),
+    migrate: async (sourceRoot) => await runtimeApi().migrate(sourceRoot),
+    restartSidecar: restartSidecarAndReload,
+  });
+  return await coordinator.begin("migrate");
+}
+
+async function restoreBackup(backupId: string) {
+  const coordinator = new BackupCoordinator({
+    listBackups: async () => await runtimeApi().listBackups(),
+    restore: async (id) => await runtimeApi().restore(id),
+    restartSidecar: restartSidecarAndReload,
+  });
+  return await coordinator.restore(backupId);
+}
+
+function backupLabel(backup: { type: string; created_at: string }): string {
+  return `${backup.type} · ${backup.created_at}`;
+}
+
+async function openRestoreEntry(): Promise<void> {
+  const coordinator = new RestoreWindowCoordinator({
+    listBackups: async () => await runtimeApi().listBackups(),
+    chooseBackup: async (backups) => {
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "question",
+        title: "从备份恢复",
+        message: "选择要恢复的备份",
+        detail: "恢复会替换当前本地数据。请选择一个备份后继续确认。",
+        buttons: [...backups.map(backupLabel), "取消"],
+        cancelId: backups.length,
+        defaultId: backups.length,
+      });
+      return result.response === backups.length ? undefined : backups[result.response]?.id;
+    },
+    confirmRestore: async (backup, detail) => {
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "warning",
+        title: "确认恢复备份",
+        message: `恢复“${backupLabel(backup)}”吗？`,
+        detail,
+        buttons: ["取消", "确认恢复"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1;
+    },
+    restore: restoreBackup,
+    notify: async (outcome) => {
+      await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: outcome.status === "restored" ? "info" : "error",
+        title: outcome.status === "restored" ? "恢复完成" : "无法恢复备份",
+        message: outcome.message,
+      });
+    },
+  });
+  await coordinator.open();
+}
+
+function installApplicationMenu(): void {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "数据",
+      submenu: [{ label: "从备份恢复…", click: () => void openRestoreEntry() }],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
+}
+
+async function offerFirstRunChoice(): Promise<void> {
+  const choice = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+    type: "question",
+    buttons: ["新建空数据", "迁移旧数据"],
+    defaultId: 0,
+    cancelId: 0,
+    title: "附录A编写工具",
+    message: "欢迎使用附录A编写工具",
+    detail: "您可以新建空数据，或从旧版目录复制数据。旧数据始终保留。",
+  });
+  if (choice.response !== 1) return;
+
+  const outcome = await runMigrationFlow();
+  if (outcome.status === "migrated" || outcome.status === "cancelled" || outcome.status === "new-data") return;
+  await dialog.showMessageBox(mainWindow ?? createWindow(), {
+    type: "warning",
+    title: "未迁移旧数据",
+    message: outcome.message,
+    detail: "旧数据没有被修改。您可以继续使用空数据，或稍后重新选择旧数据目录。",
+  });
 }
 
 async function recoverOrDiagnose(error: Error): Promise<void> {
@@ -83,6 +210,7 @@ async function recoverOrDiagnose(error: Error): Promise<void> {
   try {
     if (!backend) throw error;
     const url = await backend.restartOnce();
+    backendOrigin = url;
     await window.loadURL(url);
   } catch (restartError) {
     await showDiagnostics(restartError instanceof Error ? restartError : error, backend, window);
@@ -118,10 +246,17 @@ ipcMain.handle("app:retry-backend", async () => {
     await backend.stop();
     backend = backendController();
     const url = await backend.start();
+    backendOrigin = url;
     await (mainWindow ?? createWindow()).loadURL(url);
   } catch (error) {
     await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
   }
+});
+ipcMain.handle("runtime:migrate-legacy", async () => await runMigrationFlow());
+ipcMain.handle("runtime:list-backups", async () => await runtimeApi().listBackups());
+ipcMain.handle("runtime:restore-backup", async (_event, backupId: unknown) => {
+  if (typeof backupId !== "string" || !/^[a-zA-Z0-9._-]+$/.test(backupId)) throw new Error("备份标识无效");
+  return await restoreBackup(backupId);
 });
 
 runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
@@ -130,8 +265,12 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
   });
   void app.whenReady().then(async () => {
     await mkdir(dataRoot, { recursive: true });
+    installApplicationMenu();
+    const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
     createWindow();
     try {
+      await startBackend();
+      if (isFirstRun) await offerFirstRunChoice();
       await loadBackendPage();
     } catch (error) {
       await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
