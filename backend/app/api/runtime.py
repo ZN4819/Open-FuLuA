@@ -26,22 +26,40 @@ class RuntimeOperations:
     """迁移和恢复期间供应用中间件查询的排他写入门闩。"""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._condition = threading.Condition()
         self._active = False
+        self._writers = 0
 
     def writes_blocked(self) -> bool:
         return self._active
 
     @contextmanager
     def exclusive(self) -> Iterator[None]:
-        if not self._lock.acquire(blocking=False):
-            raise RuntimeError("当前正在进行数据迁移或恢复")
-        self._active = True
+        with self._condition:
+            if self._active:
+                raise RuntimeError("当前正在进行数据迁移或恢复")
+            self._active = True
+            while self._writers:
+                self._condition.wait()
         try:
             yield
         finally:
-            self._active = False
-            self._lock.release()
+            with self._condition:
+                self._active = False
+                self._condition.notify_all()
+
+    @contextmanager
+    def business_write(self) -> Iterator[None]:
+        with self._condition:
+            if self._active:
+                raise RuntimeError("正在进行数据迁移或恢复，请等待本地服务重新启动")
+            self._writers += 1
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._writers -= 1
+                self._condition.notify_all()
 
 
 runtime_operations = RuntimeOperations()

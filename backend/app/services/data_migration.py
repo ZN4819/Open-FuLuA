@@ -246,6 +246,7 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         return MigrationResult(False, reason="目标已有用户数据，请恢复、新建或选择其他目标")
 
     staging = paths.migration_path / f"staging-{uuid.uuid4()}"
+    rollback = paths.migration_path / f"rollback-{uuid.uuid4()}"
     installed = False
     database_installed = False
     try:
@@ -271,6 +272,10 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         sqlite_backup(published_snapshot / "data" / "app.db", install / "data" / "app.db")
         shutil.copytree(published_snapshot / "storage", install / "storage")
         paths.database_path.parent.mkdir(parents=True, exist_ok=True)
+        if paths.database_path.exists():
+            sqlite_backup(paths.database_path, rollback / "data" / "app.db")
+        if paths.storage_path.exists():
+            shutil.copytree(paths.storage_path, rollback / "storage")
         remove_sqlite_sidecars(paths.database_path)
         if paths.database_path.exists():
             paths.database_path.unlink()
@@ -280,6 +285,7 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         os.replace(install / "storage", paths.storage_path)
         installed = True
         shutil.rmtree(install, ignore_errors=True)
+        shutil.rmtree(rollback, ignore_errors=True)
         valid, reason, projects, images, missing = validate_database_and_evidence(paths.database_path, paths.storage_path)
         if not valid:
             raise RuntimeError(reason if not missing else "安装后的证据图片校验失败")
@@ -291,6 +297,11 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
             remove_sqlite_sidecars(paths.database_path)
             paths.database_path.unlink(missing_ok=True)
             shutil.rmtree(paths.storage_path, ignore_errors=True)
+            if (rollback / "data" / "app.db").exists():
+                sqlite_backup(rollback / "data" / "app.db", paths.database_path)
+            if (rollback / "storage").exists():
+                shutil.copytree(rollback / "storage", paths.storage_path)
+        shutil.rmtree(rollback, ignore_errors=True)
         _write_state(
             paths, source_root=_safe_resolve(Path(source_root)), started_at=started_at,
             status="failed", reason=str(exc), projects=preflight.project_count,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+import threading
+import time
 from unittest.mock import patch
 
 
@@ -33,6 +35,31 @@ class RuntimeApiTests(unittest.TestCase):
         with runtime_operations.exclusive():
             self.assertTrue(runtime_operations.writes_blocked())
         self.assertFalse(runtime_operations.writes_blocked())
+
+    def test_exclusive_waits_for_started_write_and_rejects_new_write(self) -> None:
+        from app.api.runtime import RuntimeOperations
+
+        operations = RuntimeOperations()
+        entered = threading.Event()
+        release = threading.Event()
+        exclusive_entered = threading.Event()
+        with operations.business_write():
+            entered.set()
+            worker = threading.Thread(target=lambda: self._enter_exclusive(operations, exclusive_entered))
+            worker.start()
+            self.assertTrue(entered.is_set())
+            time.sleep(0.03)
+            self.assertFalse(exclusive_entered.is_set())
+            with self.assertRaisesRegex(RuntimeError, "正在进行"):
+                with operations.business_write():
+                    pass
+        worker.join(timeout=1)
+        self.assertTrue(exclusive_entered.is_set())
+
+    @staticmethod
+    def _enter_exclusive(operations, entered) -> None:
+        with operations.exclusive():
+            entered.set()
 
     def test_restore_response_requires_controlled_sidecar_restart(self) -> None:
         from app.api.runtime import restore_backup
