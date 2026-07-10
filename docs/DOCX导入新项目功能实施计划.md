@@ -8,7 +8,7 @@
 
 - 更新相关项目文档。
 - 运行阶段相关测试或统一检查脚本。
-- 提交并推送到远程仓库 `https://github.com/ZN4819/FuLuA`。
+- 提交并推送到模板仓库 `https://github.com/ZN4819/Open-FuLuA.git`。
 - 涉及数据库、解析器、API 或前端主流程的重要阶段使用独立 `codex/` 分支。
 
 推荐阶段：

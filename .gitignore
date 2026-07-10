@@ -28,3 +28,6 @@ backend/data/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local Git worktrees
+.worktrees/

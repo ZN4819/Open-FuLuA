@@ -648,7 +648,7 @@ POST   /api/projects/{project_id}/exports/docx?mode=final
 
 ## 17. 版本与交付约束
 
-- 项目远程仓库为 [ZN4819/FuLuA](https://github.com/ZN4819/FuLuA)。
+- 项目模板仓库为 [ZN4819/Open-FuLuA](https://github.com/ZN4819/Open-FuLuA.git)。
 - 每个实施阶段完成后，必须完成本阶段代码提交并推送到远程仓库。
 - 阶段提交前应完成该阶段对应测试或手动验收；如果测试无法运行，需要在提交说明或阶段总结中写明原因。
 - 每个阶段建议至少形成一个清晰提交，提交信息包含阶段编号和主要内容，例如 `M2: 完成结构化编辑器基础能力`。

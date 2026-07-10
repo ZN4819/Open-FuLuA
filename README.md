@@ -342,7 +342,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 1. 更新相关文档。
 2. 运行该阶段可运行的测试或手动检查。
 3. 提交代码。
-4. 推送到远程仓库 [ZN4819/FuLuA](https://github.com/ZN4819/FuLuA)。
+4. 推送到模板仓库 [ZN4819/Open-FuLuA](https://github.com/ZN4819/Open-FuLuA.git)。
 
 重要变更应在独立阶段分支中完成，例如：
 
