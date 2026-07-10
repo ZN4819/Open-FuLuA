@@ -38,6 +38,7 @@ export class BackendProcessController {
   private stopping = false;
   private restarted = false;
   private stderrTail = "";
+  private blockedReason: Error | undefined;
   private unexpectedExitHandler: ((reason: Error) => void) | undefined;
 
   constructor(options: BackendProcessOptions) {
@@ -49,6 +50,9 @@ export class BackendProcessController {
   }
 
   async start(): Promise<string> {
+    if (this.blockedReason) {
+      throw this.blockedReason;
+    }
     if (this.child || this.starting) {
       throw new Error("侧车已在启动或运行");
     }
@@ -61,6 +65,9 @@ export class BackendProcessController {
   }
 
   async restartOnce(): Promise<string> {
+    if (this.blockedReason) {
+      throw this.blockedReason;
+    }
     if (this.restarted) {
       throw new Error("侧车仅允许自动恢复一次");
     }
@@ -70,21 +77,29 @@ export class BackendProcessController {
   }
 
   async stop(): Promise<void> {
+    if (this.blockedReason) {
+      throw this.blockedReason;
+    }
     const child = this.child;
     if (!child) {
       return;
     }
     this.stopping = true;
+    let stopped = false;
     try {
       await this.stopChild(child);
+      stopped = true;
+    } catch (error) {
+      throw this.blockAfterCleanupFailure(error);
     } finally {
-      if (this.child === child) this.child = undefined;
+      if (stopped && this.child === child) this.child = undefined;
       this.stopping = false;
     }
   }
 
   diagnostics(): string {
-    return this.stderrTail || "未收到侧车错误输出。";
+    const details = this.stderrTail || "未收到侧车错误输出。";
+    return this.blockedReason ? `${this.blockedReason.message}\n${details}` : details;
   }
 
   private startChild(): Promise<string> {
@@ -114,8 +129,14 @@ export class BackendProcessController {
             return;
           }
           this.stopping = true;
-          void this.stopChild(child).finally(() => {
-            if (this.child === child) this.child = undefined;
+          void this.stopChild(child).then(
+            () => {
+              if (this.child === child) this.child = undefined;
+            },
+            (cleanupError) => {
+              this.blockAfterCleanupFailure(cleanupError);
+            },
+          ).finally(() => {
             this.stopping = false;
             reject(result);
           });
@@ -198,9 +219,20 @@ export class BackendProcessController {
       await this.waitForExit(child, this.options.stopTimeoutMs);
     } catch {
       if (process.platform === "win32" && child.pid) {
-        await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"]).catch(() => undefined);
+        try {
+          await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+          return;
+        } catch {
+          throw new Error("无法确认侧车已退出，已阻止再次启动");
+        }
       }
+      throw new Error("无法确认侧车已退出，已阻止再次启动");
     }
+  }
+
+  private blockAfterCleanupFailure(error: unknown): Error {
+    this.blockedReason = error instanceof Error ? error : new Error("无法确认侧车已退出，已阻止再次启动");
+    return this.blockedReason;
   }
 
   private appendStderr(value: string): void {

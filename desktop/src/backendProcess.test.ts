@@ -9,6 +9,7 @@ class FakeChildProcess extends EventEmitter {
   readonly stdout = new EventEmitter();
   readonly stderr = new EventEmitter();
   killCalls: NodeJS.Signals[] = [];
+  pid?: number;
 
   kill(signal: NodeJS.Signals): boolean {
     this.killCalls.push(signal);
@@ -96,6 +97,33 @@ test("启动失败后必须等待旧侧车退出才允许下一次启动", async
   second.stdout.emit("data", Buffer.from('{"event":"FULUA_READY","port":48128,"health_url":"http://127.0.0.1:48128/api/health"}\n'));
   await secondStart;
   assert.equal(spawnCount, 2);
+});
+
+test("Windows 强制清理失败时拒绝再次启动且不生成第二侧车", async () => {
+  const first = new FakeChildProcess();
+  first.pid = -1;
+  const second = new FakeChildProcess();
+  let spawnCount = 0;
+  const controller = new BackendProcessController({
+    spawn: () => {
+      spawnCount += 1;
+      return (spawnCount === 1 ? first : second) as unknown as ChildProcess;
+    },
+    fetch: async () => new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+    executable: "backend.exe",
+    dataRoot: "C:\\data",
+    webDist: "C:\\web",
+    sessionToken: "secret-token",
+    startTimeoutMs: 1,
+    stopTimeoutMs: 1,
+  });
+
+  const firstStart = controller.start();
+  first.stdout.emit("data", Buffer.from('{"event":"FULUA_FAILED","message":"启动失败"}\n'));
+  await assert.rejects(firstStart, /启动失败/);
+
+  await assert.rejects(controller.start(), /无法确认侧车已退出/);
+  assert.equal(spawnCount, 1);
 });
 
 test("正常停止最多等待一次子进程退出", async () => {
