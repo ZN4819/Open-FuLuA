@@ -183,6 +183,10 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
                 for table in ("projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "section_subsystems"):
                     if table in tables and int(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) > 0:
                         return True
+                if "record_templates" in tables and int(db.execute("SELECT COUNT(*) FROM record_templates WHERE source_type != 'system' OR deleted_at IS NOT NULL").fetchone()[0]) > 0:
+                    return True
+                if "record_template_slots" in tables and int(db.execute("SELECT COUNT(*) FROM record_template_slots WHERE is_customized != 0").fetchone()[0]) > 0:
+                    return True
             finally:
                 db.close()
         except sqlite3.Error:
@@ -242,8 +246,11 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
     source_fingerprint = hashlib.sha256((str(source_db) + json.dumps(source_database_files, sort_keys=True) + json.dumps(source_files, sort_keys=True)).encode()).hexdigest()
     snapshots = paths.migration_path / "snapshots"
     published_snapshot = snapshots / source_fingerprint
-    if published_snapshot.exists() and paths.database_path.exists():
-        return MigrationResult(False, already_installed=True, reason="相同源数据已迁移", snapshot_path=str(published_snapshot))
+    if published_snapshot.exists() and paths.database_path.exists() and paths.storage_path.exists():
+        snapshot_valid, _, snapshot_projects, snapshot_images, _ = validate_database_and_evidence(published_snapshot / "data" / "app.db", published_snapshot / "storage")
+        target_valid, _, target_projects, target_images, _ = validate_database_and_evidence(paths.database_path, paths.storage_path)
+        if snapshot_valid and target_valid and snapshot_projects == target_projects and snapshot_images == target_images and file_manifest(published_snapshot / "storage") == file_manifest(paths.storage_path):
+            return MigrationResult(False, already_installed=True, reason="相同源数据已迁移", snapshot_path=str(published_snapshot))
     if _target_has_user_data(paths):
         _write_state(
             paths, source_root=_safe_resolve(Path(source_root)), started_at=started_at,
