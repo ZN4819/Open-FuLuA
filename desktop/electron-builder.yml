@@ -1,0 +1,22 @@
+appId: cn.fulua.appendix-a-tool
+productName: 附录A编写工具
+asar: true
+
+directories:
+  output: ../artifacts/desktop/electron
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: ../frontend/dist
+    to: frontend
+  - from: ../artifacts/desktop/backend/fulua-backend
+    to: backend
+
+win:
+  executableName: FuLuA
+  target:
+    - target: dir
+      arch: x64
