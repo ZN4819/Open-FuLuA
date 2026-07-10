@@ -1,0 +1,20 @@
+{
+  "name": "fulua-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "附录A编写工具 Windows 客户端",
+  "main": "dist/main.js",
+  "engines": {
+    "node": ">=22.12.0 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "compile": "tsc",
+    "package:win-unpacked": "npm run compile && electron-builder --config electron-builder.yml --win dir"
+  },
+  "devDependencies": {
+    "electron": "43.1.0",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2"
+  }
+}

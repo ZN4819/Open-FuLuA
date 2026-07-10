@@ -22,6 +22,7 @@ backend/data/
 # Generated previews and exports
 *.pdf
 *.png.tmp
+artifacts/
 
 # OS/editor
 .DS_Store
