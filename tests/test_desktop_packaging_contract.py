@@ -229,6 +229,16 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("本机临时用户目录验收", guide)
         self.assertIn("干净 Windows 用户/VM 验收待执行", guide)
 
+    def test_readme_and_installation_guide_describe_cd6_user_installation(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("CD-6", readme)
+        self.assertIn(".\\scripts\\build_desktop.ps1 -Target nsis", readme)
+        self.assertIn("docs/客户端安装与卸载说明.md", readme)
+        self.assertNotIn("选择“当前用户”", guide)
+        self.assertIn("自动按当前用户范围安装，无需管理员权限", guide)
+
     def test_pyinstaller_spec_imports_app_and_collects_runtime_assets(self) -> None:
         spec = (ROOT / "backend" / "packaging" / "fulua_backend.spec").read_text(encoding="utf-8")
         entrypoint = ROOT / "backend" / "packaging" / "backend_entry.py"
