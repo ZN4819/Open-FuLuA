@@ -1,6 +1,7 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -11,6 +12,7 @@ from .api.projects import router as projects_router
 from .api.record_template_slots import router as record_template_slots_router
 from .api.record_templates import router as record_templates_router
 from .api.render_jobs import router as render_jobs_router
+from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
 from .api.templates import router as templates_router
 from .api.validation import router as validation_router
@@ -31,6 +33,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def reject_business_writes_during_maintenance(request: Request, call_next):
+    if runtime_operations.writes_blocked() and request.method in {"POST", "PUT", "PATCH", "DELETE"} and not request.url.path.startswith("/api/runtime"):
+        return JSONResponse(status_code=409, content={"detail": "正在进行数据迁移或恢复，请等待本地服务重新启动"})
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -72,5 +81,6 @@ app.include_router(imports_router, prefix=settings.api_prefix)
 app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(templates_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
+app.include_router(runtime_router, prefix=f"{settings.api_prefix}/runtime")
 app.mount(f"{settings.api_prefix}/files", StaticFiles(directory=settings.storage_path, check_dir=False), name="files")
 mount_frontend_assets(app)
