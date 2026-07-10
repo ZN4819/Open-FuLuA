@@ -247,6 +247,12 @@ GET http://127.0.0.1:8000/api/health
 
 桌面模式由启动器设置 `FULUA_DATA_DIR`。此时所有运行时数据从该目录派生：数据库为 `data/app.db`，文件为 `storage/`，日志为 `logs/`，并预留 `backups/` 和 `migration/` 目录；应用不会向安装目录写入用户数据。`FULUA_DATABASE_PATH` 与 `FULUA_STORAGE_PATH` 可分别覆盖数据库或文件目录，但不会改变运行模式判定。
 
+### 同源前端托管（CD-3 已完成）
+
+构建前端后，桌面启动器可将构建目录通过 `FULUA_WEB_DIST_PATH` 传给后端。只要该目录包含 `index.html`，同一个后端进程便会同时提供页面、前端资源和 `/api` 接口；不需要额外启动 Vite 服务，也不依赖跨域请求。
+
+页面路由会回退到前端入口页，但 `/api`、`/api/files` 和缺失的静态资源不会被入口页覆盖。未设置 `FULUA_WEB_DIST_PATH` 时，后端保持原有仅提供 API 的开发行为。
+
 模板 profile 接口：
 
 ```text
@@ -359,6 +365,8 @@ http://127.0.0.1:5174
 ```text
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
+
+前端地址优先级为：非空 `VITE_API_BASE_URL`、Vite 开发模式的 `http://127.0.0.1:8000`、同源生产模式的相对地址。开发服务器仅代理 `/api` 路径。
 
 ## 阶段提交要求
 

@@ -18,6 +18,7 @@ from .config import settings
 from .database import current_database_path, init_db
 from .runtime import BACKEND_VERSION, SCHEMA_VERSION, ensure_runtime_directories
 from .schemas import HealthResponse
+from .web_assets import mount_frontend_assets
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title=settings.app_name)
@@ -72,3 +73,4 @@ app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(templates_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
 app.mount(f"{settings.api_prefix}/files", StaticFiles(directory=settings.storage_path, check_dir=False), name="files")
+mount_frontend_assets(app)
