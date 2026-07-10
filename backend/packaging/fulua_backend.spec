@@ -17,6 +17,7 @@ datas = [(str(ROOT / source), destination) for source, destination in PACKAGED_D
 
 hiddenimports = [
     "app.main",
+    "app.desktop_server",
     *collect_submodules("PIL"),
     *collect_submodules("lxml"),
 ]

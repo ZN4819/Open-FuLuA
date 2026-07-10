@@ -59,7 +59,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
         entrypoint = ROOT / "backend" / "packaging" / "backend_entry.py"
 
         self.assertTrue(entrypoint.is_file(), "缺少最小后端打包启动器")
-        self.assertIn("from app.main import app", entrypoint.read_text(encoding="utf-8"))
+        self.assertIn("from app.desktop_server import main", entrypoint.read_text(encoding="utf-8"))
         self.assertIn("backend_entry.py", spec)
         self.assertIn("app.main", spec)
         self.assertIn("template_profile.json", spec)
