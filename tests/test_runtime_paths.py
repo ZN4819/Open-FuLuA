@@ -1,3 +1,4 @@
+import asyncio
 import os
 import subprocess
 import sys
@@ -7,14 +8,51 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.config import settings
+from app import database
 from app.main import app, on_startup
 from app.runtime import resolve_runtime_paths
+from app.services.docx_generator.generator import generate_project_docx
 
 
 class RuntimePathsTests(unittest.TestCase):
     @staticmethod
     def _files_application():
         return next(route.app for route in app.routes if getattr(route, "name", None) == "files")
+
+    @staticmethod
+    def _read_files_route(path: str) -> tuple[int, bytes]:
+        messages: list[dict[str, object]] = []
+
+        async def receive() -> dict[str, object]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: dict[str, object]) -> None:
+            messages.append(message)
+
+        async def request() -> None:
+            await RuntimePathsTests._files_application()(
+                {
+                    "type": "http",
+                    "asgi": {"version": "3.0"},
+                    "http_version": "1.1",
+                    "method": "GET",
+                    "scheme": "http",
+                    "path": f"/api/files/{path}",
+                    "raw_path": f"/api/files/{path}".encode(),
+                    "query_string": b"",
+                    "root_path": "/api/files",
+                    "headers": [],
+                    "client": ("127.0.0.1", 8000),
+                    "server": ("127.0.0.1", 8000),
+                },
+                receive,
+                send,
+            )
+
+        asyncio.run(request())
+        status = next(message["status"] for message in messages if message["type"] == "http.response.start")
+        body = b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body")
+        return int(status), body
 
     def test_development_defaults_keep_existing_database_and_storage_locations(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -120,6 +158,40 @@ class RuntimePathsTests(unittest.TestCase):
 
         self.assertEqual(Path(files_app.directory), storage_path)
         self.assertEqual([Path(path) for path in files_app.all_directories], [storage_path])
+
+    def test_desktop_startup_creates_runtime_directories_and_sqlite_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "FuLuA"
+            with patch.dict(os.environ, {"FULUA_DATA_DIR": str(data_root)}, clear=True):
+                on_startup()
+                for name in ("data", "storage", "logs", "backups", "migration"):
+                    self.assertTrue((data_root / name).is_dir())
+                self.assertTrue((data_root / "data" / "app.db").is_file())
+
+    def test_desktop_export_uses_current_storage_without_writing_repository_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "FuLuA"
+            with patch.dict(os.environ, {"FULUA_DATA_DIR": str(data_root)}, clear=True):
+                on_startup()
+                project = database.create_project("运行时导出验收")
+                export_path = generate_project_docx(project["id"])
+
+            repository_storage = Path(__file__).resolve().parents[1] / "storage"
+            self.assertTrue(export_path.is_file())
+            self.assertTrue(export_path.is_relative_to(data_root / "storage" / "exports"))
+            self.assertFalse((repository_storage / export_path.relative_to(data_root / "storage")).exists())
+
+    def test_files_route_serves_file_from_current_desktop_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "FuLuA"
+            with patch.dict(os.environ, {"FULUA_DATA_DIR": str(data_root)}, clear=True):
+                on_startup()
+                expected = b"desktop static file"
+                (data_root / "storage" / "runtime-check.txt").write_bytes(expected)
+                status, body = self._read_files_route("runtime-check.txt")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, expected)
 
     def test_first_desktop_start_can_import_application_before_storage_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
