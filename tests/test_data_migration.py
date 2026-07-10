@@ -4,6 +4,7 @@ import hashlib
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from app.runtime import RuntimePaths
