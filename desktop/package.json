@@ -10,7 +10,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "compile": "tsc",
-    "test:backend-process": "npm run compile && node --test dist/backendProcess.test.js",
+    "test:backend-process": "npm run compile && node --test dist/backendProcess.test.js dist/lifecycle.test.js",
     "package:win-unpacked": "npm run compile && electron-builder --config electron-builder.yml --win dir"
   },
   "devDependencies": {

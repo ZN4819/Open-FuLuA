@@ -14,8 +14,10 @@ export interface BackendProcessOptions {
   cwd?: string;
   startTimeoutMs?: number;
   stopTimeoutMs?: number;
+  forceKillTimeoutMs?: number;
   spawn?: (command: string, commandArgs: readonly string[], options: { cwd?: string; windowsHide: boolean; stdio: "pipe"[] }) => ChildProcess;
   fetch?: typeof globalThis.fetch;
+  forceKill?: (pid: number) => Promise<void>;
 }
 
 interface ReadyEvent {
@@ -32,7 +34,7 @@ interface FailedEvent {
 type DesktopEvent = ReadyEvent | FailedEvent;
 
 export class BackendProcessController {
-  private readonly options: Required<Pick<BackendProcessOptions, "startTimeoutMs" | "stopTimeoutMs">> & BackendProcessOptions;
+  private readonly options: Required<Pick<BackendProcessOptions, "startTimeoutMs" | "stopTimeoutMs" | "forceKillTimeoutMs">> & BackendProcessOptions;
   private child: ChildProcess | undefined;
   private starting: Promise<string> | undefined;
   private stopping = false;
@@ -42,7 +44,13 @@ export class BackendProcessController {
   private unexpectedExitHandler: ((reason: Error) => void) | undefined;
 
   constructor(options: BackendProcessOptions) {
-    this.options = { ...options, startTimeoutMs: options.startTimeoutMs ?? 15_000, stopTimeoutMs: options.stopTimeoutMs ?? 5_000 };
+    const stopTimeoutMs = options.stopTimeoutMs ?? 5_000;
+    this.options = {
+      ...options,
+      startTimeoutMs: options.startTimeoutMs ?? 15_000,
+      stopTimeoutMs,
+      forceKillTimeoutMs: options.forceKillTimeoutMs ?? Math.min(1_000, Math.max(1, Math.floor(stopTimeoutMs / 2))),
+    };
   }
 
   onUnexpectedExit(handler: (reason: Error) => void): void {
@@ -181,7 +189,7 @@ export class BackendProcessController {
     try {
       const event = JSON.parse(line) as DesktopEvent;
       if (event.event === "FULUA_FAILED") return event;
-      if (event.event === "FULUA_READY" && Number.isInteger(event.port) && /^http:\/\/127\.0\.0\.1:\d+\/api\/health$/.test(event.health_url)) return event;
+      if (event.event === "FULUA_READY" && this.isValidReadyEvent(event)) return event;
     } catch {
       // 只接受协议约定的单行 JSON，其他 stdout 不影响生命周期判断。
     }
@@ -214,13 +222,18 @@ export class BackendProcessController {
   }
 
   private async stopChild(child: ChildProcess): Promise<void> {
+    const forceKillTimeoutMs = Math.min(this.options.forceKillTimeoutMs, this.options.stopTimeoutMs);
+    const gracefulStopTimeoutMs = Math.max(1, this.options.stopTimeoutMs - forceKillTimeoutMs);
     try {
       child.kill("SIGTERM");
-      await this.waitForExit(child, this.options.stopTimeoutMs);
+      await this.waitForExit(child, gracefulStopTimeoutMs);
     } catch {
       if (process.platform === "win32" && child.pid) {
         try {
-          await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+          const forceKill = this.options.forceKill ?? (async (pid: number): Promise<void> => {
+            await execFileAsync("taskkill", ["/pid", String(pid), "/t", "/f"]);
+          });
+          await this.withTimeout(forceKill(child.pid), forceKillTimeoutMs, "强制清理侧车进程超时");
           return;
         } catch {
           throw new Error("无法确认侧车已退出，已阻止再次启动");
@@ -233,6 +246,37 @@ export class BackendProcessController {
   private blockAfterCleanupFailure(error: unknown): Error {
     this.blockedReason = error instanceof Error ? error : new Error("无法确认侧车已退出，已阻止再次启动");
     return this.blockedReason;
+  }
+
+  private isValidReadyEvent(event: ReadyEvent): boolean {
+    if (!Number.isInteger(event.port) || event.port < 1 || event.port > 65_535) return false;
+    try {
+      const healthUrl = new URL(event.health_url);
+      return healthUrl.protocol === "http:"
+        && healthUrl.hostname === "127.0.0.1"
+        && healthUrl.port === String(event.port)
+        && healthUrl.pathname === "/api/health"
+        && !healthUrl.search
+        && !healthUrl.hash;
+    } catch {
+      return false;
+    }
+  }
+
+  private async withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      void operation.then(
+        (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        (error: unknown) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      );
+    });
   }
 
   private appendStderr(value: string): void {

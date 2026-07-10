@@ -7,6 +7,7 @@ import asyncio
 import json
 import socket
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -14,16 +15,30 @@ def _event(event: str, **values: object) -> None:
     print(json.dumps({"event": event, **values}, ensure_ascii=False), flush=True)
 
 
-def _write_failure_log(data_root: Path, error: Exception) -> None:
+def _fallback_data_root() -> Path:
+    return Path(tempfile.gettempdir()) / "fulua-desktop-failures"
+
+
+def _conservative_data_root(arguments: list[str]) -> Path:
     try:
-        logs_path = data_root / "logs"
-        logs_path.mkdir(parents=True, exist_ok=True)
-        (logs_path / "desktop-server.log").write_text(
-            f"桌面侧车启动失败：{type(error).__name__}: {error}\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
+        index = arguments.index("--data-root")
+        return Path(arguments[index + 1]).expanduser()
+    except (ValueError, IndexError, OSError):
+        return _fallback_data_root()
+
+
+def _write_failure_log(data_root: Path, error: BaseException) -> None:
+    for candidate in (data_root, _fallback_data_root()):
+        try:
+            logs_path = candidate / "logs"
+            logs_path.mkdir(parents=True, exist_ok=True)
+            (logs_path / "desktop-server.log").write_text(
+                f"桌面侧车启动失败：{type(error).__name__}\n",
+                encoding="utf-8",
+            )
+            return
+        except OSError:
+            continue
 
 
 async def _serve(socket_handle: socket.socket) -> None:
@@ -58,10 +73,11 @@ def _arguments() -> argparse.Namespace:
 
 
 def main() -> int:
-    arguments = _arguments()
-    data_root = Path(arguments.data_root).expanduser().resolve()
-    # app.main 在其后导入，确保配置模块首次读取时就是桌面运行时路径。
+    data_root = _conservative_data_root(sys.argv[1:])
     try:
+        arguments = _arguments()
+        data_root = Path(arguments.data_root).expanduser().resolve()
+        # app.main 在其后导入，确保配置模块首次读取时就是桌面运行时路径。
         data_root.mkdir(parents=True, exist_ok=True)
         import os
 
@@ -72,7 +88,7 @@ def main() -> int:
             socket_handle.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             socket_handle.bind(("127.0.0.1", 0))
             asyncio.run(_serve(socket_handle))
-    except Exception as error:
+    except (Exception, SystemExit) as error:
         _write_failure_log(data_root, error)
         _event("FULUA_FAILED", message="本地服务未能启动")
         return 1

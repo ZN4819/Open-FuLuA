@@ -4,7 +4,8 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 
 import { BackendProcessController } from "./backendProcess.js";
-import { diagnosticsPage } from "./diagnostics.js";
+import { diagnosticsPage, sanitizeDiagnostics } from "./diagnostics.js";
+import { focusExistingWindow, QuitGuard, runSingleInstance } from "./lifecycle.js";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -27,6 +28,7 @@ app.setAppLogsPath(path.join(dataRoot, "logs"));
 
 let mainWindow: BrowserWindow | undefined;
 let backend: BackendProcessController | undefined;
+let quitApproved = false;
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -83,9 +85,18 @@ async function recoverOrDiagnose(error: Error): Promise<void> {
     const url = await backend.restartOnce();
     await window.loadURL(url);
   } catch (restartError) {
-    const details = backend?.diagnostics() ?? "未收到侧车错误输出。";
-    await window.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(diagnosticsPage(restartError instanceof Error ? restartError.message : error.message, details))}`);
+    await showDiagnostics(restartError instanceof Error ? restartError : error, backend, window);
   }
+}
+
+async function showDiagnostics(error: Error, controller = backend, preferredWindow?: BrowserWindow): Promise<void> {
+  const window = preferredWindow && !preferredWindow.isDestroyed()
+    ? preferredWindow
+    : mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow
+      : createWindow();
+  const details = controller?.diagnostics() ?? "未收到侧车错误输出。";
+  await window.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(diagnosticsPage(error.message, details))}`);
 }
 
 ipcMain.handle("app:get-version", () => app.getVersion());
@@ -99,7 +110,7 @@ ipcMain.handle("app:open-logs-directory", async () => {
 });
 ipcMain.handle("app:copy-diagnostics", (_event, details: unknown) => {
   if (typeof details !== "string") throw new Error("诊断信息无效");
-  clipboard.writeText(details.replace(/session-token\s+\S+/gi, "session-token [已隐藏]"));
+  clipboard.writeText(sanitizeDiagnostics(details));
 });
 ipcMain.handle("app:retry-backend", async () => {
   if (!backend) backend = backendController();
@@ -113,14 +124,9 @@ ipcMain.handle("app:retry-backend", async () => {
   }
 });
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
-if (!hasSingleInstanceLock) {
-  app.quit();
-} else {
+runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
   app.on("second-instance", () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    focusExistingWindow(mainWindow);
   });
   void app.whenReady().then(async () => {
     await mkdir(dataRoot, { recursive: true });
@@ -131,16 +137,23 @@ if (!hasSingleInstanceLock) {
       await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
     }
   });
-}
+});
 
 app.on("window-all-closed", () => {
   app.quit();
 });
 
 app.on("before-quit", (event) => {
-  if (!backend) return;
+  if (quitApproved || !backend) return;
   event.preventDefault();
   const controller = backend;
-  backend = undefined;
-  void controller.stop().finally(() => app.quit());
+  const guard = new QuitGuard(controller, async (error, retainedController) => {
+    await showDiagnostics(error, retainedController);
+  });
+  void guard.stopForQuit().then((canQuit) => {
+    if (!canQuit) return;
+    if (backend === controller) backend = undefined;
+    quitApproved = true;
+    app.quit();
+  });
 });

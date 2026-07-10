@@ -126,6 +126,56 @@ test("Windows 强制清理失败时拒绝再次启动且不生成第二侧车", 
   assert.equal(spawnCount, 1);
 });
 
+test("Windows 强制清理超时时拒绝再次启动且不生成第二侧车", async () => {
+  const first = new FakeChildProcess();
+  first.pid = 42;
+  const second = new FakeChildProcess();
+  let spawnCount = 0;
+  const controller = new BackendProcessController({
+    spawn: () => {
+      spawnCount += 1;
+      return (spawnCount === 1 ? first : second) as unknown as ChildProcess;
+    },
+    fetch: async () => new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+    forceKill: async () => await new Promise<void>(() => undefined),
+    executable: "backend.exe",
+    dataRoot: "C:\\data",
+    webDist: "C:\\web",
+    sessionToken: "secret-token",
+    startTimeoutMs: 2,
+    stopTimeoutMs: 2,
+    forceKillTimeoutMs: 1,
+  });
+
+  const firstStart = controller.start();
+  first.stdout.emit("data", Buffer.from('{"event":"FULUA_FAILED","message":"启动失败"}\n'));
+  await assert.rejects(firstStart, /启动失败/);
+  await assert.rejects(controller.start(), /无法确认侧车已退出/);
+  assert.equal(spawnCount, 1);
+});
+
+test("拒绝端口无效或与 health URL 不一致的 READY 事件", async () => {
+  for (const event of [
+    '{"event":"FULUA_READY","port":0,"health_url":"http://127.0.0.1:0/api/health"}',
+    '{"event":"FULUA_READY","port":48129,"health_url":"http://127.0.0.1:48130/api/health"}',
+  ]) {
+    const child = new FakeChildProcess();
+    const controller = new BackendProcessController({
+      spawn: () => child as unknown as ChildProcess,
+      fetch: async () => new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+      executable: "backend.exe",
+      dataRoot: "C:\\data",
+      webDist: "C:\\web",
+      sessionToken: "secret-token",
+      startTimeoutMs: 1,
+      stopTimeoutMs: 1,
+    });
+    const starting = controller.start();
+    child.stdout.emit("data", Buffer.from(`${event}\n`));
+    await assert.rejects(starting, /15 秒内/);
+  }
+});
+
 test("正常停止最多等待一次子进程退出", async () => {
   const child = new FakeChildProcess();
   const controller = new BackendProcessController({

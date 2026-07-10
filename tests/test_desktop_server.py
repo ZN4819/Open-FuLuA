@@ -71,6 +71,29 @@ class DesktopServerTests(unittest.TestCase):
             self.assertNotIn("must-not-leak", result.stdout)
             self.assertNotIn("must-not-leak", result.stderr)
 
+    def test_missing_arguments_emit_failed_event_and_write_fallback_log(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            environment = os.environ.copy()
+            environment["TEMP"] = temporary_directory
+            environment["TMP"] = temporary_directory
+            result = subprocess.run(
+                self._command("--session-token", "must-not-leak"),
+                cwd=ROOT / "backend",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                timeout=10,
+                check=False,
+            )
+            event = json.loads(result.stdout.strip())
+            self.assertEqual(event["event"], "FULUA_FAILED")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("must-not-leak", result.stdout)
+            self.assertNotIn("must-not-leak", result.stderr)
+            self.assertTrue((Path(temporary_directory) / "fulua-desktop-failures" / "logs" / "desktop-server.log").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
