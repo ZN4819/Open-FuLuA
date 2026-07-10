@@ -239,6 +239,14 @@ http://127.0.0.1:8000
 GET http://127.0.0.1:8000/api/health
 ```
 
+健康检查会返回运行模式、数据根目录、数据库 schema 版本和后端版本，便于本机诊断；不会返回项目内容或认证信息。
+
+### 运行时数据目录
+
+开发模式不设置 `FULUA_DATA_DIR`，保持既有目录：SQLite 数据库位于 `backend/data/app.db`，上传、导出和预览文件位于仓库的 `storage/`。
+
+桌面模式由启动器设置 `FULUA_DATA_DIR`。此时所有运行时数据从该目录派生：数据库为 `data/app.db`，文件为 `storage/`，日志为 `logs/`，并预留 `backups/` 和 `migration/` 目录；应用不会向安装目录写入用户数据。`FULUA_DATABASE_PATH` 与 `FULUA_STORAGE_PATH` 可分别覆盖数据库或文件目录，但不会改变运行模式判定。
+
 模板 profile 接口：
 
 ```text
@@ -311,7 +319,7 @@ DELETE http://127.0.0.1:8000/api/evidence/{image_id}
 PUT    http://127.0.0.1:8000/api/projects/{project_id}/sections/{code}/evidence-order
 ```
 
-上传图片会存入 `storage/uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。批量上传接口会一次接收多张图片，并按当前章节顺序追加图号；如批量中有不支持或损坏的图片，本次批量上传会回滚。替换图片接口会保留原图片 ID、图号、题注、排序和正文引用 token，仅更新图片文件、预览和尺寸/DPI 元数据。
+上传图片会存入当前运行时文件目录的 `uploads/`，接口会返回缩略图访问地址、图号、图片尺寸、DPI、建议显示尺寸和质量提示。批量上传接口会一次接收多张图片，并按当前章节顺序追加图号；如批量中有不支持或损坏的图片，本次批量上传会回滚。替换图片接口会保留原图片 ID、图号、题注、排序和正文引用 token，仅更新图片文件、预览和尺寸/DPI 元数据。
 
 DOCX 导出接口：
 
@@ -320,7 +328,7 @@ POST http://127.0.0.1:8000/api/projects/{project_id}/exports/docx?mode=editable
 POST http://127.0.0.1:8000/api/projects/{project_id}/exports/docx?mode=final
 ```
 
-导出文件会生成到 `storage/exports/`，接口会直接返回可下载的 DOCX；下载文件名以项目名称开头，并按导出模式追加“可编辑版”或“最终版”。
+导出文件会生成到当前运行时文件目录的 `exports/`，接口会直接返回可下载的 DOCX；下载文件名以项目名称开头，并按导出模式追加“可编辑版”或“最终版”。
 
 项目校验接口：
 

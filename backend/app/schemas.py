@@ -5,6 +5,10 @@ class HealthResponse(BaseModel):
     status: str
     app_name: str
     database_path: str
+    runtime_mode: str
+    data_root: str
+    schema_version: str
+    backend_version: str
 
 
 class ProjectCreate(BaseModel):
