@@ -7,11 +7,13 @@ ROOT = Path(SPECPATH).parents[1]
 BACKEND_ROOT = ROOT / "backend"
 PACKAGING_ROOT = BACKEND_ROOT / "packaging"
 
-datas = [
-    (str(ROOT / "templates" / "appendix_a" / "template_profile.json"), "templates/appendix_a"),
-    (str(ROOT / "templates" / "appendix_a" / "record_templates.json"), "templates/appendix_a"),
-    (str(ROOT / "frontend" / "dist"), "frontend"),
-]
+PACKAGED_DATA_SOURCES = (
+    ("templates/appendix_a/template_profile.json", "templates/appendix_a"),
+    ("templates/appendix_a/record_templates.json", "templates/appendix_a"),
+    ("frontend/dist", "frontend"),
+)
+
+datas = [(str(ROOT / source), destination) for source, destination in PACKAGED_DATA_SOURCES]
 
 hiddenimports = [
     "app.main",

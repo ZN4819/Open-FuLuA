@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 import subprocess
@@ -65,6 +66,47 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("frontend", spec)
         self.assertRegex(spec, r"collect_submodules\([\"']PIL[\"']\)")
         self.assertRegex(spec, r"collect_submodules\([\"']lxml[\"']\)")
+
+    def test_pyinstaller_datas_are_an_explicit_program_resource_allowlist(self) -> None:
+        spec_path = ROOT / "backend" / "packaging" / "fulua_backend.spec"
+        tree = ast.parse(spec_path.read_text(encoding="utf-8"))
+        assignment = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "PACKAGED_DATA_SOURCES"
+                    for target in node.targets
+                )
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(assignment, "PyInstaller datas 必须来自显式资源白名单")
+        assert assignment is not None
+        sources = ast.literal_eval(assignment.value)
+        self.assertEqual(
+            sources,
+            (
+                ("templates/appendix_a/template_profile.json", "templates/appendix_a"),
+                ("templates/appendix_a/record_templates.json", "templates/appendix_a"),
+                ("frontend/dist", "frontend"),
+            ),
+        )
+
+        serialized_sources = "\n".join(source for source, _destination in sources).lower()
+        for forbidden in (
+            "storage",
+            "backend/data",
+            "tests",
+            "fixture",
+            ".db",
+            ".log",
+            "附录a编写.docx",
+            "user",
+        ):
+            self.assertNotIn(forbidden, serialized_sources)
 
     def test_build_script_runs_frontend_before_pyinstaller_and_fails_fast(self) -> None:
         script = (ROOT / "scripts" / "build_desktop.ps1").read_text(encoding="utf-8")
