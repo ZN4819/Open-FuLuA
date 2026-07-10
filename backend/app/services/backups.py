@@ -144,11 +144,14 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResul
 
             rollback = paths.backup_path / f"restore-rollback-{uuid.uuid4()}"
             rollback.mkdir(parents=True)
+            # 在删除 WAL/SHM 或替换任何对象前，先得到可回放的一致性当前快照。
+            sqlite_backup(paths.database_path, rollback / "app.db")
+            _copy_storage(paths.storage_path, rollback / "storage")
             remove_sqlite_sidecars(paths.database_path)
             if paths.database_path.exists():
-                os.replace(paths.database_path, rollback / "app.db")
+                paths.database_path.unlink()
             if paths.storage_path.exists():
-                os.replace(paths.storage_path, rollback / "storage")
+                shutil.rmtree(paths.storage_path)
             paths.database_path.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staging / "data" / "app.db", paths.database_path)
             os.replace(staging / "storage", paths.storage_path)

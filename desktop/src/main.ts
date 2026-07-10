@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -9,6 +9,7 @@ import { BackupCoordinator } from "./backupActions.js";
 import { diagnosticsPage, sanitizeDiagnostics } from "./diagnostics.js";
 import { focusExistingWindow, QuitGuard, runSingleInstance } from "./lifecycle.js";
 import { MigrationCoordinator, type MigrationOutcome } from "./migrationWindow.js";
+import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
 
 const STARTUP_HTML = `<!doctype html>
@@ -129,6 +130,59 @@ async function restoreBackup(backupId: string) {
   return await coordinator.restore(backupId);
 }
 
+function backupLabel(backup: { type: string; created_at: string }): string {
+  return `${backup.type} · ${backup.created_at}`;
+}
+
+async function openRestoreEntry(): Promise<void> {
+  const coordinator = new RestoreWindowCoordinator({
+    listBackups: async () => await runtimeApi().listBackups(),
+    chooseBackup: async (backups) => {
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "question",
+        title: "从备份恢复",
+        message: "选择要恢复的备份",
+        detail: "恢复会替换当前本地数据。请选择一个备份后继续确认。",
+        buttons: [...backups.map(backupLabel), "取消"],
+        cancelId: backups.length,
+        defaultId: backups.length,
+      });
+      return result.response === backups.length ? undefined : backups[result.response]?.id;
+    },
+    confirmRestore: async (backup, detail) => {
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "warning",
+        title: "确认恢复备份",
+        message: `恢复“${backupLabel(backup)}”吗？`,
+        detail,
+        buttons: ["取消", "确认恢复"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1;
+    },
+    restore: restoreBackup,
+    notify: async (outcome) => {
+      await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: outcome.status === "restored" ? "info" : "error",
+        title: outcome.status === "restored" ? "恢复完成" : "无法恢复备份",
+        message: outcome.message,
+      });
+    },
+  });
+  await coordinator.open();
+}
+
+function installApplicationMenu(): void {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "数据",
+      submenu: [{ label: "从备份恢复…", click: () => void openRestoreEntry() }],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
+}
+
 async function offerFirstRunChoice(): Promise<void> {
   const choice = await dialog.showMessageBox(mainWindow ?? createWindow(), {
     type: "question",
@@ -211,6 +265,7 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
   });
   void app.whenReady().then(async () => {
     await mkdir(dataRoot, { recursive: true });
+    installApplicationMenu();
     const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
     createWindow();
     try {

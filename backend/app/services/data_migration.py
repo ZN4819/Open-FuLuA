@@ -167,16 +167,22 @@ def file_manifest(root: Path) -> dict[str, str]:
     }
 
 
+def sqlite_source_manifest(database_path: Path) -> dict[str, str]:
+    return {item.name: _sha256(item) for item in (database_path, database_path.with_name(database_path.name + "-wal"), database_path.with_name(database_path.name + "-shm")) if item.is_file()}
+
+
 def _target_has_user_data(paths: RuntimePaths) -> bool:
     if paths.database_path.exists():
         try:
             db = sqlite3.connect(paths.database_path)
             try:
                 tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-                if "projects" not in tables:
-                    return paths.database_path.stat().st_size > 0
-                if int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0]) > 0:
+                allowed = {"projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "record_templates", "record_template_slots", "section_subsystems", "sqlite_sequence"}
+                if not tables <= allowed or "projects" not in tables:
                     return True
+                for table in ("projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "section_subsystems"):
+                    if table in tables and int(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) > 0:
+                        return True
             finally:
                 db.close()
         except sqlite3.Error:
@@ -231,8 +237,9 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         _write_state(paths, source_root=_safe_resolve(Path(source_root)), started_at=started_at, status="failed", reason=reason, projects=preflight.project_count, images=preflight.image_count, manifest={})
         return MigrationResult(False, reason=reason)
     source_files = file_manifest(source_storage)
-    source_database_hash = _sha256(source_db)
-    source_fingerprint = hashlib.sha256((str(source_db) + source_database_hash + json.dumps(source_files, sort_keys=True)).encode()).hexdigest()
+    source_database_files = sqlite_source_manifest(source_db)
+    source_database_hash = source_database_files.get(source_db.name, "")
+    source_fingerprint = hashlib.sha256((str(source_db) + json.dumps(source_database_files, sort_keys=True) + json.dumps(source_files, sort_keys=True)).encode()).hexdigest()
     snapshots = paths.migration_path / "snapshots"
     published_snapshot = snapshots / source_fingerprint
     if published_snapshot.exists() and paths.database_path.exists():
@@ -256,7 +263,7 @@ def migrate_legacy_data(source_root: Path | str, paths: RuntimePaths) -> Migrati
         shutil.copytree(source_storage, staging_storage)
         manifest = file_manifest(staging)
         # 复制过程结束后再次确认源没有变化，无法确认稳定性即 fail-closed。
-        if source_files != file_manifest(source_storage) or source_database_hash != _sha256(source_db):
+        if source_files != file_manifest(source_storage) or source_database_files != sqlite_source_manifest(source_db):
             raise RuntimeError("迁移期间源数据发生变化")
         valid, reason, projects, images, missing = validate_database_and_evidence(staging_data, staging_storage)
         if not valid:

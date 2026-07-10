@@ -126,16 +126,21 @@ class DataMigrationTests(unittest.TestCase):
                 db.commit()
             finally:
                 db.close()
-
             result = migrate_legacy_data(source, paths)
-
             self.assertFalse(result.migrated)
             self.assertIn("已有用户数据", result.reason)
+
+    def test_zero_project_database_with_unknown_or_user_rows_is_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); source = _create_source(root / "legacy"); paths = _runtime_paths(root / "desktop")
+            paths.database_path.parent.mkdir(parents=True)
             db = sqlite3.connect(paths.database_path)
-            try:
-                self.assertEqual(db.execute("SELECT name FROM projects").fetchone()[0], "桌面已有项目")
-            finally:
-                db.close()
+            db.executescript("CREATE TABLE projects (id INTEGER PRIMARY KEY); CREATE TABLE private_settings (value TEXT); INSERT INTO private_settings VALUES ('keep');")
+            db.close()
+            result = migrate_legacy_data(source, paths)
+            self.assertFalse(result.migrated)
+            self.assertIn("已有用户数据", result.reason)
+
 
     def test_migration_copies_consistent_data_then_is_idempotent_without_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
