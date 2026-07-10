@@ -144,6 +144,19 @@ class BackupTests(unittest.TestCase):
                 db.close()
             self.assertTrue(any(item.kind == "pre_restore" for item in list_backups(paths)))
 
+    def test_wal_live_data_rolls_back_after_post_replace_validation_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "WAL 原值")
+            db = sqlite3.connect(paths.database_path); db.execute("PRAGMA journal_mode=WAL"); db.execute("UPDATE projects SET name='WAL 已提交原值'"); db.commit(); db.close()
+            backup = create_backup(paths, "daily")
+            from app.services import backups
+            real_validate = backups.validate_database_and_evidence
+            with patch("app.services.backups.validate_database_and_evidence", side_effect=[real_validate(backup.database_path, backup.storage_path), (False, "强制最终失败", 0, 0, ())]):
+                result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+            db = sqlite3.connect(paths.database_path); self.assertEqual(db.execute("SELECT name FROM projects").fetchone()[0], "WAL 已提交原值"); db.close()
+            self.assertEqual((paths.storage_path / "evidence" / "photo.png").read_bytes(), b"initial image")
+
 
 if __name__ == "__main__":
     unittest.main()

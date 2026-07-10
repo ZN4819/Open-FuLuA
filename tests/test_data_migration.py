@@ -168,6 +168,22 @@ class DataMigrationTests(unittest.TestCase):
                 db.close()
             self.assertEqual((paths.storage_path / "evidence" / "photo.png").read_bytes(), b"test image")
 
+    def test_published_snapshot_after_install_failure_can_retry_and_install(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); source = _create_source(root / "legacy"); paths = _runtime_paths(root / "desktop")
+            from app.services import data_migration
+            real_replace = data_migration.os.replace
+            calls = {"count": 0}
+            def fail_storage(src, dst):
+                calls["count"] += 1
+                if calls["count"] == 3: raise OSError("强制安装失败")
+                return real_replace(src, dst)
+            with patch("app.services.data_migration.os.replace", side_effect=fail_storage):
+                first = migrate_legacy_data(source, paths)
+            self.assertFalse(first.migrated)
+            second = migrate_legacy_data(source, paths)
+            self.assertTrue(second.migrated)
+
 
 if __name__ == "__main__":
     unittest.main()
