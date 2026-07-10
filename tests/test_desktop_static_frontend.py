@@ -151,7 +151,7 @@ class DesktopStaticFrontendTests(unittest.TestCase):
                 missing_manifest_status, _, missing_manifest_body = self._request(
                     app,
                     "/manifest",
-                    headers={"accept": "*/*"},
+                    headers=html_navigation,
                 )
                 non_html_route_status, _, non_html_route_body = self._request(
                     app,

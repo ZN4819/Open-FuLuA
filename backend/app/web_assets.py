@@ -54,7 +54,7 @@ class FrontendAssets:
             return False
 
         path = scope["path"].lstrip("/")
-        if path.split("/", 1)[0] in {"assets", "static", "icons"}:
+        if path.split("/", 1)[0] in {"assets", "static", "icons", "manifest"}:
             return False
         if "." in path.rsplit("/", 1)[-1]:
             return False
