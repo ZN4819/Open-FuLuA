@@ -1,15 +1,27 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.services import template_profile  # noqa: E402
 from app.services.template_profile import load_template_profile  # noqa: E402
 
 
 class TemplateProfileTest(unittest.TestCase):
+    def test_profile_path_uses_pyinstaller_bundle_root_when_frozen(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundle_root = Path(temp_dir)
+            expected = bundle_root / "templates" / "appendix_a" / "template_profile.json"
+            with patch.object(sys, "frozen", True, create=True), patch.object(sys, "_MEIPASS", str(bundle_root), create=True):
+                actual = template_profile._resolve_profile_path()
+
+        self.assertEqual(actual, expected)
+
     def test_profile_contains_eight_sections(self) -> None:
         profile = load_template_profile()
 

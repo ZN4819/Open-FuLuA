@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import json
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 
-PROFILE_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "templates"
-    / "appendix_a"
-    / "template_profile.json"
-)
+def _resolve_profile_path() -> Path:
+    if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+        resource_root = Path(sys._MEIPASS)
+    else:
+        resource_root = Path(__file__).resolve().parents[3]
+    return resource_root / "templates" / "appendix_a" / "template_profile.json"
+
+
+PROFILE_PATH = _resolve_profile_path()
 
 
 class TemplateProfileError(RuntimeError):
