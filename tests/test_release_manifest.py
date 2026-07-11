@@ -62,6 +62,8 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertNotIn("gh release upload", workflow)
         self.assertIn("Release already exists", workflow)
         self.assertIn("git ls-remote", workflow)
+        self.assertNotIn("git ls-remote --exit-code", workflow)
+        self.assertIn("$tagRefs.Count -gt 0", workflow)
         for evidence in ("RELEASE_COMMIT: ${{ github.sha }}", "test_status", "signature_status", "SHA256SUMS.txt", "发布检查报告.md"):
             self.assertIn(evidence, workflow)
         self.assertEqual(

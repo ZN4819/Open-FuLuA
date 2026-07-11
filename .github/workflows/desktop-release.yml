@@ -70,8 +70,9 @@ jobs:
           gh release view $env:RELEASE_TAG 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Release already exists; published releases are immutable.' }
           if ($env:RELEASE_EVENT_NAME -ne 'push') {
-            git ls-remote --exit-code --tags origin "refs/tags/$env:RELEASE_TAG" | Out-Null
-            if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; choose a new version.' }
+            $tagRefs = @(git ls-remote --tags origin "refs/tags/$env:RELEASE_TAG")
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to query existing release tags.' }
+            if ($tagRefs.Count -gt 0) { throw 'Tag already exists; choose a new version.' }
           }
 
       - name: Install locked dependencies
