@@ -39,6 +39,21 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertIsNotNone(build)
         assert build is not None
         self.assertIn("CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}", build.group(0))
+        self.assertIn("SetEnvironmentVariable('CSC_LINK', $null, 'Process')", build.group(0))
+        self.assertIn("SetEnvironmentVariable('CSC_KEY_PASSWORD', $null, 'Process')", build.group(0))
+
+    def test_push_tag_is_single_v_semver_and_manual_release_targets_checked_out_commit(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertNotIn("TrimStart", workflow)
+        self.assertIn("^v\\d+\\.\\d+\\.\\d+", workflow)
+        self.assertIn("RELEASE_COMMIT: ${{ github.sha }}", workflow)
+        self.assertIn("--target", workflow)
+        self.assertIn("$env:RELEASE_EVENT_NAME -ne 'push'", workflow)
+
+    def test_stable_signature_covers_frontend_and_packaged_backend_executables(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn("win-unpacked/FuLuA.exe", workflow)
+        self.assertIn("win-unpacked/resources/backend/fulua-backend.exe", workflow)
 
     def test_release_is_immutable_and_generates_dynamic_evidence_report(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")

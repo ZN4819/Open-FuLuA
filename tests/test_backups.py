@@ -205,6 +205,37 @@ class BackupTests(unittest.TestCase):
             self.assertFalse(result.restored)
             self.assertEqual(paths.database_path.read_bytes(), damaged)
 
+    def test_restore_revalidates_selected_backup_after_pre_restore_before_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            from app.services import backups
+            real_validate = backups._validate_backup_tree
+            real_create = backups.create_backup
+            pre_restore_done = False
+
+            def validate(root, candidate):
+                if pre_restore_done and Path(candidate).name == backup.path.name:
+                    raise ValueError("备份在 pre_restore 后变为不安全")
+                return real_validate(root, candidate)
+
+            def create_pre_restore(runtime_paths, kind):
+                nonlocal pre_restore_done
+                result = real_create(runtime_paths, kind)
+                pre_restore_done = True
+                return result
+
+            with patch("app.services.backups._validate_backup_tree", side_effect=validate), patch(
+                "app.services.backups.create_backup", side_effect=create_pre_restore
+            ):
+                result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(connection.execute("SELECT name FROM projects").fetchone()[0], "现场")
+            finally:
+                connection.close()
+
     def test_wal_live_data_rolls_back_after_post_replace_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "WAL 原值")

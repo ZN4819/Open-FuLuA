@@ -43,7 +43,9 @@ export class RuntimeApiClient {
 
   async integrity(): Promise<IntegrityStatus> { return await this.request("/api/runtime/integrity", "GET"); }
 
-  async prepareUpgrade(): Promise<UpgradePreparation> { return await this.request("/api/runtime/upgrade/prepare", "POST"); }
+  async prepareUpgrade(leaseId: string): Promise<UpgradePreparation> {
+    return await this.request("/api/runtime/upgrade/prepare", "POST", { lease_id: leaseId });
+  }
 
   async cancelUpgrade(leaseId: string): Promise<{ cancelled: boolean }> {
     return await this.request("/api/runtime/upgrade/cancel", "POST", { lease_id: leaseId });

@@ -214,6 +214,11 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
             # 正常恢复先做一致性 pre_restore；离线损坏恢复改为保留原始现场字节。
             if not allow_damaged_live:
                 create_backup(paths, "pre_restore")
+            # pre_restore 本身会遍历备份目录；真正复制前再次绑定并校验源树，避免校验后替换。
+            safe_path = _validate_backup_tree(paths.backup_path, safe_path)
+            requested = _read_backup(safe_path)
+            if requested is None:
+                raise ValueError("备份元数据无效")
             sqlite_backup(requested.database_path, staging / "data" / "app.db")
             _copy_storage(requested.storage_path, staging / "storage")
             valid, reason, _, _, missing = validate_database_and_evidence(staging / "data" / "app.db", staging / "storage")

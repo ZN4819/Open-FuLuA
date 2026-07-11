@@ -24,6 +24,7 @@ function dependencies(overrides: Partial<ConstructorParameters<typeof UpdateCoor
     schedule: (_delay: number, callback: () => void) => { callback(); return 1; },
     runtimeStatus: async () => ({ maintenance_active: false, business_writes_active: 0 }),
     prepareUpgrade: async () => ({ ready: true, backup_id: "pre_upgrade-safe", schema_version: "1", lease_id: "lease-safe" }),
+    createUpgradeLeaseId: () => "lease-safe",
     cancelUpgrade: async () => undefined,
     writePendingUpgrade: async () => undefined,
     clearPendingUpgrade: async () => undefined,
@@ -171,6 +172,28 @@ test("安装中止后侧车重启失败进入诊断且文案不声称可继续",
   await coordinator.handleUpdateDownloaded({ version: "0.2.0" });
   assert.ok(messages.some((message) => /暂勿继续编辑/.test(message)));
   assert.ok(messages.every((message) => !/仍可继续|可以继续/.test(message)));
+});
+
+test("stopSidecar 失败表示退出状态不确定，禁止启动或重载第二套侧车", async () => {
+  let restarted = 0; let reloaded = 0; let fatal = "";
+  const coordinator = new UpdateCoordinator(fakeUpdater(), dependencies({
+    stopSidecar: async () => { throw new Error("unknown process state"); },
+    restartSidecar: async () => { restarted += 1; }, reloadBusinessPage: async () => { reloaded += 1; },
+    notifyFatal: async (message) => { fatal = message; },
+  }));
+  await coordinator.handleUpdateDownloaded({ version: "0.2.0" });
+  assert.equal(restarted, 0); assert.equal(reloaded, 0); assert.match(fatal, /暂勿继续编辑/);
+});
+
+test("prepare 响应丢失时使用请求前生成的 lease ID 幂等取消", async () => {
+  const cancelled: string[] = [];
+  const coordinator = new UpdateCoordinator(fakeUpdater(), dependencies({
+    createUpgradeLeaseId: () => "lease-known-before-request",
+    prepareUpgrade: async () => { throw new Error("response lost"); },
+    cancelUpgrade: async (leaseId) => { cancelled.push(leaseId); },
+  }));
+  await coordinator.handleUpdateDownloaded({ version: "0.2.0" });
+  assert.deepEqual(cancelled, ["lease-known-before-request"]);
 });
 
 test("更新校验错误只报告脱敏诊断且绝不安装", async () => {

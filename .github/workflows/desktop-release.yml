@@ -46,8 +46,13 @@ jobs:
           RELEASE_INPUT_VERSION: ${{ inputs.version }}
           RELEASE_INPUT_STABLE: ${{ inputs.stable }}
         run: |
-          $version = if ($env:RELEASE_EVENT_NAME -eq 'push') { $env:RELEASE_REF_NAME.TrimStart('v') } else { $env:RELEASE_INPUT_VERSION }
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Release version must be semantic.' }
+          if ($env:RELEASE_EVENT_NAME -eq 'push') {
+            if ($env:RELEASE_REF_NAME -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Push tag must be one v followed by a semantic version.' }
+            $version = $env:RELEASE_REF_NAME.Substring(1)
+          } else {
+            $version = $env:RELEASE_INPUT_VERSION
+            if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Release version must be semantic without v.' }
+          }
           $isStrictStableVersion = $version -match '^\d+\.\d+\.\d+$'
           $stableRequested = (($env:RELEASE_EVENT_NAME -eq 'push') -or ($env:RELEASE_INPUT_STABLE -eq 'true')) -and $isStrictStableVersion
           "version=$version" >> $env:GITHUB_OUTPUT
@@ -104,6 +109,10 @@ jobs:
         run: |
           $hasBothCredentials = (-not [string]::IsNullOrWhiteSpace($env:CSC_LINK)) -and (-not [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD))
           $StableAllowed = ($env:STABLE_REQUESTED -eq 'true') -and $hasBothCredentials
+          if (-not $hasBothCredentials) {
+            [Environment]::SetEnvironmentVariable('CSC_LINK', $null, 'Process')
+            [Environment]::SetEnvironmentVariable('CSC_KEY_PASSWORD', $null, 'Process')
+          }
           "stable=$($StableAllowed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "prerelease=$(((-not $StableAllowed)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           ./scripts/build_desktop.ps1 -Target nsis
@@ -119,6 +128,7 @@ jobs:
             $files = @(
               Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe'
               Get-Item artifacts/desktop/electron/win-unpacked/FuLuA.exe
+              Get-Item artifacts/desktop/electron/win-unpacked/resources/backend/fulua-backend.exe
             )
             foreach ($file in $files) {
               $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
@@ -177,6 +187,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.gate.outputs.tag }}
           RELEASE_PRERELEASE: ${{ steps.build.outputs.prerelease }}
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
         run: |
           $assets = @(
             (Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe').FullName
@@ -187,4 +199,5 @@ jobs:
           )
           $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/发布检查报告.md')
           if ($env:RELEASE_PRERELEASE -eq 'true') { $flags += '--prerelease' }
+          if ($env:RELEASE_EVENT_NAME -ne 'push') { $flags += @('--target', $env:RELEASE_COMMIT) }
           gh release create $env:RELEASE_TAG @assets @flags

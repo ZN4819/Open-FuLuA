@@ -26,9 +26,10 @@ export interface UpdateDependencies {
   writeLastCheck(value: number): Promise<void>;
   schedule(delay: number, callback: () => void): unknown;
   runtimeStatus(): Promise<{ maintenance_active: boolean; business_writes_active: number }>;
-  prepareUpgrade(): Promise<UpgradePreparation>;
+  createUpgradeLeaseId(): string;
+  prepareUpgrade(leaseId: string): Promise<UpgradePreparation>;
   cancelUpgrade(leaseId: string): Promise<void>;
-  writePendingUpgrade(marker: { fromVersion: string; targetVersion: string; schemaVersion: string; createdAt: string; backupId: string }): Promise<void>;
+  writePendingUpgrade(marker: { fromVersion: string; targetVersion: string; fromSchemaVersion: string; createdAt: string; backupId: string }): Promise<void>;
   clearPendingUpgrade(backupId: string): Promise<void>;
   stopSidecar(): Promise<void>;
   restartSidecar(): Promise<void>;
@@ -169,14 +170,18 @@ export class UpdateCoordinator {
     }
 
     let prepared: UpgradePreparation | undefined;
+    let requestedLeaseId: string | undefined;
     let stopAttempted = false;
     let stopped = false;
     let pendingWritten = false;
     let runCleared = false;
     let approved = false;
     try {
-      prepared = await this.dependencies.prepareUpgrade();
-      if (!prepared.ready || !/^[A-Za-z0-9._-]+$/.test(prepared.backup_id) || !/^[A-Za-z0-9._-]+$/.test(prepared.lease_id)) {
+      requestedLeaseId = this.dependencies.createUpgradeLeaseId();
+      if (!/^[A-Za-z0-9._-]{1,255}$/.test(requestedLeaseId)) throw new Error("升级维护租约无效");
+      prepared = await this.dependencies.prepareUpgrade(requestedLeaseId);
+      if (!prepared.ready || !/^[A-Za-z0-9._-]+$/.test(prepared.backup_id)
+        || prepared.lease_id !== requestedLeaseId) {
         throw new Error("升级备份或维护租约无效");
       }
       stopAttempted = true;
@@ -185,7 +190,7 @@ export class UpdateCoordinator {
       await this.dependencies.writePendingUpgrade({
         fromVersion: this.dependencies.version,
         targetVersion: this.targetVersion!,
-        schemaVersion: prepared.schema_version,
+        fromSchemaVersion: prepared.schema_version,
         createdAt: new Date(this.dependencies.now()).toISOString(),
         backupId: prepared.backup_id,
       });
@@ -197,13 +202,14 @@ export class UpdateCoordinator {
       this.updater.quitAndInstall(false, true);
       this.installStarted = true;
     } catch (error) {
-      await this.rollbackInstall(prepared, { stopAttempted, stopped, pendingWritten, runCleared, approved });
+      await this.rollbackInstall(prepared, requestedLeaseId, { stopAttempted, stopped, pendingWritten, runCleared, approved });
       await this.handleError(error);
     }
   }
 
   private async rollbackInstall(
     prepared: UpgradePreparation | undefined,
+    requestedLeaseId: string | undefined,
     state: { stopAttempted: boolean; stopped: boolean; pendingWritten: boolean; runCleared: boolean; approved: boolean },
   ): Promise<void> {
     let rollbackFailed = false;
@@ -213,10 +219,11 @@ export class UpdateCoordinator {
     if (state.pendingWritten && prepared) {
       try { await this.dependencies.clearPendingUpgrade(prepared.backup_id); } catch { rollbackFailed = true; }
     }
-    if (!state.stopped && prepared) {
-      try { await this.dependencies.cancelUpgrade(prepared.lease_id); } catch { rollbackFailed = true; }
+    if (!state.stopped && requestedLeaseId) {
+      try { await this.dependencies.cancelUpgrade(requestedLeaseId); } catch { rollbackFailed = true; }
     }
-    if (state.stopAttempted) {
+    if (state.stopAttempted && !state.stopped) rollbackFailed = true;
+    if (state.stopped) {
       try {
         await this.dependencies.restartSidecar();
         if (state.runCleared) await this.dependencies.writeRunMarker(this.dependencies.version);

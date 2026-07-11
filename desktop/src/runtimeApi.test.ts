@@ -23,14 +23,15 @@ test("运行时 API 拒绝非本机侧车地址", () => {
 });
 
 test("运行时 API 提供状态、完整性和升级准备边界", async () => {
-  const requested: string[] = [];
-  const api = new RuntimeApiClient("http://127.0.0.1:43123", "test-token", async (input) => {
-    requested.push(String(input));
+  const requested: Array<{ url: string; body: string }> = [];
+  const api = new RuntimeApiClient("http://127.0.0.1:43123", "test-token", async (input, init) => {
+    requested.push({ url: String(input), body: String(init?.body ?? "") });
     return new Response(JSON.stringify({ ready: true, backup_id: "pre_upgrade-safe", schema_version: "1" }), { status: 200 });
   });
 
-  await api.status(); await api.integrity(); await api.prepareUpgrade(); await api.cancelUpgrade("lease-safe");
-  assert.deepEqual(requested.map((url) => new URL(url).pathname), [
+  await api.status(); await api.integrity(); await api.prepareUpgrade("lease-safe"); await api.cancelUpgrade("lease-safe");
+  assert.deepEqual(requested.map(({ url }) => new URL(url).pathname), [
     "/api/runtime/status", "/api/runtime/integrity", "/api/runtime/upgrade/prepare", "/api/runtime/upgrade/cancel",
   ]);
+  assert.equal(requested[2]?.body, JSON.stringify({ lease_id: "lease-safe" }));
 });

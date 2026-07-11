@@ -65,6 +65,8 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertFalse(is_business_write_request("HEAD", "/api/projects"))
         self.assertTrue(is_business_write_request("POST", "/api/projects"))
         self.assertTrue(is_business_write_request("PUT", "/api/projects/1"))
+        # validate_project 会 replace_validation_issues，不能按只读 POST 排除。
+        self.assertTrue(is_business_write_request("POST", "/api/projects/1/validate"))
         self.assertFalse(is_business_write_request("POST", "/api/runtime/upgrade/prepare"))
         self.assertFalse(is_business_write_request("POST", "/api/record-templates/import-preview"))
 
@@ -75,15 +77,16 @@ class RuntimeApiTests(unittest.TestCase):
         with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
             "app.api.runtime.create_backup", return_value=backup
         ) as create_backup:
-            response = prepare_upgrade()
+            response = prepare_upgrade({"lease_id": "client-known"})
 
         create_backup.assert_called_once_with(paths.return_value, "pre_upgrade")
         self.assertTrue(response["ready"])
         self.assertEqual(response["backup_id"], "pre_upgrade-safe")
         self.assertEqual(response["schema_version"], "1")
-        self.assertRegex(response["lease_id"], r"^[A-Za-z0-9._-]+$")
+        self.assertEqual(response["lease_id"], "client-known")
         from app.api.runtime import cancel_upgrade, runtime_operations
         self.assertTrue(runtime_operations.writes_blocked())
+        self.assertEqual(cancel_upgrade({"lease_id": response["lease_id"]}), {"cancelled": True})
         self.assertEqual(cancel_upgrade({"lease_id": response["lease_id"]}), {"cancelled": True})
         self.assertFalse(runtime_operations.writes_blocked())
 
@@ -125,6 +128,22 @@ class RuntimeApiTests(unittest.TestCase):
                     pass
         worker.join(timeout=1)
         self.assertTrue(exclusive_entered.is_set())
+
+    def test_upgrade_lease_timeout_self_heals_but_standard_exclusive_never_times_out(self) -> None:
+        from app.api.runtime import RuntimeOperations
+
+        now = [100.0]
+        operations = RuntimeOperations(clock=lambda: now[0])
+        lease = operations.acquire_exclusive("client-known")
+        operations.arm_upgrade_timeout(lease, 5)
+        now[0] = 106.0
+        self.assertFalse(operations.writes_blocked())
+        with operations.business_write():
+            self.assertEqual(operations.business_writes_active(), 1)
+        lease = operations.acquire_exclusive()
+        now[0] = 10_000.0
+        self.assertTrue(operations.writes_blocked())
+        operations.release_exclusive(lease)
 
     @staticmethod
     def _enter_exclusive(operations, entered) -> None:

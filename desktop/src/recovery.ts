@@ -5,7 +5,7 @@ import path from "node:path";
 export interface PendingUpgradeMarker {
   fromVersion: string;
   targetVersion: string;
-  schemaVersion: string;
+  fromSchemaVersion: string;
   createdAt: string;
   backupId: string;
 }
@@ -27,6 +27,10 @@ function validBackupId(value: string): boolean {
 
 function validVersion(value: unknown): value is string {
   return typeof value === "string" && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+function validSchemaVersion(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(value);
 }
 
 function isMissing(error: unknown): boolean {
@@ -86,7 +90,7 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
     if (!value || typeof value !== "object") throw new Error("待升级标记损坏");
     const marker = value as Record<string, unknown>;
     if (!validVersion(marker.fromVersion) || !validVersion(marker.targetVersion) || marker.fromVersion === marker.targetVersion
-      || typeof marker.schemaVersion !== "string" || !marker.schemaVersion
+      || !validSchemaVersion(marker.fromSchemaVersion)
       || typeof marker.createdAt !== "string" || !Number.isFinite(Date.parse(marker.createdAt))
       || typeof marker.backupId !== "string" || !validBackupId(marker.backupId)) {
       throw new Error("待升级标记字段无效");
@@ -94,7 +98,7 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
     return {
       fromVersion: marker.fromVersion,
       targetVersion: marker.targetVersion,
-      schemaVersion: marker.schemaVersion,
+      fromSchemaVersion: marker.fromSchemaVersion,
       createdAt: marker.createdAt,
       backupId: marker.backupId,
     };
@@ -102,7 +106,8 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
 
   async writePendingUpgrade(marker: PendingUpgradeMarker): Promise<void> {
     if (!validBackupId(marker.backupId) || !validVersion(marker.fromVersion) || !validVersion(marker.targetVersion)
-      || marker.fromVersion === marker.targetVersion || !marker.schemaVersion || !Number.isFinite(Date.parse(marker.createdAt))) {
+      || marker.fromVersion === marker.targetVersion || !validSchemaVersion(marker.fromSchemaVersion)
+      || !Number.isFinite(Date.parse(marker.createdAt))) {
       throw new Error("待升级标记无效");
     }
     await atomicJson(this.pendingPath, marker);
@@ -138,8 +143,11 @@ export class RecoveryCoordinator {
   private pendingMatches(marker: PendingUpgradeMarker, context: StartupContext): boolean {
     const now = this.dependencies.now?.() ?? Date.now();
     const createdAt = Date.parse(marker.createdAt);
-    return marker.targetVersion === context.currentVersion
-      && marker.schemaVersion === context.schemaVersion
+    return validVersion(marker.fromVersion)
+      && validVersion(marker.targetVersion)
+      && marker.fromVersion !== marker.targetVersion
+      && validBackupId(marker.backupId)
+      && marker.targetVersion === context.currentVersion
       && createdAt <= now + 5 * 60_000
       && createdAt >= now - 7 * 24 * 60 * 60_000;
   }
@@ -152,7 +160,7 @@ export class RecoveryCoordinator {
         return;
       }
       const integrity = await this.dependencies.checkIntegrity();
-      if (integrity.integrity === "ok" && integrity.schema_version === pending.schemaVersion) {
+      if (integrity.integrity === "ok" && validSchemaVersion(integrity.schema_version)) {
         await this.markers.clearPendingUpgrade();
         if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
         await this.dependencies.loadBusinessPage();
@@ -187,7 +195,7 @@ export class RecoveryCoordinator {
     if (!(await this.dependencies.restoreOffline(pending.backupId))) return false;
     await this.dependencies.restartSidecar();
     const integrity = await this.dependencies.checkIntegrity();
-    if (integrity.integrity !== "ok" || integrity.schema_version !== pending.schemaVersion) return false;
+    if (integrity.integrity !== "ok" || !validSchemaVersion(integrity.schema_version)) return false;
     await this.markers.clearPendingUpgrade();
     if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
     await this.dependencies.loadBusinessPage();

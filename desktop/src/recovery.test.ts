@@ -13,7 +13,7 @@ class MemoryMarkers implements RecoveryMarkerStore {
   pending: PendingUpgradeMarker | undefined;
   get pendingBackupId() { return this.pending?.backupId; }
   set pendingBackupId(value: string | undefined) {
-    this.pending = value ? { fromVersion: "0.1.0", targetVersion: "0.2.0", schemaVersion: "1", createdAt: new Date().toISOString(), backupId: value } : undefined;
+    this.pending = value ? { fromVersion: "0.1.0", targetVersion: "0.2.0", fromSchemaVersion: "1", createdAt: new Date().toISOString(), backupId: value } : undefined;
   }
   async hasRunMarker() { return this.runMarker; }
   async writeRunMarker() { this.runMarker = true; }
@@ -177,8 +177,8 @@ test("正常升级后的 pending 在加载业务页前校验版本、schema 和�
 
 test("不匹配或陈旧 pending 禁止加载且不得自动恢复", async () => {
   for (const pending of [
-    { fromVersion: "0.1.0", targetVersion: "0.3.0", schemaVersion: "1", createdAt: new Date().toISOString(), backupId: "pre_upgrade-safe" },
-    { fromVersion: "0.1.0", targetVersion: "0.2.0", schemaVersion: "1", createdAt: "2000-01-01T00:00:00Z", backupId: "pre_upgrade-safe" },
+    { fromVersion: "0.1.0", targetVersion: "0.3.0", fromSchemaVersion: "1", createdAt: new Date().toISOString(), backupId: "pre_upgrade-safe" },
+    { fromVersion: "0.1.0", targetVersion: "0.2.0", fromSchemaVersion: "1", createdAt: "2000-01-01T00:00:00Z", backupId: "pre_upgrade-safe" },
   ]) {
     const markers = new MemoryMarkers(); markers.pending = pending;
     let loaded = false; let restored = false; let diagnosed = false;
@@ -236,10 +236,33 @@ test("原子 marker 使用唯一临时名并清理自身失败残留", async () 
 test("回滚只清理本次 backupId 对应的 pending marker", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "fulua-marker-"));
   const store = new JsonRecoveryMarkerStore(root);
-  const marker = { fromVersion: "0.1.0", targetVersion: "0.2.0", schemaVersion: "1", createdAt: new Date().toISOString(), backupId: "pre_upgrade-safe" };
+  const marker = { fromVersion: "0.1.0", targetVersion: "0.2.0", fromSchemaVersion: "1", createdAt: new Date().toISOString(), backupId: "pre_upgrade-safe" };
   await store.writePendingUpgrade(marker);
   await assert.rejects(store.clearPendingUpgrade("different-backup"), /已变化/);
   assert.equal((await store.readPendingUpgrade())?.backupId, "pre_upgrade-safe");
   await store.clearPendingUpgrade("pre_upgrade-safe");
   assert.equal(await store.readPendingUpgrade(), undefined);
+});
+
+test("升级前 schema 与新版本 schema 不同仍可验证成功并加载", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe";
+  let loaded = false;
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => ({ integrity: "ok", schema_version: "2" }), chooseCrashAction: async () => "continue",
+    loadBusinessPage: async () => { loaded = true; }, restoreOffline: async () => false,
+    restartSidecar: async () => undefined, showLogs: async () => undefined,
+  });
+  await recovery.openAfterStartup({ currentVersion: "0.2.0", schemaVersion: "2" });
+  assert.equal(loaded, true); assert.equal(markers.pending, undefined);
+});
+
+test("从升级前备份恢复并由新后端迁移到新 schema 后可清 marker", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe"; let checks = 0;
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => (++checks === 1 ? { integrity: "corrupt", schema_version: "2" } : { integrity: "ok", schema_version: "2" }),
+    chooseCrashAction: async () => "restore", loadBusinessPage: async () => undefined,
+    restoreOffline: async () => true, restartSidecar: async () => undefined, showLogs: async () => undefined,
+  });
+  await recovery.openAfterStartup({ currentVersion: "0.2.0", schemaVersion: "2" });
+  assert.equal(markers.pending, undefined); assert.equal(checks, 2);
 });

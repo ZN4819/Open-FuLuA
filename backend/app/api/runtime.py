@@ -6,8 +6,9 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 import threading
+import time
 import uuid
-from typing import Iterator
+from typing import Callable, Iterator
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -27,11 +28,20 @@ class MigrationRequest(BaseModel):
 class RuntimeOperations:
     """迁移和恢复期间供应用中间件查询的排他写入门闩。"""
 
-    def __init__(self) -> None:
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
         self._condition = threading.Condition()
         self._active = False
         self._writers = 0
         self._lease_id: str | None = None
+        self._lease_deadline: float | None = None
+        self._clock = clock or time.monotonic
+
+    def _expire_upgrade_lease_locked(self) -> None:
+        if self._active and self._lease_deadline is not None and self._clock() >= self._lease_deadline:
+            self._active = False
+            self._lease_id = None
+            self._lease_deadline = None
+            self._condition.notify_all()
 
     class WriteReservation:
         def __init__(self, operations: "RuntimeOperations") -> None:
@@ -48,10 +58,12 @@ class RuntimeOperations:
 
     def writes_blocked(self) -> bool:
         with self._condition:
+            self._expire_upgrade_lease_locked()
             return self._active
 
     def business_writes_active(self) -> int:
         with self._condition:
+            self._expire_upgrade_lease_locked()
             return self._writers
 
     @contextmanager
@@ -62,15 +74,23 @@ class RuntimeOperations:
         finally:
             self.release_exclusive(lease_id)
 
-    def acquire_exclusive(self) -> str:
+    def acquire_exclusive(self, lease_id: str | None = None) -> str:
         with self._condition:
+            self._expire_upgrade_lease_locked()
             if self._active:
                 raise RuntimeError("当前正在进行数据迁移或恢复")
             self._active = True
             while self._writers:
                 self._condition.wait()
-            self._lease_id = uuid.uuid4().hex
+            self._lease_id = lease_id or uuid.uuid4().hex
+            self._lease_deadline = None
             return self._lease_id
+
+    def arm_upgrade_timeout(self, lease_id: str, timeout_seconds: float) -> None:
+        with self._condition:
+            if not self._active or lease_id != self._lease_id or timeout_seconds <= 0:
+                raise ValueError("升级维护租约无效")
+            self._lease_deadline = self._clock() + timeout_seconds
 
     def release_exclusive(self, lease_id: str) -> None:
         with self._condition:
@@ -78,10 +98,24 @@ class RuntimeOperations:
                 raise ValueError("维护租约无效")
             self._active = False
             self._lease_id = None
+            self._lease_deadline = None
+            self._condition.notify_all()
+
+    def cancel_exclusive(self, lease_id: str) -> None:
+        with self._condition:
+            self._expire_upgrade_lease_locked()
+            if not self._active:
+                return
+            if not self._lease_id or lease_id != self._lease_id:
+                raise ValueError("维护租约无效")
+            self._active = False
+            self._lease_id = None
+            self._lease_deadline = None
             self._condition.notify_all()
 
     def reserve_business_write(self) -> "RuntimeOperations.WriteReservation":
         with self._condition:
+            self._expire_upgrade_lease_locked()
             if self._active:
                 raise RuntimeError("正在进行数据迁移、恢复或升级，请稍后重试")
             self._writers += 1
@@ -174,11 +208,18 @@ def runtime_status() -> dict[str, object]:
 
 
 @router.post("/upgrade/prepare")
-def prepare_upgrade() -> dict[str, object]:
+def prepare_upgrade(payload: dict[str, str]) -> dict[str, object]:
+    requested_lease_id = payload.get("lease_id", "")
+    if not requested_lease_id or len(requested_lease_id) > 255 or any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+        for character in requested_lease_id
+    ):
+        raise HTTPException(status_code=400, detail="升级维护租约无效")
     lease_id: str | None = None
     try:
-        lease_id = runtime_operations.acquire_exclusive()
+        lease_id = runtime_operations.acquire_exclusive(requested_lease_id)
         backup = create_backup(resolve_runtime_paths(), "pre_upgrade")
+        runtime_operations.arm_upgrade_timeout(lease_id, 5 * 60)
     except Exception as exc:
         if lease_id is not None:
             runtime_operations.release_exclusive(lease_id)
@@ -190,7 +231,7 @@ def prepare_upgrade() -> dict[str, object]:
 def cancel_upgrade(payload: dict[str, str]) -> dict[str, bool]:
     lease_id = payload.get("lease_id", "")
     try:
-        runtime_operations.release_exclusive(lease_id)
+        runtime_operations.cancel_exclusive(lease_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="升级维护租约无效") from exc
     return {"cancelled": True}
