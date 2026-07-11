@@ -64,6 +64,11 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertIn("git ls-remote", workflow)
         for evidence in ("RELEASE_COMMIT: ${{ github.sha }}", "test_status", "signature_status", "SHA256SUMS.txt", "发布检查报告.md"):
             self.assertIn(evidence, workflow)
+        self.assertEqual(
+            workflow.lower().count("signature_status:"),
+            1,
+            "GitHub Actions 的 env 键不区分大小写，重复签名状态键会导致 workflow 无法解析",
+        )
 
     def test_release_artifact_allowlist_is_complete(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
