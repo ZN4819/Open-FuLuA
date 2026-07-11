@@ -78,27 +78,34 @@ export class GuardedStartupCoordinator {
   }
 }
 
+export class GuardedStartupSingleFlight {
+  private active: Promise<boolean> | undefined;
+
+  constructor(private readonly enterGuarded: (isFirstRun: boolean) => Promise<boolean>) {}
+
+  enter(isFirstRun = false): Promise<boolean> {
+    if (this.active) return this.active;
+    const flight = Promise.resolve()
+      .then(async () => await this.enterGuarded(isFirstRun))
+      .finally(() => {
+        if (this.active === flight) this.active = undefined;
+      });
+    this.active = flight;
+    return flight;
+  }
+}
+
 export interface UnexpectedExitDependencies {
   enterGuarded(): Promise<boolean>;
-  diagnoseNested(error: unknown): Promise<void>;
 }
 
 export class UnexpectedExitRecovery {
-  private active = false;
-
   constructor(private readonly gate: RecoverySessionGate, private readonly dependencies: UnexpectedExitDependencies) {}
 
-  async handle(error: unknown): Promise<boolean> {
+  async handle(_error: unknown): Promise<boolean> {
     this.gate.reset();
-    if (this.active) {
-      await this.dependencies.diagnoseNested(error);
-      return false;
-    }
-    this.active = true;
-    try {
-      return await this.dependencies.enterGuarded();
-    } finally {
-      this.active = false;
-    }
+    const recovered = await this.dependencies.enterGuarded();
+    if (recovered) this.gate.markPassed();
+    return recovered;
   }
 }

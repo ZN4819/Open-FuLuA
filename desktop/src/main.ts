@@ -16,7 +16,12 @@ import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
 import { JsonRecoveryMarkerStore, RecoveryCoordinator } from "./recovery.js";
 import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
-import { GuardedStartupCoordinator, RecoverySessionGate, UnexpectedExitRecovery } from "./startupGate.js";
+import {
+  GuardedStartupCoordinator,
+  GuardedStartupSingleFlight,
+  RecoverySessionGate,
+  UnexpectedExitRecovery,
+} from "./startupGate.js";
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
@@ -265,11 +270,11 @@ function guardedStartupCoordinator(isFirstRun = false): GuardedStartupCoordinato
   });
 }
 
+const guardedStartupFlight = new GuardedStartupSingleFlight(
+  async (isFirstRun) => await guardedStartupCoordinator(isFirstRun).enter(),
+);
 const unexpectedExitRecovery = new UnexpectedExitRecovery(recoverySessionGate, {
-  enterGuarded: async () => await guardedStartupCoordinator().enter(),
-  diagnoseNested: async (error) => {
-    await showDiagnostics(error instanceof Error ? error : new Error("本地服务重复异常退出"));
-  },
+  enterGuarded: () => guardedStartupFlight.enter(),
 });
 
 async function readLastUpdateCheck(): Promise<number> {
@@ -460,7 +465,7 @@ ipcMain.handle("app:copy-diagnostics", (_event, details: unknown) => {
   clipboard.writeText(sanitizeDiagnostics(details));
 });
 ipcMain.handle("app:retry-backend", async () => {
-  await guardedStartupCoordinator().enter();
+  await guardedStartupFlight.enter();
 });
 ipcMain.handle("runtime:migrate-legacy", async () => await runMigrationFlow());
 ipcMain.handle("runtime:list-backups", async () => await runtimeApi().listBackups());
@@ -478,7 +483,7 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
     installApplicationMenu();
     const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
     createWindow();
-    await guardedStartupCoordinator(isFirstRun).enter();
+    await guardedStartupFlight.enter(isFirstRun);
   });
 });
 

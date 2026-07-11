@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GuardedStartupCoordinator, RecoverySessionGate, UnexpectedExitRecovery } from "./startupGate.js";
+import {
+  GuardedStartupCoordinator,
+  GuardedStartupSingleFlight,
+  RecoverySessionGate,
+  UnexpectedExitRecovery,
+} from "./startupGate.js";
 
 function dependencies(overrides: Partial<ConstructorParameters<typeof GuardedStartupCoordinator>[1]> = {}) {
   const order: string[] = [];
@@ -91,20 +96,71 @@ test("异常退出立即撤销 gate 并通过 guarded entry 恢复", async () =>
   const gate = new RecoverySessionGate(); gate.markPassed(); const order: string[] = [];
   const recovery = new UnexpectedExitRecovery(gate, {
     enterGuarded: async () => { assert.equal(gate.passed, false); order.push("guarded-entry"); return true; },
-    diagnoseNested: async () => { order.push("diagnose"); },
   });
   assert.equal(await recovery.handle(new Error("exit")), true);
   assert.deepEqual(order, ["guarded-entry"]);
+  assert.equal(gate.passed, true);
 });
 
-test("异常退出恢复失败保持 gate 关闭，嵌套退出不得递归启动", async () => {
-  const gate = new RecoverySessionGate(); gate.markPassed(); let release!: () => void; let entries = 0; let diagnoses = 0;
+test("异常退出恢复失败保持 gate 关闭", async () => {
+  const gate = new RecoverySessionGate(); gate.markPassed(); let entries = 0;
   const recovery = new UnexpectedExitRecovery(gate, {
-    enterGuarded: async () => { entries += 1; await new Promise<void>((resolve) => { release = resolve; }); return false; },
-    diagnoseNested: async () => { diagnoses += 1; },
+    enterGuarded: async () => { entries += 1; return false; },
   });
-  const first = recovery.handle(new Error("first")); await Promise.resolve();
-  assert.equal(await recovery.handle(new Error("nested")), false);
-  release(); assert.equal(await first, false);
-  assert.equal(entries, 1); assert.equal(diagnoses, 1); assert.equal(gate.passed, false);
+  assert.equal(await recovery.handle(new Error("exit")), false);
+  assert.equal(entries, 1); assert.equal(gate.passed, false);
+});
+
+function concurrentRecoverySetup(gate: RecoverySessionGate) {
+  let releaseStart!: () => void;
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  const release = new Promise<void>((resolve) => { releaseStart = resolve; });
+  const calls = { offlineIntegrity: 0, startBackend: 0, recoverWithoutSidecar: 0 };
+  const setup = dependencies({
+    offlineIntegrity: async () => {
+      calls.offlineIntegrity += 1;
+      return { integrity: "ok", schema_version: "1" };
+    },
+    startBackend: async () => {
+      calls.startBackend += 1;
+      signalStarted();
+      await release;
+      throw new Error("start failed");
+    },
+    recoverWithoutSidecar: async () => {
+      calls.recoverWithoutSidecar += 1;
+      return true;
+    },
+  });
+  const flight = new GuardedStartupSingleFlight(
+    async () => await new GuardedStartupCoordinator(gate, setup.values).enter(),
+  );
+  return { calls, flight, releaseStart, started };
+}
+
+test("两次诊断重试共享同一恢复 flight", async () => {
+  const gate = new RecoverySessionGate();
+  const setup = concurrentRecoverySetup(gate);
+  const first = setup.flight.enter();
+  const second = setup.flight.enter();
+  assert.strictEqual(second, first);
+  await setup.started;
+  setup.releaseStart();
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+  assert.deepEqual(setup.calls, { offlineIntegrity: 1, startBackend: 1, recoverWithoutSidecar: 1 });
+  assert.equal(gate.passed, true);
+});
+
+test("诊断重试与 unexpected exit 共享同一恢复 flight 并保持 gate 关闭直到成功", async () => {
+  const gate = new RecoverySessionGate(); gate.markPassed();
+  const setup = concurrentRecoverySetup(gate);
+  const retry = setup.flight.enter();
+  await setup.started;
+  const unexpected = new UnexpectedExitRecovery(gate, { enterGuarded: () => setup.flight.enter() }).handle(new Error("exit"));
+  assert.equal(gate.passed, false);
+  setup.releaseStart();
+  assert.deepEqual(await Promise.all([retry, unexpected]), [true, true]);
+  assert.deepEqual(setup.calls, { offlineIntegrity: 1, startBackend: 1, recoverWithoutSidecar: 1 });
+  assert.equal(gate.passed, true);
 });
