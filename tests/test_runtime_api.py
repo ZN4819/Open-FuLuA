@@ -3,6 +3,9 @@ from __future__ import annotations
 import unittest
 import threading
 import time
+import sqlite3
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -36,6 +39,46 @@ class RuntimeApiTests(unittest.TestCase):
             self.assertTrue(runtime_operations.writes_blocked())
         self.assertFalse(runtime_operations.writes_blocked())
 
+    def test_status_reports_active_business_write_count(self) -> None:
+        from app.api.runtime import RuntimeOperations
+
+        operations = RuntimeOperations()
+        self.assertEqual(operations.business_writes_active(), 0)
+        with operations.business_write():
+            self.assertEqual(operations.business_writes_active(), 1)
+        self.assertEqual(operations.business_writes_active(), 0)
+
+    def test_upgrade_prepare_creates_pre_upgrade_backup_inside_exclusive_gate(self) -> None:
+        from app.api.runtime import prepare_upgrade
+
+        backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
+        with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
+            "app.api.runtime.create_backup", return_value=backup
+        ) as create_backup:
+            response = prepare_upgrade()
+
+        create_backup.assert_called_once_with(paths.return_value, "pre_upgrade")
+        self.assertEqual(response, {"ready": True, "backup_id": "pre_upgrade-safe", "schema_version": "1"})
+
+    def test_integrity_check_returns_only_integrity_and_schema_version(self) -> None:
+        from app.api.runtime import integrity_check
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "app.db"
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.execute("CREATE TABLE private_body (body TEXT)")
+                connection.execute("INSERT INTO private_body VALUES ('不得泄露的正文')")
+                connection.commit()
+            finally:
+                connection.close()
+            with patch("app.api.runtime.resolve_runtime_paths") as paths:
+                paths.return_value.database_path = database_path
+                response = integrity_check()
+
+        self.assertEqual(response, {"integrity": "ok", "schema_version": "1"})
+        self.assertNotIn("不得泄露", repr(response))
+
     def test_exclusive_waits_for_started_write_and_rejects_new_write(self) -> None:
         from app.api.runtime import RuntimeOperations
 
@@ -66,6 +109,8 @@ class RuntimeApiTests(unittest.TestCase):
         from app.services.backups import RestoreResult
 
         with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
+            "app.api.runtime.resolve_backup_id", return_value=Path("C:/backups/daily-safe")
+        ), patch(
             "app.api.runtime.restore_runtime_backup", return_value=RestoreResult(True, True)
         ):
             paths.return_value.backup_path = __import__("pathlib").Path("C:/backups")

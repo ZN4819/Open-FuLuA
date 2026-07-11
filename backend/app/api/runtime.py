@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
+import sqlite3
 import threading
 from typing import Iterator
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..runtime import resolve_runtime_paths
-from ..services.backups import create_backup, list_backups, restore_backup as restore_runtime_backup
+from ..runtime import SCHEMA_VERSION, resolve_runtime_paths
+from ..services.backups import create_backup, list_backups, resolve_backup_id, restore_backup as restore_runtime_backup
 from ..services.data_migration import migrate_legacy_data, preflight_migration
 
 
@@ -31,7 +32,12 @@ class RuntimeOperations:
         self._writers = 0
 
     def writes_blocked(self) -> bool:
-        return self._active
+        with self._condition:
+            return self._active
+
+    def business_writes_active(self) -> int:
+        with self._condition:
+            return self._writers
 
     @contextmanager
     def exclusive(self) -> Iterator[None]:
@@ -115,10 +121,12 @@ def restore_backup(backup_id: str) -> dict[str, object]:
     if not backup_id or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for character in backup_id):
         raise HTTPException(status_code=400, detail="备份标识无效")
     paths = resolve_runtime_paths()
-    backup_path = paths.backup_path / backup_id
     try:
+        backup_path = resolve_backup_id(paths, backup_id)
         with runtime_operations.exclusive():
             result = restore_runtime_backup(paths, backup_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="备份标识无效或备份不存在") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not result.restored:
@@ -129,4 +137,31 @@ def restore_backup(backup_id: str) -> dict[str, object]:
 @router.get("/status")
 def runtime_status() -> dict[str, object]:
     paths = resolve_runtime_paths()
-    return {"runtime_mode": paths.mode, "data_root": str(paths.data_root), "maintenance_active": runtime_operations.writes_blocked()}
+    return {
+        "runtime_mode": paths.mode,
+        "data_root": str(paths.data_root),
+        "maintenance_active": runtime_operations.writes_blocked(),
+        "business_writes_active": runtime_operations.business_writes_active(),
+    }
+
+
+@router.post("/upgrade/prepare")
+def prepare_upgrade() -> dict[str, object]:
+    try:
+        with runtime_operations.exclusive():
+            backup = create_backup(resolve_runtime_paths(), "pre_upgrade")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ready": True, "backup_id": backup.path.name, "schema_version": SCHEMA_VERSION}
+
+
+@router.get("/integrity")
+def integrity_check() -> dict[str, str]:
+    database_path = resolve_runtime_paths().database_path
+    try:
+        with closing(sqlite3.connect(f"file:{database_path.as_posix()}?mode=ro", uri=True)) as connection:
+            rows = connection.execute("PRAGMA integrity_check").fetchall()
+        integrity = "ok" if rows == [("ok",)] else "corrupt"
+    except (OSError, sqlite3.DatabaseError):
+        integrity = "corrupt"
+    return {"integrity": integrity, "schema_version": SCHEMA_VERSION}

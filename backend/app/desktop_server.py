@@ -67,9 +67,38 @@ async def _serve(socket_handle: socket.socket) -> None:
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="附录A编写工具桌面侧车")
     parser.add_argument("--data-root", required=True)
-    parser.add_argument("--web-dist", required=True)
-    parser.add_argument("--session-token", required=True)
-    return parser.parse_args()
+    parser.add_argument("--web-dist")
+    parser.add_argument("--session-token")
+    parser.add_argument("--offline-recovery", choices=("list", "restore"))
+    parser.add_argument("--backup-id")
+    arguments = parser.parse_args()
+    if arguments.offline_recovery:
+        if arguments.offline_recovery == "restore" and not arguments.backup_id:
+            parser.error("offline restore requires --backup-id")
+    elif not arguments.web_dist or not arguments.session_token:
+        parser.error("normal mode requires --web-dist and --session-token")
+    return arguments
+
+
+def _offline_recovery(data_root: Path, action: str, backup_id: str | None) -> int:
+    from app.runtime import resolve_runtime_paths
+    from app.services.backups import list_backups, resolve_backup_id, restore_backup
+
+    paths = resolve_runtime_paths()
+    if action == "list":
+        _event(
+            "FULUA_OFFLINE_BACKUPS",
+            backups=[{"id": item.path.name, "type": item.kind, "created_at": item.created_at} for item in list_backups(paths)],
+        )
+        return 0
+    try:
+        selected = resolve_backup_id(paths, backup_id or "")
+    except ValueError:
+        _event("FULUA_OFFLINE_RESTORE", restored=False, message="备份标识无效或备份不存在")
+        return 2
+    result = restore_backup(paths, selected, allow_damaged_live=True)
+    _event("FULUA_OFFLINE_RESTORE", restored=result.restored, restart_required=result.restart_required, message=result.reason)
+    return 0 if result.restored else 3
 
 
 def main() -> int:
@@ -83,6 +112,8 @@ def main() -> int:
         import os
 
         os.environ["FULUA_DATA_DIR"] = str(data_root)
+        if arguments.offline_recovery:
+            return _offline_recovery(data_root, arguments.offline_recovery, arguments.backup_id)
         os.environ["FULUA_WEB_DIST_PATH"] = str(Path(arguments.web_dist).expanduser().resolve())
         os.environ["FULUA_SESSION_TOKEN"] = arguments.session_token
 

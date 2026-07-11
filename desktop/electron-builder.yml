@@ -1,6 +1,14 @@
 appId: cn.fulua.appendix-a-tool
 productName: 附录A编写工具
 asar: true
+electronUpdaterCompatibility: ">=2.16"
+
+publish:
+  provider: github
+  owner: ZN4819
+  repo: Open-FuLuA
+  channel: latest
+  releaseType: release
 
 directories:
   output: ../artifacts/desktop/electron
@@ -10,6 +18,7 @@ files:
   - "!dist/**/*.test.js"
   - "!dist/**/*.test.js.map"
   - "!dist/**/*.map"
+  - "!node_modules/**/*.map"
   - package.json
 
 extraResources:
@@ -27,6 +36,7 @@ win:
       arch: x64
 
 nsis:
+  artifactName: "fulua-desktop-setup-${version}.${ext}"
   oneClick: false
   perMachine: false
   allowElevation: false

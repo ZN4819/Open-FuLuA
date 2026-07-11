@@ -8,7 +8,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from app.runtime import RuntimePaths
-from app.services.backups import create_backup, list_backups, restore_backup
+from app.services.backups import create_backup, list_backups, resolve_backup_id, restore_backup
 
 
 def _runtime_paths(root: Path) -> RuntimePaths:
@@ -35,6 +35,25 @@ def _create_live_data(paths: RuntimePaths, name: str = "初始项目") -> None:
 
 
 class BackupTests(unittest.TestCase):
+    def test_backup_id_resolution_rejects_unknown_traversal_and_reparse_point(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths)
+            backup = create_backup(paths, "daily")
+
+            self.assertEqual(resolve_backup_id(paths, backup.path.name), backup.path)
+            for invalid in ("../escape", "missing", "daily\\..\\escape"):
+                with self.assertRaises(ValueError):
+                    resolve_backup_id(paths, invalid)
+
+            link = paths.backup_path / "daily-link"
+            try:
+                link.symlink_to(backup.path, target_is_directory=True)
+            except OSError:
+                self.skipTest("当前环境不能创建目录符号链接")
+            with self.assertRaises(ValueError):
+                resolve_backup_id(paths, link.name)
+
     def test_backup_uses_consistent_sqlite_copy_and_safe_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))
@@ -143,6 +162,36 @@ class BackupTests(unittest.TestCase):
             finally:
                 db.close()
             self.assertTrue(any(item.kind == "pre_restore" for item in list_backups(paths)))
+
+    def test_offline_restore_can_replace_corrupt_live_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths, "可恢复项目")
+            backup = create_backup(paths, "pre_upgrade")
+            paths.database_path.write_bytes(b"not a sqlite database")
+
+            result = restore_backup(paths, backup.path, allow_damaged_live=True)
+
+            self.assertTrue(result.restored)
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(connection.execute("SELECT name FROM projects").fetchone()[0], "可恢复项目")
+            finally:
+                connection.close()
+
+    def test_failed_offline_restore_replays_damaged_live_database_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths, "备份")
+            backup = create_backup(paths, "pre_upgrade")
+            damaged = b"damaged-live-forensics"
+            paths.database_path.write_bytes(damaged)
+            from app.services import backups
+            real_validate = backups.validate_database_and_evidence
+            with patch("app.services.backups.validate_database_and_evidence", side_effect=[real_validate(backup.database_path, backup.storage_path), (False, "强制最终失败", 0, 0, ())]):
+                result = restore_backup(paths, backup.path, allow_damaged_live=True)
+            self.assertFalse(result.restored)
+            self.assertEqual(paths.database_path.read_bytes(), damaged)
 
     def test_wal_live_data_rolls_back_after_post_replace_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

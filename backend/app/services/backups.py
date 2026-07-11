@@ -126,7 +126,34 @@ def list_backups(paths: RuntimePaths) -> list[BackupInfo]:
     )
 
 
-def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResult:
+def _is_reparse_point(path: Path) -> bool:
+    try:
+        stat = path.lstat()
+    except OSError:
+        return True
+    return path.is_symlink() or bool(getattr(stat, "st_file_attributes", 0) & 0x400)
+
+
+def resolve_backup_id(paths: RuntimePaths, backup_id: str) -> Path:
+    if not backup_id or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for character in backup_id):
+        raise ValueError("备份标识无效")
+    root = paths.backup_path
+    candidate = root / backup_id
+    if not root.is_dir() or _is_reparse_point(root) or not candidate.is_dir() or _is_reparse_point(candidate):
+        raise ValueError("备份不存在或路径不安全")
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved_candidate = candidate.resolve(strict=True)
+        resolved_candidate.relative_to(resolved_root)
+    except (OSError, ValueError) as exc:
+        raise ValueError("备份路径不安全") from exc
+    known = {item.path.name: item.path for item in list_backups(paths)}
+    if backup_id not in known or known[backup_id].resolve(strict=True) != resolved_candidate:
+        raise ValueError("未知备份")
+    return candidate
+
+
+def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damaged_live: bool = False) -> RestoreResult:
     requested = _read_backup(Path(backup_path))
     if requested is None:
         return RestoreResult(False, False, "备份不存在或元数据无效")
@@ -134,8 +161,9 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResul
         rollback: Path | None = None
         staging = paths.backup_path / f"restore-staging-{uuid.uuid4()}"
         try:
-            # 先做 pre_restore；保留策略绝不在本次恢复前清除这份快照。
-            create_backup(paths, "pre_restore")
+            # 正常恢复先做一致性 pre_restore；离线损坏恢复改为保留原始现场字节。
+            if not allow_damaged_live:
+                create_backup(paths, "pre_restore")
             sqlite_backup(requested.database_path, staging / "data" / "app.db")
             _copy_storage(requested.storage_path, staging / "storage")
             valid, reason, _, _, missing = validate_database_and_evidence(staging / "data" / "app.db", staging / "storage")
@@ -145,7 +173,10 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str) -> RestoreResul
             rollback = paths.backup_path / f"restore-rollback-{uuid.uuid4()}"
             rollback.mkdir(parents=True)
             # 在删除 WAL/SHM 或替换任何对象前，先得到可回放的一致性当前快照。
-            sqlite_backup(paths.database_path, rollback / "app.db")
+            if allow_damaged_live:
+                shutil.copy2(paths.database_path, rollback / "app.db")
+            else:
+                sqlite_backup(paths.database_path, rollback / "app.db")
             _copy_storage(paths.storage_path, rollback / "storage")
             remove_sqlite_sidecars(paths.database_path)
             if paths.database_path.exists():
