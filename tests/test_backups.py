@@ -8,7 +8,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from app.runtime import RuntimePaths
-from app.services.backups import create_backup, list_backups, restore_backup
+from app.services.backups import create_backup, list_backups, resolve_backup_id, restore_backup
 
 
 def _runtime_paths(root: Path) -> RuntimePaths:
@@ -35,6 +35,67 @@ def _create_live_data(paths: RuntimePaths, name: str = "初始项目") -> None:
 
 
 class BackupTests(unittest.TestCase):
+    def test_create_backup_rejects_reparse_backup_root_without_returning_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths)
+            paths.backup_path.mkdir(parents=True)
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: Path(item) == paths.backup_path):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    create_backup(paths, "daily")
+
+    def test_create_backup_revalidates_published_tree_before_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths)
+            from app.services import backups
+            real_check = backups._is_reparse_point
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: (
+                Path(item).parent == paths.backup_path and Path(item).name.startswith("daily-")
+            ) or real_check(Path(item))):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    create_backup(paths, "daily")
+
+    def test_create_backup_rejects_real_reparse_backup_root_when_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); paths = _runtime_paths(root); _create_live_data(paths)
+            real_root = root / "real-backups"; real_root.mkdir()
+            try:
+                paths.backup_path.symlink_to(real_root, target_is_directory=True)
+            except OSError:
+                self.skipTest("当前环境不能创建目录符号链接")
+            with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                create_backup(paths, "daily")
+
+    def test_backup_id_resolution_rejects_unknown_traversal_and_reparse_point(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths)
+            backup = create_backup(paths, "daily")
+
+            self.assertEqual(resolve_backup_id(paths, backup.path.name), backup.path)
+            for invalid in ("../escape", "missing", "daily\\..\\escape"):
+                with self.assertRaises(ValueError):
+                    resolve_backup_id(paths, invalid)
+
+            link = paths.backup_path / "daily-link"
+            try:
+                link.symlink_to(backup.path, target_is_directory=True)
+            except OSError:
+                self.skipTest("当前环境不能创建目录符号链接")
+            with self.assertRaises(ValueError):
+                resolve_backup_id(paths, link.name)
+
+    def test_backup_id_resolution_recursively_rejects_internal_reparse_points_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths)
+            backup = create_backup(paths, "daily")
+            from app.services import backups
+            real_check = backups._is_reparse_point
+
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: item == backup.storage_path or real_check(item)):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    resolve_backup_id(paths, backup.path.name)
+
     def test_backup_uses_consistent_sqlite_copy_and_safe_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))
@@ -143,6 +204,120 @@ class BackupTests(unittest.TestCase):
             finally:
                 db.close()
             self.assertTrue(any(item.kind == "pre_restore" for item in list_backups(paths)))
+
+    def test_offline_restore_can_replace_corrupt_live_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths, "可恢复项目")
+            backup = create_backup(paths, "pre_upgrade")
+            paths.database_path.write_bytes(b"not a sqlite database")
+
+            result = restore_backup(paths, backup.path, allow_damaged_live=True)
+
+            self.assertTrue(result.restored)
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(connection.execute("SELECT name FROM projects").fetchone()[0], "可恢复项目")
+            finally:
+                connection.close()
+
+    def test_failed_offline_restore_replays_damaged_live_database_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths, "备份")
+            backup = create_backup(paths, "pre_upgrade")
+            damaged = b"damaged-live-forensics"
+            paths.database_path.write_bytes(damaged)
+            from app.services import backups
+            real_validate = backups.validate_database_and_evidence
+            with patch("app.services.backups.validate_database_and_evidence", side_effect=[real_validate(backup.database_path, backup.storage_path), (False, "强制最终失败", 0, 0, ())]):
+                result = restore_backup(paths, backup.path, allow_damaged_live=True)
+            self.assertFalse(result.restored)
+            self.assertEqual(paths.database_path.read_bytes(), damaged)
+
+    def test_restore_revalidates_selected_backup_after_pre_restore_before_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            from app.services import backups
+            real_validate = backups._validate_backup_tree
+            real_create = backups.create_backup
+            pre_restore_done = False
+
+            def validate(root, candidate):
+                if pre_restore_done and Path(candidate).name == backup.path.name:
+                    raise ValueError("备份在 pre_restore 后变为不安全")
+                return real_validate(root, candidate)
+
+            def create_pre_restore(runtime_paths, kind):
+                nonlocal pre_restore_done
+                result = real_create(runtime_paths, kind)
+                pre_restore_done = True
+                return result
+
+            with patch("app.services.backups._validate_backup_tree", side_effect=validate), patch(
+                "app.services.backups.create_backup", side_effect=create_pre_restore
+            ):
+                result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(connection.execute("SELECT name FROM projects").fetchone()[0], "现场")
+            finally:
+                connection.close()
+
+    def test_restore_rejects_private_staging_copy_when_hash_differs_from_backup_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            metadata_path = backup.path / "metadata.json"
+            metadata = __import__("json").loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["database"]["sha256"] = "0" * 64
+            metadata_path.write_text(__import__("json").dumps(metadata), encoding="utf-8")
+            result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+
+    def test_database_replay_failure_preserves_listable_recovery_rollback_scene(self) -> None:
+        self._assert_replay_failure_preserves_scene("database")
+
+    def test_storage_replay_failure_preserves_listable_recovery_rollback_scene(self) -> None:
+        self._assert_replay_failure_preserves_scene("storage")
+
+    def _assert_replay_failure_preserves_scene(self, failed_stage: str) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            source_hash = __import__("hashlib").sha256(backup.database_path.read_bytes()).hexdigest()
+            from app.services import backups
+            real_validate = backups.validate_database_and_evidence
+            patch_name = f"app.services.backups._replay_rollback_{failed_stage}"
+            def validate(database_path, storage_path):
+                if Path(database_path) == paths.database_path:
+                    return False, "强制恢复后失败", 0, 0, ()
+                return real_validate(database_path, storage_path)
+
+            def fail_replay(*_args):
+                if failed_stage == "database" and paths.database_path.exists():
+                    paths.database_path.unlink()
+                if failed_stage == "storage" and paths.storage_path.exists():
+                    __import__("shutil").rmtree(paths.storage_path)
+                raise OSError(f"{failed_stage} replay failed")
+
+            with patch("app.services.backups.validate_database_and_evidence", side_effect=validate), patch(
+                patch_name, side_effect=fail_replay, create=True
+            ):
+                result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+            scenes = [item for item in list_backups(paths) if item.kind == "recovery_rollback"]
+            self.assertEqual(len(scenes), 1)
+            metadata = __import__("json").loads((scenes[0].path / "metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["state"], "replay_failed")
+            self.assertEqual(metadata["failed_stage"], failed_stage)
+            self.assertIn("database", metadata); self.assertIn("files", metadata)
+            self.assertEqual(__import__("hashlib").sha256(backup.database_path.read_bytes()).hexdigest(), source_hash)
+            self.assertEqual(resolve_backup_id(paths, scenes[0].path.name), scenes[0].path)
+            retried = restore_backup(paths, scenes[0].path, allow_damaged_live=True)
+            self.assertTrue(retried.restored, retried.reason)
 
     def test_wal_live_data_rolls_back_after_post_replace_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

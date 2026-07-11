@@ -10,6 +10,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DesktopPackagingContractTests(unittest.TestCase):
+    def test_updater_is_runtime_dependency_and_main_preserves_controlled_quit_order(self) -> None:
+        package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
+        main = (ROOT / "desktop" / "src" / "main.ts").read_text(encoding="utf-8")
+        updater = (ROOT / "desktop" / "src" / "updater.ts").read_text(encoding="utf-8")
+
+        self.assertIn("electron-updater", package.get("dependencies", {}))
+        self.assertNotIn("electron-updater", package.get("devDependencies", {}))
+        self.assertIn('import electronUpdater = require("electron-updater")', main)
+        self.assertIn("app.isPackaged", main)
+        self.assertIn("GuardedStartupCoordinator", main)
+        self.assertIn("GuardedStartupSingleFlight", main)
+        self.assertIn("RecoverySessionGate", main)
+        self.assertIn('ipcMain.handle("app:retry-backend"', main)
+        self.assertEqual(main.count("new GuardedStartupSingleFlight("), 1)
+        self.assertIn("enterGuarded: () => guardedStartupFlight.enter()", main)
+        self.assertIn("await guardedStartupFlight.enter();", main)
+        self.assertIn("await guardedStartupFlight.enter(isFirstRun);", main)
+        self.assertLess(updater.rindex("prepareUpgrade"), updater.rindex("stopSidecar"))
+        self.assertLess(updater.rindex("stopSidecar"), updater.rindex("clearRunMarker"))
+        self.assertLess(updater.rindex("clearRunMarker"), updater.rindex("approveControlledQuit"))
+        self.assertLess(updater.rindex("approveControlledQuit"), updater.rindex("quitAndInstall"))
+
     def test_desktop_workspace_declares_pinned_windows_build_toolchain(self) -> None:
         package_path = ROOT / "desktop" / "package.json"
         self.assertTrue(package_path.is_file(), "缺少 desktop/package.json")
@@ -60,6 +82,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn('"!dist/**/*.test.js"', config)
         self.assertIn('"!dist/**/*.test.js.map"', config)
         self.assertIn('"!dist/**/*.map"', config)
+        self.assertIn('"!node_modules/**/*.map"', config)
 
     def test_builder_configures_unsigned_per_user_nsis_with_uninstall_data_retention(self) -> None:
         config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
@@ -200,6 +223,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
         for forbidden in ("*.sqlite", "*.db", "storage", "logs", "backups", "migration", "fixtures", "*.docx", "~$*.docx"):
             self.assertIn(forbidden, script)
         self.assertIn("resources\\app.asar", script)
+        self.assertIn("resources\\app-update.yml", script)
         self.assertIn("resources\\frontend", script)
         self.assertIn("resources\\backend", script)
         self.assertIn("_internal\\docx\\templates\\default.docx", script)

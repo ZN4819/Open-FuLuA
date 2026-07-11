@@ -1,0 +1,204 @@
+name: Windows desktop release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version without v
+        required: true
+        type: string
+      stable:
+        description: Request a stable signed release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-packaging.txt
+
+      - name: Resolve release gate
+        id: gate
+        shell: pwsh
+        env:
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+          RELEASE_INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_INPUT_STABLE: ${{ inputs.stable }}
+        run: |
+          if ($env:RELEASE_EVENT_NAME -eq 'push') {
+            if ($env:RELEASE_REF_NAME -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Push tag must be one v followed by a semantic version.' }
+            $version = $env:RELEASE_REF_NAME.Substring(1)
+          } else {
+            $version = $env:RELEASE_INPUT_VERSION
+            if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Release version must be semantic without v.' }
+          }
+          $isStrictStableVersion = $version -match '^\d+\.\d+\.\d+$'
+          $stableRequested = (($env:RELEASE_EVENT_NAME -eq 'push') -or ($env:RELEASE_INPUT_STABLE -eq 'true')) -and $isStrictStableVersion
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+          "stable_requested=$($stableRequested.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "prerelease_version=$(((-not $isStrictStableVersion)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Reject existing tag or Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ steps.gate.outputs.tag }}
+        run: |
+          gh release view $env:RELEASE_TAG 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; published releases are immutable.' }
+          if ($env:RELEASE_EVENT_NAME -ne 'push') {
+            git ls-remote --exit-code --tags origin "refs/tags/$env:RELEASE_TAG" | Out-Null
+            if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; choose a new version.' }
+          }
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/Scripts/python.exe -m pip install -r backend/requirements-packaging.txt
+          npm --prefix frontend ci
+          npm --prefix desktop ci
+
+      - name: Set package version
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ steps.gate.outputs.version }}
+        run: npm --prefix desktop version $env:PACKAGE_VERSION --no-git-tag-version
+
+      - name: Run full checks
+        id: tests
+        shell: pwsh
+        run: ./scripts/run_checks.ps1
+
+      - name: Run desktop CD-7 tests and audit
+        shell: pwsh
+        run: |
+          npm --prefix desktop run test:cd7
+          npm --prefix desktop audit --audit-level=high
+
+      - name: Build NSIS and decide signing gate
+        id: build
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          STABLE_REQUESTED: ${{ steps.gate.outputs.stable_requested }}
+        run: |
+          $hasBothCredentials = (-not [string]::IsNullOrWhiteSpace($env:CSC_LINK)) -and (-not [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD))
+          $StableAllowed = ($env:STABLE_REQUESTED -eq 'true') -and $hasBothCredentials
+          if (-not $hasBothCredentials) {
+            [Environment]::SetEnvironmentVariable('CSC_LINK', $null, 'Process')
+            [Environment]::SetEnvironmentVariable('CSC_KEY_PASSWORD', $null, 'Process')
+            $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
+          }
+          "stable=$($StableAllowed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "prerelease=$(((-not $StableAllowed)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          ./scripts/build_desktop.ps1 -Target nsis
+          backend/.venv/Scripts/python.exe scripts/verify_release_manifest.py artifacts/desktop/electron/latest.yml artifacts/desktop/electron
+
+      - name: Verify Authenticode result
+        id: signature
+        shell: pwsh
+        env:
+          STABLE_ALLOWED: ${{ steps.build.outputs.stable }}
+        run: |
+          if ($env:STABLE_ALLOWED -eq 'true') {
+            $files = @(
+              Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe'
+              Get-Item artifacts/desktop/electron/win-unpacked/FuLuA.exe
+              Get-Item artifacts/desktop/electron/win-unpacked/resources/backend/fulua-backend.exe
+            )
+            foreach ($file in $files) {
+              $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+              if ($signature.Status -ne 'Valid') { throw "Authenticode signature is not Valid: $($file.Name)" }
+            }
+            'signature_status=Valid' >> $env:GITHUB_OUTPUT
+          } else {
+            'signature_status=NotRequiredPrerelease' >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Create SHA-256 manifest
+        shell: pwsh
+        run: |
+          $root = Resolve-Path artifacts/desktop/electron
+          $files = @(
+            Get-ChildItem $root -File -Filter '*setup*.exe'
+            Get-Item (Join-Path $root 'latest.yml')
+            Get-ChildItem $root -File -Filter '*.blockmap'
+          )
+          $lines = foreach ($file in $files) { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant(), $file.Name }
+          Set-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Value $lines -Encoding ascii
+
+      - name: Generate dynamic release evidence
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.gate.outputs.version }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_STABLE: ${{ steps.build.outputs.stable }}
+          RELEASE_PRERELEASE: ${{ steps.build.outputs.prerelease }}
+          SIGNATURE_STATUS: ${{ steps.signature.outputs.signature_status }}
+          test_status: passed
+          signature_status: ${{ steps.signature.outputs.signature_status }}
+        run: |
+          $root = Resolve-Path artifacts/desktop/electron
+          $hashes = Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Raw
+          $report = @"
+          # Windows 客户端发布检查报告
+
+          - 版本：$env:RELEASE_VERSION
+          - Commit：$env:RELEASE_COMMIT
+          - 全量测试：$env:test_status
+          - 稳定发布：$env:RELEASE_STABLE
+          - 预发布：$env:RELEASE_PRERELEASE
+          - 签名结果：$env:signature_status
+          - SHA-256：
+
+          ``````text
+          $hashes
+          ``````
+          "@
+          Set-Content -LiteralPath (Join-Path $root '发布检查报告.md') -Value $report -Encoding utf8
+
+      - name: Create immutable GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.gate.outputs.tag }}
+          RELEASE_PRERELEASE: ${{ steps.build.outputs.prerelease }}
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $assets = @(
+            (Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe').FullName
+            (Resolve-Path artifacts/desktop/electron/latest.yml).Path
+            (Get-ChildItem artifacts/desktop/electron -File -Filter '*.blockmap').FullName
+            (Resolve-Path artifacts/desktop/electron/SHA256SUMS.txt).Path
+            (Resolve-Path 'artifacts/desktop/electron/发布检查报告.md').Path
+          )
+          $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/发布检查报告.md')
+          if ($env:RELEASE_PRERELEASE -eq 'true') { $flags += '--prerelease' }
+          if ($env:RELEASE_EVENT_NAME -ne 'push') { $flags += @('--target', $env:RELEASE_COMMIT) }
+          gh release create $env:RELEASE_TAG @assets @flags

@@ -1,8 +1,11 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
-import { mkdir } from "node:fs/promises";
+import electronUpdater = require("electron-updater");
+import { execFile } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { promisify } from "node:util";
 
 import { BackendProcessController } from "./backendProcess.js";
 import { BackupCoordinator } from "./backupActions.js";
@@ -11,6 +14,18 @@ import { focusExistingWindow, QuitGuard, runSingleInstance } from "./lifecycle.j
 import { MigrationCoordinator, type MigrationOutcome } from "./migrationWindow.js";
 import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
+import { JsonRecoveryMarkerStore, RecoveryCoordinator } from "./recovery.js";
+import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
+import {
+  GuardedStartupCoordinator,
+  GuardedStartupSingleFlight,
+  RecoverySessionGate,
+  UnexpectedExitRecovery,
+} from "./startupGate.js";
+
+const execFileAsync = promisify(execFile);
+const { autoUpdater } = electronUpdater;
+const CURRENT_SCHEMA_VERSION = "1";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -36,6 +51,23 @@ let backend: BackendProcessController | undefined;
 let backendOrigin: string | undefined;
 let sessionToken = "";
 let quitApproved = false;
+const recoveryMarkers = new JsonRecoveryMarkerStore(path.join(dataRoot, "recovery"));
+let updateCoordinator: UpdateCoordinator | undefined;
+const recoverySessionGate = new RecoverySessionGate();
+
+function backendCommand(): { executable: string; prefix: string[]; cwd?: string; webDist: string } {
+  const webDist = app.isPackaged
+    ? path.join(process.resourcesPath, "frontend")
+    : path.resolve(app.getAppPath(), "..", "frontend", "dist");
+  return app.isPackaged
+    ? { executable: path.join(process.resourcesPath, "backend", "fulua-backend.exe"), prefix: [], webDist }
+    : {
+        executable: process.env.FULUA_BACKEND_PYTHON?.trim() || path.resolve(app.getAppPath(), "..", "backend", ".venv", "Scripts", "python.exe"),
+        prefix: ["-m", "app.desktop_server"],
+        cwd: path.resolve(app.getAppPath(), "..", "backend"),
+        webDist,
+      };
+}
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -59,23 +91,17 @@ function createWindow(): BrowserWindow {
 }
 
 function backendController(): BackendProcessController {
-  const webDist = app.isPackaged
-    ? path.join(process.resourcesPath, "frontend")
-    : path.resolve(app.getAppPath(), "..", "frontend", "dist");
-  const executable = app.isPackaged
-    ? path.join(process.resourcesPath, "backend", "fulua-backend.exe")
-    : process.env.FULUA_BACKEND_PYTHON?.trim() || path.resolve(app.getAppPath(), "..", "backend", ".venv", "Scripts", "python.exe");
-  const commandArguments = app.isPackaged ? [] : ["-m", "app.desktop_server"];
+  const command = backendCommand();
   sessionToken = randomBytes(32).toString("hex");
   const controller = new BackendProcessController({
-    executable,
-    commandArguments,
-    cwd: app.isPackaged ? undefined : path.resolve(app.getAppPath(), "..", "backend"),
+    executable: command.executable,
+    commandArguments: command.prefix,
+    cwd: command.cwd,
     dataRoot,
-    webDist,
+    webDist: command.webDist,
     sessionToken,
   });
-  controller.onUnexpectedExit((error) => void recoverOrDiagnose(error));
+  controller.onUnexpectedExit((error) => void unexpectedExitRecovery.handle(error));
   return controller;
 }
 
@@ -103,6 +129,212 @@ async function restartSidecarAndReload(): Promise<void> {
   if (backend === controller) backend = undefined;
   backendOrigin = undefined;
   await loadBackendPage();
+}
+
+async function runOfflineRecovery(action: "integrity" | "list" | "restore", backupId?: string): Promise<Record<string, unknown> | undefined> {
+  if (backupId !== undefined && !/^[A-Za-z0-9._-]+$/.test(backupId)) return undefined;
+  const controller = backend;
+  try {
+    if (controller) await controller.stop();
+  } catch {
+    return undefined;
+  }
+  backend = undefined;
+  backendOrigin = undefined;
+  const command = backendCommand();
+  try {
+    const commandArguments = [
+      ...command.prefix,
+      "--data-root", dataRoot,
+      "--offline-recovery", action,
+      ...(backupId ? ["--backup-id", backupId] : []),
+    ];
+    const result = await execFileAsync(command.executable, commandArguments, { cwd: command.cwd, windowsHide: true, encoding: "utf8" });
+    return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "{}") as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+async function offlineIntegrity(): Promise<{ integrity: string; schema_version: string } | undefined> {
+  const event = await runOfflineRecovery("integrity");
+  if (event?.event !== "FULUA_OFFLINE_INTEGRITY" || typeof event.integrity !== "string" || typeof event.schema_version !== "string") return undefined;
+  return { integrity: event.integrity, schema_version: event.schema_version };
+}
+
+async function restoreOffline(backupId: string): Promise<boolean> {
+  const event = await runOfflineRecovery("restore", backupId);
+  return event?.event === "FULUA_OFFLINE_RESTORE" && event.restored === true;
+}
+
+function recoveryCoordinator(loadBusinessPage: () => Promise<void> = loadBackendPage): RecoveryCoordinator {
+  return new RecoveryCoordinator(recoveryMarkers, {
+    checkIntegrity: async () => await runtimeApi().integrity(),
+    chooseCrashAction: async (canContinue) => {
+      const pending = await recoveryMarkers.readPendingUpgrade();
+      const buttons = canContinue
+        ? ["继续打开", "查看日志", pending ? "恢复升级前备份" : "恢复最近备份"]
+        : ["查看日志", pending ? "恢复升级前备份" : "恢复最近备份"];
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: canContinue ? "warning" : "error",
+        title: "检测到上次异常关闭",
+        message: canContinue ? "本地数据完整，可以继续打开。" : "本地数据库完整性检查未通过，已阻止继续写入。",
+        buttons,
+        defaultId: 0,
+        cancelId: canContinue ? 1 : 0,
+      });
+      if (canContinue && result.response === 0) return "continue";
+      if (buttons[result.response] === "查看日志") return "logs";
+      return "restore";
+    },
+    loadBusinessPage,
+    restoreOffline,
+    listOfflineBackups: async () => {
+      const event = await runOfflineRecovery("list");
+      if (event?.event !== "FULUA_OFFLINE_BACKUPS" || !Array.isArray(event.backups)) return [];
+      return event.backups.filter((item): item is { id: string; type: string; created_at: string } => {
+        if (!item || typeof item !== "object") return false;
+        const value = item as Record<string, unknown>;
+        return typeof value.id === "string" && /^[A-Za-z0-9._-]+$/.test(value.id)
+          && typeof value.type === "string" && typeof value.created_at === "string";
+      });
+    },
+    chooseOfflineBackup: async (backups) => {
+      if (!backups.length) return undefined;
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "warning",
+        title: "本地服务无法启动",
+        message: "可以从本机备份恢复",
+        buttons: [...backups.map(backupLabel), "取消"],
+        defaultId: backups.length,
+        cancelId: backups.length,
+      });
+      return result.response < backups.length ? backups[result.response]?.id : undefined;
+    },
+    restartSidecar: async () => {
+      const controller = backend;
+      if (controller) await controller.stop();
+      if (backend === controller) backend = undefined;
+      backendOrigin = undefined;
+      await startBackend();
+    },
+    showLogs: async () => {
+      await mkdir(app.getPath("logs"), { recursive: true });
+      await shell.openPath(app.getPath("logs"));
+    },
+    showRecoveryFailure: async () => {
+      await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "error",
+        title: "恢复未完成",
+        message: "备份未能恢复，现场和待恢复标记已保留。",
+        detail: "请查看日志，不要手工覆盖本地数据目录。",
+      });
+    },
+  });
+}
+
+function guardedStartupCoordinator(isFirstRun = false): GuardedStartupCoordinator {
+  return new GuardedStartupCoordinator(recoverySessionGate, {
+    hasRecoveryMarker: async () => {
+      const runMarker = await recoveryMarkers.hasRunMarker();
+      const pending = await recoveryMarkers.readPendingUpgrade();
+      return runMarker || pending !== undefined;
+    },
+    offlineIntegrity,
+    startBackend: async () => { await startBackend(); },
+    recoverWithSidecar: async () => {
+      let loaded = false;
+      await recoveryCoordinator(async () => {
+        if (isFirstRun) await offerFirstRunChoice();
+        await loadBackendPage();
+        loaded = true;
+      }).openAfterStartup({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
+      return loaded;
+    },
+    recoverWithoutSidecar: async () => {
+      let loaded = false;
+      const recovered = await recoveryCoordinator(async () => {
+        await loadBackendPage();
+        loaded = true;
+      }).recoverWhenSidecarUnavailable({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
+      return recovered && loaded;
+    },
+    startUpdater: async () => {
+      if (updateCoordinator) return;
+      updateCoordinator = configureUpdater();
+      updateCoordinator.start();
+    },
+    diagnose: async (error) => {
+      await showDiagnostics(error instanceof Error ? error : new Error("恢复闸门未通过"));
+    },
+  });
+}
+
+const guardedStartupFlight = new GuardedStartupSingleFlight(
+  async (isFirstRun) => await guardedStartupCoordinator(isFirstRun).enter(),
+);
+const unexpectedExitRecovery = new UnexpectedExitRecovery(recoverySessionGate, {
+  enterGuarded: () => guardedStartupFlight.enter(),
+});
+
+async function readLastUpdateCheck(): Promise<number> {
+  try {
+    const value: unknown = JSON.parse(await readFile(path.join(dataRoot, "recovery", "update-check.json"), "utf8"));
+    return typeof value === "object" && value !== null && "checkedAt" in value && typeof value.checkedAt === "number" ? value.checkedAt : 0;
+  } catch { return 0; }
+}
+
+async function writeLastUpdateCheck(checkedAt: number): Promise<void> {
+  const directory = path.join(dataRoot, "recovery");
+  const destination = path.join(directory, "update-check.json");
+  await mkdir(directory, { recursive: true });
+  await writeFile(destination, JSON.stringify({ checkedAt }), { encoding: "utf8" });
+}
+
+function configureUpdater(): UpdateCoordinator {
+  return new UpdateCoordinator(autoUpdater as unknown as AutoUpdaterPort, {
+    isPackaged: app.isPackaged,
+    now: Date.now,
+    readLastCheck: readLastUpdateCheck,
+    writeLastCheck: writeLastUpdateCheck,
+    schedule: (delay, callback) => setTimeout(callback, delay),
+    runtimeStatus: async () => await runtimeApi().status(),
+    createUpgradeLeaseId: () => randomBytes(16).toString("hex"),
+    prepareUpgrade: async (leaseId) => await runtimeApi().prepareUpgrade(leaseId),
+    cancelUpgrade: async (leaseId) => { await runtimeApi().cancelUpgrade(leaseId); },
+    writePendingUpgrade: async (marker) => await recoveryMarkers.writePendingUpgrade(marker),
+    clearPendingUpgrade: async (backupId) => await recoveryMarkers.clearPendingUpgrade(backupId),
+    stopSidecar: async () => {
+      if (backend) await backend.stop();
+      backend = undefined;
+      backendOrigin = undefined;
+    },
+    restartSidecar: async () => {
+      backend = undefined;
+      backendOrigin = undefined;
+      await startBackend();
+    },
+    reloadBusinessPage: loadBackendPage,
+    clearRunMarker: async () => await recoveryMarkers.clearRunMarker(),
+    writeRunMarker: async (version) => await recoveryMarkers.writeRunMarker(version),
+    approveControlledQuit: async () => { quitApproved = true; },
+    revokeControlledQuit: async () => { quitApproved = false; },
+    confirmInstall: async () => {
+      const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
+        type: "question",
+        title: "更新已下载",
+        message: "现在退出并安装更新吗？",
+        detail: "安装前会创建升级备份。选择稍后安装不会停止当前工作。",
+        buttons: ["稍后", "退出并安装"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1;
+    },
+    notifyError: async (message) => { await dialog.showMessageBox({ type: "warning", title: "无法更新", message }); },
+    notifyFatal: async (message) => { await dialog.showMessageBox({ type: "error", title: "更新恢复失败", message }); },
+    version: app.getVersion(),
+  });
 }
 
 async function runMigrationFlow(): Promise<MigrationOutcome> {
@@ -179,6 +411,10 @@ function installApplicationMenu(): void {
       label: "数据",
       submenu: [{ label: "从备份恢复…", click: () => void openRestoreEntry() }],
     },
+    {
+      label: "帮助",
+      submenu: [{ label: "检查更新", enabled: app.isPackaged, click: () => void updateCoordinator?.checkNow() }],
+    },
   ]);
   Menu.setApplicationMenu(menu);
 }
@@ -205,18 +441,6 @@ async function offerFirstRunChoice(): Promise<void> {
   });
 }
 
-async function recoverOrDiagnose(error: Error): Promise<void> {
-  const window = mainWindow ?? createWindow();
-  try {
-    if (!backend) throw error;
-    const url = await backend.restartOnce();
-    backendOrigin = url;
-    await window.loadURL(url);
-  } catch (restartError) {
-    await showDiagnostics(restartError instanceof Error ? restartError : error, backend, window);
-  }
-}
-
 async function showDiagnostics(error: Error, controller = backend, preferredWindow?: BrowserWindow): Promise<void> {
   const window = preferredWindow && !preferredWindow.isDestroyed()
     ? preferredWindow
@@ -241,16 +465,7 @@ ipcMain.handle("app:copy-diagnostics", (_event, details: unknown) => {
   clipboard.writeText(sanitizeDiagnostics(details));
 });
 ipcMain.handle("app:retry-backend", async () => {
-  if (!backend) backend = backendController();
-  try {
-    await backend.stop();
-    backend = backendController();
-    const url = await backend.start();
-    backendOrigin = url;
-    await (mainWindow ?? createWindow()).loadURL(url);
-  } catch (error) {
-    await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
-  }
+  await guardedStartupFlight.enter();
 });
 ipcMain.handle("runtime:migrate-legacy", async () => await runMigrationFlow());
 ipcMain.handle("runtime:list-backups", async () => await runtimeApi().listBackups());
@@ -268,13 +483,7 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
     installApplicationMenu();
     const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
     createWindow();
-    try {
-      await startBackend();
-      if (isFirstRun) await offerFirstRunChoice();
-      await loadBackendPage();
-    } catch (error) {
-      await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
-    }
+    await guardedStartupFlight.enter(isFirstRun);
   });
 });
 
@@ -291,8 +500,16 @@ app.on("before-quit", (event) => {
   });
   void guard.stopForQuit().then((canQuit) => {
     if (!canQuit) return;
-    if (backend === controller) backend = undefined;
-    quitApproved = true;
-    app.quit();
+    const finishQuit = () => {
+      if (backend === controller) backend = undefined;
+      quitApproved = true;
+      app.quit();
+    };
+    if (!recoverySessionGate.canClearRunMarker(true)) {
+      finishQuit();
+      return;
+    }
+    void recoveryMarkers.clearRunMarker().then(finishQuit,
+      (error: unknown) => void showDiagnostics(error instanceof Error ? error : new Error("无法清理运行标记"), controller));
   });
 });
