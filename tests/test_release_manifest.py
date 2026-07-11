@@ -64,7 +64,7 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertIn("git ls-remote", workflow)
         self.assertNotIn("git ls-remote --exit-code", workflow)
         self.assertIn("$tagRefs.Count -gt 0", workflow)
-        for evidence in ("RELEASE_COMMIT: ${{ github.sha }}", "test_status", "signature_status", "SHA256SUMS.txt", "发布检查报告.md"):
+        for evidence in ("RELEASE_COMMIT: ${{ github.sha }}", "test_status", "signature_status", "SHA256SUMS.txt", "release-report.md"):
             self.assertIn(evidence, workflow)
         self.assertEqual(
             workflow.lower().count("signature_status:"),
@@ -74,7 +74,7 @@ class ReleaseManifestTests(unittest.TestCase):
 
     def test_release_artifact_allowlist_is_complete(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
-        for artifact in ("*setup*.exe", "latest.yml", "*.blockmap", "SHA256SUMS.txt", "发布检查报告.md"):
+        for artifact in ("*setup*.exe", "latest.yml", "*.blockmap", "SHA256SUMS.txt", "release-report.md"):
             self.assertIn(artifact, workflow)
         self.assertIn("verify_release_manifest.py", workflow)
 
