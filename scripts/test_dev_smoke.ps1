@@ -1,4 +1,7 @@
-﻿param([int]$TimeoutSeconds = 45)
+﻿param(
+    [int]$TimeoutSeconds = 45,
+    [string]$EvidenceOutputPath
+)
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -35,7 +38,21 @@ function Stop-OwnedProcesses {
 $frontendPort = Get-FreeTcpPort
 do { $backendPort = Get-FreeTcpPort } while ($backendPort -eq $frontendPort)
 $processInfoPath = Join-Path ([System.IO.Path]::GetTempPath()) ("fulua-dev-smoke-{0}.json" -f [guid]::NewGuid().ToString('N'))
-$result = [ordered]@{ status = 'failed'; frontend_status = 0; backend_status = ''; runtime_mode = ''; frontend_port = $frontendPort; backend_port = $backendPort }
+$sourceCommit = (& git -C $Root rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceCommit)) { throw '无法读取开发模式冒烟测试的源码提交。' }
+$package = Get-Content -LiteralPath (Join-Path $Root 'desktop\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$result = [ordered]@{
+    source_commit = $sourceCommit
+    version = [string]$package.version
+    status = 'failed'
+    health = [ordered]@{
+        status = ''
+        runtime_mode = ''
+        schema_version = ''
+        backend_version = ''
+        frontend_status = 0
+    }
+}
 try {
     & (Join-Path $PSScriptRoot 'start_dev.ps1') -FrontendPort $frontendPort -BackendPort $backendPort -RequireNew -ProcessInfoPath $processInfoPath
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -47,9 +64,11 @@ try {
     }
     if ($null -eq $front -or $front.StatusCode -ne 200) { throw '开发前端未就绪。' }
     if ($null -eq $health -or $health.status -ne 'ok' -or $health.runtime_mode -ne 'development') { throw '开发后端健康检查未通过。' }
-    $result.frontend_status = [int]$front.StatusCode
-    $result.backend_status = [string]$health.status
-    $result.runtime_mode = [string]$health.runtime_mode
+    $result.health.frontend_status = [int]$front.StatusCode
+    $result.health.status = [string]$health.status
+    $result.health.runtime_mode = [string]$health.runtime_mode
+    $result.health.schema_version = [string]$health.schema_version
+    $result.health.backend_version = [string]$health.backend_version
     $result.status = 'passed'
 }
 finally {
@@ -58,6 +77,15 @@ finally {
     }
     finally {
         Remove-Item -LiteralPath $processInfoPath -Force -ErrorAction SilentlyContinue
-        [pscustomobject]$result | ConvertTo-Json -Compress
+        $json = [pscustomobject]$result | ConvertTo-Json -Depth 4 -Compress
+        if (-not [string]::IsNullOrWhiteSpace($EvidenceOutputPath)) {
+            $evidencePath = [System.IO.Path]::GetFullPath($EvidenceOutputPath)
+            $evidenceDirectory = Split-Path -Parent $evidencePath
+            if (-not [string]::IsNullOrWhiteSpace($evidenceDirectory)) {
+                New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+            }
+            [System.IO.File]::WriteAllText($evidencePath, $json, [System.Text.UTF8Encoding]::new($false))
+        }
+        $json
     }
 }

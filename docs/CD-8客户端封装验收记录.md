@@ -2,7 +2,7 @@
 
 ## 验收结论口径
 
-本记录用于 `0.1.0-rc.1` 未签名预发布候选。安装包校验值、可执行文件签名状态和自动化检查项由 `scripts/test_desktop_acceptance.ps1` 在运行时生成脱敏 JSON 证据；临时路径、会话凭据和测试项目名不会写入证据。动态值不固化在本文，复核时应以脚本运行时输出为准，并核对 CI 上传的 `acceptance-evidence.json`。
+本记录用于 `0.1.0-rc.1` 未签名预发布候选。安装包校验值、可执行文件签名状态和自动化检查项由 `scripts/test_desktop_acceptance.ps1` 在运行时生成脱敏 JSON 证据，开发模式健康状态由 `scripts/test_dev_smoke.ps1` 生成 `dev-smoke-evidence.json`；临时路径、端口、会话凭据和测试项目名不会写入证据。动态值不固化在本文，复核时应以脚本运行时输出为准，并核对 CI 上传的两份证据。
 
 只有实际执行并产生证据的项目才能标记为通过。结果分为“自动化通过”“人工验收”“环境性跳过”和“尚未完成”，避免把源码检查或计划事项写成已完成事实。
 
@@ -10,12 +10,15 @@
 
 2026-07-11 已在当前 Windows 开发机对重新构建的 `0.1.0-rc.1` NSIS 候选执行一次完整验收，脚本返回 `status: passed`，下列自动化字段均为 `true`。迁移前后源数据库 SHA-256 一致；Setup、桌面 EXE 和侧车 EXE 的 Authenticode 状态均为 `NotSigned`，因此本次结论仅适用于未签名预发布候选。
 
+同日已真实运行开发模式冒烟脚本，结果为 `status: passed`、`runtime_mode: development`、后端健康状态 `ok`、前端 HTTP 状态 `200`。本地运行结果仅证明当时工作树可启动；发布候选的最终提交、版本及健康摘要以 workflow 在最终构建后生成并上传的 `dev-smoke-evidence.json` 为准。
+
 执行命令：
 
 ```powershell
 .\scripts\build_desktop.ps1 -Target nsis
 $setup = Get-ChildItem .\artifacts\desktop\electron\*Setup*.exe -File | Select-Object -First 1
 .\scripts\test_desktop_acceptance.ps1 -InstallerPath $setup.FullName -EvidenceOutputPath .\artifacts\desktop\electron\acceptance-evidence.json
+.\scripts\test_dev_smoke.ps1 -EvidenceOutputPath .\artifacts\desktop\electron\dev-smoke-evidence.json
 ```
 
 验收脚本必须返回 `status: passed`，且以下字段均为 `true`：
@@ -29,7 +32,7 @@ $setup = Get-ChildItem .\artifacts\desktop\electron\*Setup*.exe -File | Select-O
 - 通过真实打包侧车执行迁移预检和迁移，且迁移前后源数据库 SHA-256 不变。
 - 迁移后及卸载重装后再次验证相同的深层业务状态。
 
-证据 JSON 记录源码提交、候选版本、安装包文件名与 SHA-512、三个组件的实际签名状态、检查项布尔值和未完成人工项。发布工作流在最终 RC 构建后重新执行验收并上传该文件，避免把旧构建或仅有终端文本的结果当作发布证据。
+安装包证据 JSON 记录源码提交、候选版本、安装包文件名与 SHA-512、三个组件的实际签名状态、检查项布尔值和未完成人工项；开发模式证据只记录源码提交、候选版本、状态及脱敏健康摘要。发布工作流在最终 RC 构建后重新执行两项验收并分别上传证据，避免把旧构建或仅有终端文本的结果当作发布证据。
 
 全量质量闸门还包括 `scripts/run_checks.ps1`、桌面 TypeScript 类型检查、前端与桌面 high 级依赖审计、`latest.yml` 校验和 `git diff --check`。具体测试数量和安装包 SHA-512 不在本文固化，以本次运行输出和 CI 工件为准。
 

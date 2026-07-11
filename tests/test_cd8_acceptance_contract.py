@@ -142,18 +142,44 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         for required in ("ProcessInfoPath", "RequireNew", "start_ticks", "Get-Process -Id"):
             self.assertIn(required, text)
         self.assertNotIn("OwningProcess", text)
+        self.assertIn("EvidenceOutputPath", text)
+        for field in ("source_commit", "version", "status", "health"):
+            self.assertRegex(text, rf"(?m)^\s*{field}\s*=", field)
+        self.assertIn("ConvertTo-Json -Depth", text)
         command = "$null=[scriptblock]::Create((Get-Content -Raw -Encoding UTF8 -LiteralPath '" + str(smoke).replace("'", "''") + "'))"
         result = subprocess.run(["powershell.exe", "-NoProfile", "-Command", command], capture_output=True, text=True, encoding="utf-8", errors="replace")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_release_workflow_publishes_dev_smoke_and_complete_dynamic_report(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("test_dev_smoke.ps1", workflow)
+        self.assertIn("dev-smoke-evidence.json", workflow)
+        self.assertRegex(
+            workflow,
+            re.compile(r"Build NSIS and decide signing gate.*?test_dev_smoke\.ps1", re.DOTALL),
+            msg="开发模式证据必须在会清理 artifacts 的最终构建之后生成",
+        )
+        self.assertRegex(workflow, re.compile(r"Upload.*?dev.*?smoke.*?actions/upload-artifact@v4", re.DOTALL | re.IGNORECASE))
+        self.assertIn("$devEvidence = Get-Content", workflow)
+        self.assertIn("$evidence.installer_name", workflow)
+        self.assertIn("$evidence.installer_sha512", workflow)
+        release_assets = workflow[workflow.index("$assets = @(") :]
+        self.assertIn("dev-smoke-evidence.json", release_assets)
+        self.assertRegex(workflow, re.compile(r"开发模式.*?\$devEvidence", re.DOTALL))
+
     def test_delivery_docs_separate_verified_facts_from_release_gates(self) -> None:
         acceptance = (ROOT / "docs" / "CD-8客户端封装验收记录.md").read_text(encoding="utf-8")
         troubleshooting = (ROOT / "docs" / "客户端故障排查说明.md").read_text(encoding="utf-8")
+        release_checklist = (ROOT / "docs" / "客户端发布检查表.md").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         for required in ("自动化通过", "人工验收", "环境性跳过", "尚未完成", "未签名预发布候选"):
             self.assertIn(required, acceptance)
         self.assertIn("以脚本运行时输出为准", acceptance)
+        self.assertIn("dev-smoke-evidence.json", acceptance)
+        self.assertIn("runtime_mode: development", acceptance)
+        self.assertIn("dev-smoke-evidence.json", release_checklist)
         self.assertNotRegex(acceptance, r"SHA-512\s*[:：]\s*[A-Fa-f0-9]{128}")
         self.assertIn("日志", troubleshooting)
         self.assertIn("备份", troubleshooting)

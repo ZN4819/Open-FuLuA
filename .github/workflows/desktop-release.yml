@@ -126,6 +126,10 @@ jobs:
           if (@($setup).Count -ne 1) { throw 'Expected exactly one final Setup executable.' }
           ./scripts/test_desktop_acceptance.ps1 -InstallerPath $setup[0].FullName -EvidenceOutputPath artifacts/desktop/electron/acceptance-evidence.json
 
+      - name: Run development mode smoke acceptance
+        shell: pwsh
+        run: ./scripts/test_dev_smoke.ps1 -EvidenceOutputPath artifacts/desktop/electron/dev-smoke-evidence.json
+
       - name: Verify Authenticode result
         id: signature
         shell: pwsh
@@ -149,6 +153,13 @@ jobs:
         with:
           name: desktop-acceptance-${{ steps.gate.outputs.version }}
           path: artifacts/desktop/electron/acceptance-evidence.json
+          if-no-files-found: error
+
+      - name: Upload development smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-smoke-${{ steps.gate.outputs.version }}
+          path: artifacts/desktop/electron/dev-smoke-evidence.json
           if-no-files-found: error
 
       - name: Create SHA-256 manifest
@@ -177,7 +188,9 @@ jobs:
           $root = Resolve-Path artifacts/desktop/electron
           $hashes = Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Raw
           $evidence = Get-Content -LiteralPath (Join-Path $root 'acceptance-evidence.json') -Raw | ConvertFrom-Json
+          $devEvidence = Get-Content -LiteralPath (Join-Path $root 'dev-smoke-evidence.json') -Raw | ConvertFrom-Json
           $evidenceSummary = ($evidence.checks.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
+          $devEvidenceSummary = "status=$($devEvidence.status), health=$($devEvidence.health.status), runtime_mode=$($devEvidence.health.runtime_mode), frontend_status=$($devEvidence.health.frontend_status)"
           $report = @"
           # Windows 客户端发布检查报告
 
@@ -187,8 +200,12 @@ jobs:
           - 稳定发布：$env:RELEASE_STABLE
           - 预发布：$env:RELEASE_PRERELEASE
           - 签名结果：$env:signature_status
+          - 最终安装包：$($evidence.installer_name)
+          - 安装包 SHA-512：$($evidence.installer_sha512)
           - 安装包验收：$evidenceSummary
           - 验收证据：acceptance-evidence.json
+          - 开发模式验收：$devEvidenceSummary
+          - 开发模式证据：dev-smoke-evidence.json
           - SHA-256：
 
           ``````text
@@ -212,6 +229,7 @@ jobs:
             (Get-ChildItem artifacts/desktop/electron -File -Filter '*.blockmap').FullName
             (Resolve-Path artifacts/desktop/electron/SHA256SUMS.txt).Path
             (Resolve-Path artifacts/desktop/electron/acceptance-evidence.json).Path
+            (Resolve-Path artifacts/desktop/electron/dev-smoke-evidence.json).Path
             (Resolve-Path 'artifacts/desktop/electron/发布检查报告.md').Path
           )
           $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/发布检查报告.md')
