@@ -54,6 +54,191 @@ class DesktopPackagingContractTests(unittest.TestCase):
         for forbidden in ("storage/", "backend/data", "tests/", "*.db", "*.log"):
             self.assertNotIn(forbidden, config)
 
+    def test_builder_excludes_compiled_desktop_tests_and_source_maps_from_asar(self) -> None:
+        config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
+
+        self.assertIn('"!dist/**/*.test.js"', config)
+        self.assertIn('"!dist/**/*.test.js.map"', config)
+        self.assertIn('"!dist/**/*.map"', config)
+
+    def test_builder_configures_unsigned_per_user_nsis_with_uninstall_data_retention(self) -> None:
+        config = (ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
+
+        self.assertRegex(config, r"(?m)^\s*-\s*target:\s*nsis\s*$")
+        self.assertRegex(config, r"(?m)^nsis:\s*$")
+        for setting, expected in (
+            ("oneClick", "false"),
+            ("perMachine", "false"),
+            ("allowElevation", "false"),
+            ("allowToChangeInstallationDirectory", "true"),
+            ("createDesktopShortcut", "true"),
+            ("createStartMenuShortcut", "true"),
+        ):
+            self.assertRegex(config, rf"(?m)^\s*{setting}:\s*{expected}\s*$")
+        self.assertNotIn("deleteAppDataOnUninstall", config)
+        self.assertRegex(config, r"(?m)^\s*uninstallDisplayName:\s*.+$")
+        self.assertRegex(config, r"(?m)^\s*executableName:\s*FuLuA\s*$")
+        self.assertIn("asar: true", config)
+        for resource in ("../frontend/dist", "../artifacts/desktop/backend/fulua-backend"):
+            self.assertIn(resource, config)
+
+    def test_build_script_supports_nsis_and_verifies_both_expected_artifacts(self) -> None:
+        script = (ROOT / "scripts" / "build_desktop.ps1").read_text(encoding="utf-8")
+        package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
+
+        self.assertRegex(script, r"ValidateSet\([^)]*['\"]nsis['\"]")
+        self.assertIn("package:nsis", script)
+        self.assertIn("Setup executable was not generated", script)
+        self.assertIn("win-unpacked\\FuLuA.exe", script)
+        self.assertRegex(package["scripts"].get("package:nsis", ""), r"electron-builder.*--win\s+nsis\s+dir")
+
+    def test_install_acceptance_script_is_safe_and_covers_uninstall_reinstall_data_retention(self) -> None:
+        script_path = ROOT / "scripts" / "test_desktop_install.ps1"
+        self.assertTrue(script_path.is_file(), "缺少桌面安装验收脚本")
+        script = script_path.read_text(encoding="utf-8")
+
+        for required in (
+            "BuildIfMissing",
+            "Resolve-SafeChildPath",
+            "LOCALAPPDATA",
+            "Get-NetTCPConnection",
+            "/api/health",
+            "/api/projects",
+            "uninstall.exe",
+            "数据保留",
+            "重新安装",
+            "taskkill",
+        ):
+            self.assertIn(required, script)
+        self.assertIn("/S", script)
+        self.assertIn("/D=", script)
+        self.assertNotIn("Remove-Item -Recurse -Force $env:LOCALAPPDATA", script)
+
+        command = (
+            "$null = [scriptblock]::Create((Get-Content -Raw -LiteralPath '"
+            + str(script_path).replace("'", "''")
+            + "'))"
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_install_acceptance_waits_for_installer_and_uninstaller_processes(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertRegex(
+            script,
+            r"Start-Process\s+-FilePath\s+\$installer\s+-ArgumentList\s+@\([^)]*'/S'[^)]*\)\s+-Wait\s+-PassThru",
+        )
+        self.assertRegex(
+            script,
+            r"Start-Process\s+-FilePath\s+\$uninstaller\s+-ArgumentList\s+@\('/S'\)\s+-Wait\s+-PassThru",
+        )
+
+    def test_install_acceptance_decodes_health_json_as_utf8(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Add-Type -AssemblyName System.Net.Http", script)
+        self.assertIn("System.Net.Http.HttpClient", script)
+        self.assertIn("GetStringAsync", script)
+        self.assertIn("ConvertFrom-Json", script)
+
+    def test_install_acceptance_uses_ascii_project_marker_for_powershell_compatibility(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertRegex(script, r'\$ProjectName\s*=\s*"CD6-install-\$\(')
+
+    def test_install_acceptance_checks_reinstalled_projects_item_by_item(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Where-Object { $_.name -eq $ProjectName }", script)
+
+    def test_install_acceptance_rejects_reparse_points_before_cleanup(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-NoReparsePoint", script)
+        self.assertIn("FileAttributes]::ReparsePoint", script)
+        self.assertIn("Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot", script)
+        owned_tree = re.search(r"function Remove-OwnedTree \{(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(owned_tree)
+        assert owned_tree is not None
+        reparse_handler = re.search(
+            r"if \(\(\$item\.Attributes -band \[System\.IO\.FileAttributes\]::ReparsePoint\) -ne 0\) \{(?P<body>.*?)^    \}",
+            owned_tree.group("body"),
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(reparse_handler)
+        assert reparse_handler is not None
+        self.assertIn("throw", reparse_handler.group("body"))
+        self.assertNotIn("Remove-Item", reparse_handler.group("body"))
+
+    def test_install_acceptance_fails_and_preserves_tree_when_process_termination_cannot_be_confirmed(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+        stop_tree = re.search(r"function Stop-TestProcessTree \{(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(stop_tree)
+        assert stop_tree is not None
+        body = stop_tree.group("body")
+        self.assertIn("$LASTEXITCODE", body)
+        self.assertIn("WaitForExit", body)
+        self.assertRegex(body, r"LASTEXITCODE\s*-ne\s*0\)\s*\{\s*throw")
+        self.assertRegex(body, r"-not\s+\$Process\.HasExited\)\s*\{\s*throw")
+        self.assertIn("$ProcessTerminationFailed = $false", script)
+        self.assertIn("$ProcessTerminationFailed = $true", script)
+        self.assertIn("if (-not $ProcessTerminationFailed)", script)
+        self.assertIn("if ($cleanupAllowed)", script)
+
+    def test_install_acceptance_rejects_non_program_resources_after_installation(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-InstalledProgramResources", script)
+        for forbidden in ("*.sqlite", "*.db", "storage", "logs", "backups", "migration", "fixtures", "*.docx", "~$*.docx"):
+            self.assertIn(forbidden, script)
+        self.assertIn("resources\\app.asar", script)
+        self.assertIn("resources\\frontend", script)
+        self.assertIn("resources\\backend", script)
+        self.assertIn("_internal\\docx\\templates\\default.docx", script)
+        self.assertIn("Assert-InstalledProgramResources -InstallRoot $InstallRoot", script)
+
+    def test_install_acceptance_inspects_asar_and_rejects_test_content(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Assert-PackagedAsarContents", script)
+        self.assertIn("@electron\\asar\\bin\\asar.js", script)
+        self.assertIn(" list ", script)
+        self.assertIn("*.test.js", script)
+        self.assertIn("(^|/)(test|tests)(/|$)", script)
+        for required_module in ("dist/main.js", "dist/preload.js", "dist/runtimeApi.js"):
+            self.assertIn(required_module, script)
+        self.assertIn("Assert-PackagedAsarContents -InstallRoot $InstallRoot", script)
+
+    def test_user_installation_guide_discloses_default_test_icon(self) -> None:
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("默认图标", guide)
+        self.assertIn("临时", guide)
+
+    def test_user_installation_guide_marks_clean_environment_validation_as_pending(self) -> None:
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("本机临时用户目录验收", guide)
+        self.assertIn("干净 Windows 用户/VM 验收待执行", guide)
+
+    def test_readme_and_installation_guide_describe_cd6_user_installation(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        guide = (ROOT / "docs" / "客户端安装与卸载说明.md").read_text(encoding="utf-8")
+
+        self.assertIn("CD-6", readme)
+        self.assertIn(".\\scripts\\build_desktop.ps1 -Target nsis", readme)
+        self.assertIn("docs/客户端安装与卸载说明.md", readme)
+        self.assertNotIn("选择“当前用户”", guide)
+        self.assertIn("自动按当前用户范围安装，无需管理员权限", guide)
+
     def test_pyinstaller_spec_imports_app_and_collects_runtime_assets(self) -> None:
         spec = (ROOT / "backend" / "packaging" / "fulua_backend.spec").read_text(encoding="utf-8")
         entrypoint = ROOT / "backend" / "packaging" / "backend_entry.py"

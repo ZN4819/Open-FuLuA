@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('win-unpacked')]
+    [ValidateSet('win-unpacked', 'nsis')]
     [string]$Target = 'win-unpacked'
 )
 
@@ -12,6 +12,7 @@ $ArtifactsRoot = Join-Path $Root 'artifacts\desktop'
 $BackendDist = Join-Path $ArtifactsRoot 'backend'
 $BackendWork = Join-Path $ArtifactsRoot 'pyinstaller-work'
 $BackendSpec = Join-Path $Root 'backend\packaging\fulua_backend.spec'
+$ElectronOutput = Join-Path $ArtifactsRoot 'electron'
 $DesktopExecutable = Join-Path $ArtifactsRoot 'electron\win-unpacked\FuLuA.exe'
 
 if (-not (Test-Path $BackendPython)) {
@@ -33,12 +34,26 @@ try {
         npm --prefix desktop run package:win-unpacked
         if ($LASTEXITCODE -ne 0) { throw 'Electron win-unpacked packaging failed.' }
     }
+    elseif ($Target -eq 'nsis') {
+        npm --prefix desktop run package:nsis
+        if ($LASTEXITCODE -ne 0) { throw 'Electron NSIS packaging failed.' }
+    }
 
     if (-not (Test-Path $DesktopExecutable)) {
         throw "Desktop executable was not generated: $DesktopExecutable"
     }
 
-    Write-Host "Desktop build completed: $DesktopExecutable"
+    if ($Target -eq 'nsis') {
+        $SetupExecutables = @(Get-ChildItem -LiteralPath $ElectronOutput -File -Filter '*Setup*.exe')
+        if ($SetupExecutables.Count -ne 1) {
+            throw "Setup executable was not generated exactly once under: $ElectronOutput"
+        }
+        Write-Host "Desktop build completed: $DesktopExecutable"
+        Write-Host "NSIS setup completed: $($SetupExecutables[0].FullName)"
+    }
+    else {
+        Write-Host "Desktop build completed: $DesktopExecutable"
+    }
 }
 finally {
     Pop-Location
