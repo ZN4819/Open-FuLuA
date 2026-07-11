@@ -1,6 +1,7 @@
 ﻿param(
     [string]$InstallerPath,
-    [switch]$BuildIfMissing
+    [switch]$BuildIfMissing,
+    [string]$EvidenceOutputPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -113,8 +114,8 @@ function Assert-InstalledProgramResources {
         }
     }
 
-    $forbiddenDirectoryNames = @('storage', 'logs', 'backups', 'backup', 'migration', 'migrations', 'fixture', 'fixtures', 'import', 'imports', 'user')
-    $forbiddenFilePatterns = @('*.sqlite', '*.sqlite3', '*.db', '*-wal', '*-shm', '*.docx', '~$*.docx', '*.log')
+    $forbiddenDirectoryNames = @('storage', 'logs', 'backups', 'backup', 'migration', 'migrations', 'fixture', 'fixtures', 'test', 'tests', 'import', 'imports', 'user')
+    $forbiddenFilePatterns = @('*.sqlite', '*.sqlite3', '*.db', '*-wal', '*-shm', '*.docx', '~$*.docx', '*.log', 'test_*', '*_test.py')
     $allowedProgramDocx = Join-Path $InstallRoot 'resources\backend\_internal\docx\templates\default.docx'
     foreach ($entry in @(Get-ChildItem -LiteralPath $InstallRoot -Force -Recurse)) {
         if ($entry.PSIsContainer -and $forbiddenDirectoryNames -contains $entry.Name.ToLowerInvariant()) {
@@ -280,11 +281,41 @@ function New-AcceptanceImage {
 
 function Assert-ProjectRetained {
     param([string]$BaseUri, [string[]]$ProjectNames)
-    $projects = @(Invoke-JsonRequest -Method GET -Uri "$BaseUri/api/projects")
+    $projectsResponse = Invoke-JsonRequest -Method GET -Uri "$BaseUri/api/projects"
+    $projects = @($projectsResponse | ForEach-Object { $_ })
     foreach ($projectName in $ProjectNames) {
         if (@($projects | Where-Object { $_.name -eq $projectName }).Count -ne 1) {
             throw "未找到唯一的预期项目：$projectName"
         }
+    }
+}
+
+function Get-RemoteFileSha256 {
+    param([string]$Uri)
+    $client = [System.Net.Http.HttpClient]::new()
+    try { $bytes = $client.GetByteArrayAsync($Uri).GetAwaiter().GetResult() }
+    finally { $client.Dispose() }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+
+function Assert-BusinessState {
+    param([string]$BaseUri, [string]$SourceProjectName, [string]$ImportedProjectName, [string]$ExpectedImageSha256)
+    $projectsResponse = Invoke-JsonRequest -Method GET -Uri "$BaseUri/api/projects"
+    $projects = @($projectsResponse | ForEach-Object { $_ })
+    foreach ($name in @($SourceProjectName, $ImportedProjectName)) {
+        $project = @($projects | Where-Object { $_.name -eq $name })
+        if ($project.Count -ne 1) { throw "业务状态检查未找到唯一项目：$name" }
+        $detail = Invoke-JsonRequest -Method GET -Uri "$BaseUri/api/projects/$([int]$project[0].id)/sections/A-1"
+        $rows = @($detail.rows); $images = @($detail.evidence_images); $references = @($detail.cross_references)
+        if ($rows.Count -ne 1 -or $images.Count -ne 1 -or $references.Count -ne 1) { throw "业务状态数量不一致：$name" }
+        $row = $rows[0]; $image = $images[0]; $reference = $references[0]
+        if ([string]$row.record_text -notmatch '\[\[FIG:\d+\]\]' -or $row.metric_result.d -ne '√' -or $row.metric_result.a -ne '√' -or $row.metric_result.k -ne '/' -or $row.metric_result.object_score -ne '1.0000') { throw "业务行正文或评分不一致：$name" }
+        if ([string]::IsNullOrWhiteSpace([string]$image.file_url) -or $image.caption -ne 'CD-8 验收图片' -or $image.pixel_width -ne 640 -or $image.pixel_height -ne 360) { throw "图片元数据不一致：$name" }
+        if ([int]$reference.target_image_id -ne [int]$image.id -or [string]$reference.token -ne "[[FIG:$([int]$image.id)]]") { throw "图片交叉引用不一致：$name" }
+        $fileUri = if ([string]$image.file_url -match '^https?://') { [string]$image.file_url } else { "$BaseUri$([string]$image.file_url)" }
+        if ((Get-RemoteFileSha256 -Uri $fileUri) -ne $ExpectedImageSha256) { throw "图片文件哈希不一致：$name" }
     }
 }
 
@@ -307,9 +338,9 @@ function Start-PackagedSidecar {
 }
 
 function Get-SignatureEvidence {
-    param([string]$Path)
+    param([string]$Path, [string]$Component)
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
-    return [ordered]@{ path = $Path; status = [string]$signature.Status; subject = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { '' } }
+    return [ordered]@{ component = $Component; status = [string]$signature.Status; subject = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { '' } }
 }
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -349,24 +380,30 @@ $installedExecutable = Join-Path $InstallRoot 'FuLuA.exe'
 $Result = [ordered]@{
     status = 'failed'
     failure_message = ''
+    source_commit = ([string](& git -C $Root rev-parse HEAD)).Trim()
+    version = [string]((Get-Content -Raw -Encoding UTF8 (Join-Path $Root 'desktop\package.json') | ConvertFrom-Json).version)
     installer = $installer
     installer_sha512 = (Get-FileHash -LiteralPath $installer -Algorithm SHA512).Hash.ToLowerInvariant()
     signatures = @()
     package_contents_checked = $false
     project_saved = $false
     image_uploaded = $false
+    template_slots_checked = $false
     validation_checked = $false
     editable_exported = $false
     final_exported = $false
     docx_imported = $false
     close_reopen_checked = $false
+    business_state_reopen = $false
     migration_preflight_checked = $false
     migration_checked = $false
+    business_state_migration = $false
     source_database_hash_before = ''
     source_database_hash_after = ''
     uninstall_data_retained = $false
     reinstall_checked = $false
-    manual_items = @('图片粘贴快捷键与剪贴板交互需在可交互桌面人工确认', '从上一已发布版本在线升级需在两个真实版本发布后确认', '干净 Windows 虚拟机与代码签名信任链需由发布负责人确认')
+    business_state_reinstall = $false
+    manual_items = @('图片粘贴快捷键与剪贴板交互', '客户端菜单、诊断页、打开日志和备份恢复入口', '开始菜单、桌面快捷方式与 Windows 卸载入口', '从上一已发布版本在线升级与失败回退', '干净 Windows 虚拟机与代码签名信任链')
 }
 
 try {
@@ -380,14 +417,17 @@ try {
     $Result.package_contents_checked = $true
     $backendExecutable = Join-Path $InstallRoot 'resources\backend\fulua-backend.exe'
     $Result.signatures = @(
-        (Get-SignatureEvidence -Path $installer),
-        (Get-SignatureEvidence -Path $installedExecutable),
-        (Get-SignatureEvidence -Path $backendExecutable)
+        (Get-SignatureEvidence -Path $installer -Component 'installer'),
+        (Get-SignatureEvidence -Path $installedExecutable -Component 'desktop'),
+        (Get-SignatureEvidence -Path $backendExecutable -Component 'sidecar')
     )
 
     New-AcceptanceImage -Path $EvidencePath
     $AuthorLaunch = Start-InstalledClient -Executable $installedExecutable -LocalAppData $AuthorLocalAppData
     $authorServer = Wait-DesktopHealth -ExpectedDataRoot $AuthorDataRoot
+    $slots = @(Invoke-JsonRequest -Method GET -Uri "$($authorServer.BaseUri)/api/record-template-slots?section_code=A-1")
+    if ($slots.Count -eq 0 -or @($slots | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.unit) }).Count -eq 0) { throw 'A-1 固定测评单元模板槽位为空。' }
+    $Result.template_slots_checked = $true
     $rootPage = Invoke-WebRequest -Uri "$($authorServer.BaseUri)/" -UseBasicParsing -TimeoutSec 10
     if ($rootPage.StatusCode -ne 200) { throw '客户端根页面不可用。' }
 
@@ -430,11 +470,14 @@ try {
     $confirmed = Invoke-JsonRequest -Method POST -Uri $confirmUri -Body @{ project_name = $ImportedProjectName }
     if ($confirmed.status -ne 'succeeded' -or $null -eq $confirmed.created_project_id) { throw 'DOCX 导入创建项目失败。' }
     $Result.docx_imported = $true
+    $expectedImageSha256 = (Get-FileHash -LiteralPath $EvidencePath -Algorithm SHA256).Hash.ToLowerInvariant()
 
     Stop-TestProcessTree $AuthorLaunch; $AuthorLaunch = $null; $AuthorLaunch = Start-InstalledClient -Executable $installedExecutable -LocalAppData $AuthorLocalAppData
     $authorServer = Wait-DesktopHealth -ExpectedDataRoot $AuthorDataRoot
     Assert-ProjectRetained -BaseUri $authorServer.BaseUri -ProjectNames @($ProjectName, $ImportedProjectName)
     $Result.close_reopen_checked = $true
+    Assert-BusinessState -BaseUri $authorServer.BaseUri -SourceProjectName $ProjectName -ImportedProjectName $ImportedProjectName -ExpectedImageSha256 $expectedImageSha256
+    $Result.business_state_reopen = $true
     Stop-TestProcessTree $AuthorLaunch
     $AuthorLaunch = $null
 
@@ -461,6 +504,8 @@ try {
     $migrationServer = Wait-DesktopHealth -ExpectedDataRoot $MigrationDataRoot
     Assert-ProjectRetained -BaseUri $migrationServer.BaseUri -ProjectNames @($ProjectName, $ImportedProjectName)
     $Result.migration_checked = $true
+    Assert-BusinessState -BaseUri $migrationServer.BaseUri -SourceProjectName $ProjectName -ImportedProjectName $ImportedProjectName -ExpectedImageSha256 $expectedImageSha256
+    $Result.business_state_migration = $true
     Stop-TestProcessTree $MigrationLaunch
     $MigrationLaunch = $null
 
@@ -480,6 +525,8 @@ try {
     $migrationServer = Wait-DesktopHealth -ExpectedDataRoot $MigrationDataRoot
     Assert-ProjectRetained -BaseUri $migrationServer.BaseUri -ProjectNames @($ProjectName, $ImportedProjectName)
     $Result.reinstall_checked = $true
+    Assert-BusinessState -BaseUri $migrationServer.BaseUri -SourceProjectName $ProjectName -ImportedProjectName $ImportedProjectName -ExpectedImageSha256 $expectedImageSha256
+    $Result.business_state_reinstall = $true
     $Result.status = 'passed'
 }
 catch {
@@ -510,6 +557,15 @@ finally {
     }
     finally {
         $env:LOCALAPPDATA = $OriginalLocalAppData
+        if ($Result.status -eq 'passed' -and -not [string]::IsNullOrWhiteSpace($EvidenceOutputPath)) {
+            $evidencePath = [System.IO.Path]::GetFullPath($EvidenceOutputPath)
+            $evidenceParent = Split-Path -Parent $evidencePath
+            if ($evidenceParent) { New-Item -ItemType Directory -Force -Path $evidenceParent | Out-Null }
+            $checks = [ordered]@{}
+            foreach ($key in @('package_contents_checked','project_saved','image_uploaded','template_slots_checked','validation_checked','editable_exported','final_exported','docx_imported','close_reopen_checked','business_state_reopen','migration_preflight_checked','migration_checked','business_state_migration','uninstall_data_retained','reinstall_checked','business_state_reinstall')) { $checks[$key] = [bool]$Result[$key] }
+            $evidence = [ordered]@{ schema_version = 1; source_commit = $Result.source_commit; version = $Result.version; installer_name = [System.IO.Path]::GetFileName($installer); installer_sha512 = $Result.installer_sha512; signatures = $Result.signatures; checks = $checks; source_database_unchanged = ($Result.source_database_hash_before -eq $Result.source_database_hash_after); manual_items = $Result.manual_items }
+            [System.IO.File]::WriteAllText($evidencePath, ($evidence | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+        }
         if ($cleanupAllowed) {
             Remove-SafeTestPath -Path $RunRoot -SafeRoot $SafetyRoot
             Remove-SafeTestPath -Path $SafetyRoot -SafeRoot $TemporaryRoot

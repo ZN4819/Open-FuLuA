@@ -14,10 +14,13 @@ $BackendWork = Join-Path $ArtifactsRoot 'pyinstaller-work'
 $BackendSpec = Join-Path $Root 'backend\packaging\fulua_backend.spec'
 $ElectronOutput = Join-Path $ArtifactsRoot 'electron'
 $DesktopExecutable = Join-Path $ArtifactsRoot 'electron\win-unpacked\FuLuA.exe'
+. (Join-Path $PSScriptRoot 'build_output_guard.ps1')
 
 if (-not (Test-Path $BackendPython)) {
     throw 'backend/.venv was not found. Install backend packaging requirements first.'
 }
+
+Remove-ManagedBuildDirectory -WorkspaceRoot $Root -CandidatePath $ElectronOutput
 
 Push-Location $Root
 try {

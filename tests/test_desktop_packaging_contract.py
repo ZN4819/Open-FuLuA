@@ -2,6 +2,7 @@ import ast
 import json
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -378,6 +379,63 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
         self.assertRegex(script, re.escape("$LASTEXITCODE") + r"\s*-ne\s*0")
         self.assertIn("artifacts\\desktop", script)
+
+    def test_build_script_clears_only_managed_electron_output_before_packaging(self) -> None:
+        script = (ROOT / "scripts" / "build_desktop.ps1").read_text(encoding="utf-8")
+
+        cleanup_index = script.find("Remove-ManagedBuildDirectory -WorkspaceRoot $Root -CandidatePath $ElectronOutput")
+        packaging_index = script.find("npm --prefix desktop run package:")
+        self.assertGreaterEqual(cleanup_index, 0)
+        self.assertGreater(packaging_index, cleanup_index)
+        self.assertNotIn("Remove-Item -LiteralPath $ArtifactsRoot -Recurse", script)
+
+    def test_build_output_guard_enforces_containment_and_reparse_boundaries(self) -> None:
+        helper = ROOT / "scripts" / "build_output_guard.ps1"
+        self.assertTrue(helper.is_file())
+        self.assertNotIn("Remove-Item -LiteralPath $candidate -Recurse", helper.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "workspace"
+            electron = workspace / "artifacts" / "desktop" / "electron"
+            sibling = workspace / "artifacts" / "desktop" / "keep.txt"
+            electron.mkdir(parents=True)
+            (electron / "stale.exe").write_text("stale", encoding="utf-8")
+            sibling.write_text("keep", encoding="utf-8")
+
+            prefix = f". '{str(helper).replace(chr(39), chr(39) * 2)}'; "
+            valid = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", prefix + f"Remove-ManagedBuildDirectory -WorkspaceRoot '{workspace}' -CandidatePath '{electron}'"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            self.assertEqual(valid.returncode, 0, valid.stderr)
+            self.assertFalse(electron.exists())
+            self.assertTrue(sibling.is_file())
+
+            managed_root = workspace / "artifacts" / "desktop"
+            rejected = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", prefix + f"Remove-ManagedBuildDirectory -WorkspaceRoot '{workspace}' -CandidatePath '{managed_root}'"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertTrue(sibling.is_file())
+
+            external = Path(temporary) / "external"
+            external.mkdir()
+            sentinel = external / "sentinel.txt"
+            sentinel.write_text("outside", encoding="utf-8")
+            electron.mkdir()
+            internal_junction = electron / "external-link"
+            junction_test = subprocess.run(
+                [
+                    "powershell.exe", "-NoProfile", "-Command",
+                    prefix
+                    + f"$j=New-Item -ItemType Junction -Path '{internal_junction}' -Target '{external}'; "
+                    + f"try {{ Remove-ManagedBuildDirectory -WorkspaceRoot '{workspace}' -CandidatePath '{electron}'; exit 91 }} "
+                    + f"catch {{ exit 0 }} finally {{ if (Test-Path -LiteralPath '{internal_junction}') {{ Remove-Item -LiteralPath '{internal_junction}' -Force }} }}",
+                ],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            self.assertEqual(junction_test.returncode, 0, junction_test.stderr)
+            self.assertTrue(sentinel.is_file())
 
     def test_build_script_is_parseable_by_windows_powershell(self) -> None:
         script_path = ROOT / "scripts" / "build_desktop.ps1"

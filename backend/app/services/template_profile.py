@@ -1,21 +1,11 @@
 from __future__ import annotations
 
 import json
-import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-
-def _resolve_profile_path() -> Path:
-    if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
-        resource_root = Path(sys._MEIPASS)
-    else:
-        resource_root = Path(__file__).resolve().parents[3]
-    return resource_root / "templates" / "appendix_a" / "template_profile.json"
-
-
-PROFILE_PATH = _resolve_profile_path()
+from ..resource_paths import resolve_resource_path
 
 
 class TemplateProfileError(RuntimeError):
@@ -24,10 +14,11 @@ class TemplateProfileError(RuntimeError):
 
 @lru_cache(maxsize=1)
 def load_template_profile() -> dict[str, Any]:
-    if not PROFILE_PATH.exists():
-        raise TemplateProfileError(f"模板 profile 不存在：{PROFILE_PATH}")
+    profile_path = resolve_resource_path("templates", "appendix_a", "template_profile.json")
+    if not profile_path.exists():
+        raise TemplateProfileError(f"模板 profile 不存在：{profile_path}")
 
-    with PROFILE_PATH.open("r", encoding="utf-8") as profile_file:
+    with profile_path.open("r", encoding="utf-8") as profile_file:
         profile = json.load(profile_file)
 
     validate_template_profile(profile)

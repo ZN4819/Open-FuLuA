@@ -1,6 +1,8 @@
 param(
     [int] $FrontendPort = 5174,
-    [int] $BackendPort = 8000
+    [int] $BackendPort = 8000,
+    [switch] $RequireNew,
+    [string] $ProcessInfoPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,8 +51,9 @@ function Start-Backend {
     }
 
     if (Test-HttpReady -Url "http://127.0.0.1:$BackendPort/api/health") {
+        if ($RequireNew) { throw "Backend port $BackendPort is already in use; smoke tests must not reuse another service." }
         Write-Host "Backend already responds on http://127.0.0.1:$BackendPort."
-        return
+        return $null
     }
 
     $process = Start-Process `
@@ -63,6 +66,7 @@ function Start-Backend {
         -PassThru
 
     Write-Host "Backend started on http://127.0.0.1:$BackendPort (PID: $($process.Id))."
+    return $process
 }
 
 function Start-Frontend {
@@ -72,8 +76,9 @@ function Start-Frontend {
     }
 
     if (Test-HttpReady -Url "http://127.0.0.1:$FrontendPort/") {
+        if ($RequireNew) { throw "Frontend port $FrontendPort is already in use; smoke tests must not reuse another service." }
         Write-Host "Frontend already responds on http://127.0.0.1:$FrontendPort."
-        return
+        return $null
     }
 
     $process = Start-Process `
@@ -86,13 +91,26 @@ function Start-Frontend {
         -PassThru
 
     Write-Host "Frontend started on http://127.0.0.1:$FrontendPort (PID: $($process.Id))."
+    return $process
+}
+
+function Write-ProcessInfo {
+    param([System.Diagnostics.Process]$Backend, [System.Diagnostics.Process]$Frontend)
+    if ([string]::IsNullOrWhiteSpace($ProcessInfoPath)) { return }
+    $items = @()
+    foreach ($entry in @(@{ kind = 'backend'; process = $Backend }, @{ kind = 'frontend'; process = $Frontend })) {
+        if ($null -ne $entry.process) { $items += [ordered]@{ kind = $entry.kind; pid = $entry.process.Id; start_ticks = $entry.process.StartTime.ToUniversalTime().Ticks } }
+    }
+    [System.IO.File]::WriteAllText([System.IO.Path]::GetFullPath($ProcessInfoPath), (@{ processes = $items } | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
 }
 
 New-Item -ItemType Directory -Force -Path $StorageDir | Out-Null
 Normalize-ProcessPathEnvironment
 
-Start-Backend
-Start-Frontend
+$backendProcess = Start-Backend
+Write-ProcessInfo -Backend $backendProcess -Frontend $null
+$frontendProcess = Start-Frontend
+Write-ProcessInfo -Backend $backendProcess -Frontend $frontendProcess
 
 Write-Host ''
 Write-Host 'Local development services are ready:'

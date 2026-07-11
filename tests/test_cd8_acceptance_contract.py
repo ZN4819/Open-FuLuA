@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 import unittest
+import json
 from pathlib import Path
 
 
@@ -41,6 +42,12 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         self.assertIn("source_database_hash_before", script)
         self.assertIn("source_database_hash_after", script)
         self.assertIn("Assert-ProjectRetained", script)
+        self.assertIn("Assert-BusinessState", script)
+        self.assertIn("template_slots_checked", script)
+        self.assertIn("business_state_reopen", script)
+        self.assertIn("business_state_migration", script)
+        self.assertIn("business_state_reinstall", script)
+        self.assertIn("$projectsResponse | ForEach-Object { $_ }", script)
         self.assertIn(r"resources\backend\fulua-backend.exe", script)
         self.assertNotIn(r"resources\backend\fulua-backend\fulua-backend.exe", script)
         self.assertIn("'.png' { 'image/png' }", script)
@@ -107,6 +114,37 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         self.assertIn("$cleanupAllowed = ($Result.status -eq 'passed')", script)
         self.assertIn("Get-AuthenticodeSignature", script)
         self.assertRegex(script, r"Get-FileHash\b[^\r\n]*-Algorithm\s+SHA512")
+
+    def test_rc_version_evidence_and_release_workflow_are_consistent(self) -> None:
+        package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((ROOT / "desktop" / "package-lock.json").read_text(encoding="utf-8"))
+        script = (ROOT / "scripts" / "test_desktop_acceptance.ps1").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+
+        self.assertEqual(package["version"], "0.1.0-rc.1")
+        self.assertEqual(lock["version"], "0.1.0-rc.1")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.0-rc.1")
+        self.assertIn("EvidenceOutputPath", script)
+        for field in ("source_commit", "version", "installer_sha512", "signatures"):
+            self.assertIn(field, script)
+        self.assertIn("--allow-same-version", workflow)
+        self.assertIn("test_desktop_acceptance.ps1", workflow)
+        self.assertIn("acceptance-evidence.json", workflow)
+        self.assertIn("actions/upload-artifact@v4", workflow)
+        self.assertNotIn("NotRequiredPrerelease", workflow)
+
+    def test_dev_smoke_is_reproducible_and_machine_readable(self) -> None:
+        smoke = ROOT / "scripts" / "test_dev_smoke.ps1"
+        self.assertTrue(smoke.is_file())
+        text = smoke.read_text(encoding="utf-8")
+        for required in ("start_dev.ps1", "/api/health", "runtime_mode", "frontend_status", "ConvertTo-Json", "taskkill"):
+            self.assertIn(required, text)
+        for required in ("ProcessInfoPath", "RequireNew", "start_ticks", "Get-Process -Id"):
+            self.assertIn(required, text)
+        self.assertNotIn("OwningProcess", text)
+        command = "$null=[scriptblock]::Create((Get-Content -Raw -Encoding UTF8 -LiteralPath '" + str(smoke).replace("'", "''") + "'))"
+        result = subprocess.run(["powershell.exe", "-NoProfile", "-Command", command], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_delivery_docs_separate_verified_facts_from_release_gates(self) -> None:
         acceptance = (ROOT / "docs" / "CD-8客户端封装验收记录.md").read_text(encoding="utf-8")
