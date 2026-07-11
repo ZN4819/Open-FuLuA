@@ -181,7 +181,6 @@ jobs:
           RELEASE_COMMIT: ${{ github.sha }}
           RELEASE_STABLE: ${{ steps.build.outputs.stable }}
           RELEASE_PRERELEASE: ${{ steps.build.outputs.prerelease }}
-          SIGNATURE_STATUS: ${{ steps.signature.outputs.signature_status }}
           test_status: passed
           signature_status: ${{ steps.signature.outputs.signature_status }}
         run: |
