@@ -37,13 +37,21 @@ app.add_middleware(
 )
 
 
+def is_business_write_request(method: str, path: str) -> bool:
+    return (
+        method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        and path.startswith("/api/")
+        and not path.startswith(("/api/runtime", "/api/health", "/api/files"))
+        and not path.endswith("/import-preview")
+    )
+
+
 @app.middleware("http")
 async def reject_business_writes_during_maintenance(request: Request, call_next):
     token = os.getenv("FULUA_SESSION_TOKEN")
     if request.url.path.startswith("/api/runtime") and token and not hmac.compare_digest(request.headers.get("x-fulua-session-token", ""), token):
         return JSONResponse(status_code=403, content={"detail": "本机操作验证失败"})
-    is_business_api = request.url.path.startswith("/api/") and not request.url.path.startswith(("/api/runtime", "/api/health", "/api/files"))
-    if is_business_api:
+    if is_business_write_request(request.method, request.url.path):
         try:
             with runtime_operations.business_write():
                 return await call_next(request)

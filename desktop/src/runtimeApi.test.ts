@@ -29,8 +29,8 @@ test("运行时 API 提供状态、完整性和升级准备边界", async () => 
     return new Response(JSON.stringify({ ready: true, backup_id: "pre_upgrade-safe", schema_version: "1" }), { status: 200 });
   });
 
-  await api.status(); await api.integrity(); await api.prepareUpgrade();
+  await api.status(); await api.integrity(); await api.prepareUpgrade(); await api.cancelUpgrade("lease-safe");
   assert.deepEqual(requested.map((url) => new URL(url).pathname), [
-    "/api/runtime/status", "/api/runtime/integrity", "/api/runtime/upgrade/prepare",
+    "/api/runtime/status", "/api/runtime/integrity", "/api/runtime/upgrade/prepare", "/api/runtime/upgrade/cancel",
   ]);
 });

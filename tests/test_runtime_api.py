@@ -48,6 +48,26 @@ class RuntimeApiTests(unittest.TestCase):
             self.assertEqual(operations.business_writes_active(), 1)
         self.assertEqual(operations.business_writes_active(), 0)
 
+    def test_background_write_reservation_is_counted_from_queue_until_completion(self) -> None:
+        from app.api.runtime import RuntimeOperations
+
+        operations = RuntimeOperations()
+        reservation = operations.reserve_business_write()
+        self.assertEqual(operations.business_writes_active(), 1)
+        reservation.release()
+        reservation.release()
+        self.assertEqual(operations.business_writes_active(), 0)
+
+    def test_only_mutating_business_methods_reserve_writes(self) -> None:
+        from app.main import is_business_write_request
+
+        self.assertFalse(is_business_write_request("GET", "/api/projects"))
+        self.assertFalse(is_business_write_request("HEAD", "/api/projects"))
+        self.assertTrue(is_business_write_request("POST", "/api/projects"))
+        self.assertTrue(is_business_write_request("PUT", "/api/projects/1"))
+        self.assertFalse(is_business_write_request("POST", "/api/runtime/upgrade/prepare"))
+        self.assertFalse(is_business_write_request("POST", "/api/record-templates/import-preview"))
+
     def test_upgrade_prepare_creates_pre_upgrade_backup_inside_exclusive_gate(self) -> None:
         from app.api.runtime import prepare_upgrade
 
@@ -58,7 +78,14 @@ class RuntimeApiTests(unittest.TestCase):
             response = prepare_upgrade()
 
         create_backup.assert_called_once_with(paths.return_value, "pre_upgrade")
-        self.assertEqual(response, {"ready": True, "backup_id": "pre_upgrade-safe", "schema_version": "1"})
+        self.assertTrue(response["ready"])
+        self.assertEqual(response["backup_id"], "pre_upgrade-safe")
+        self.assertEqual(response["schema_version"], "1")
+        self.assertRegex(response["lease_id"], r"^[A-Za-z0-9._-]+$")
+        from app.api.runtime import cancel_upgrade, runtime_operations
+        self.assertTrue(runtime_operations.writes_blocked())
+        self.assertEqual(cancel_upgrade({"lease_id": response["lease_id"]}), {"cancelled": True})
+        self.assertFalse(runtime_operations.writes_blocked())
 
     def test_integrity_check_returns_only_integrity_and_schema_version(self) -> None:
         from app.api.runtime import integrity_check

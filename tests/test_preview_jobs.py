@@ -28,6 +28,27 @@ class PreviewJobsTest(unittest.TestCase):
         os.environ.pop("FULUA_DATABASE_PATH", None)
         object.__setattr__(settings, "storage_path", self.original_storage_path)
 
+    def test_background_render_holds_runtime_write_reservation_until_task_finishes(self) -> None:
+        from app.api import render_jobs
+        from app.api.runtime import runtime_operations
+
+        class Tasks:
+            task = None
+            args = ()
+
+            def add_task(self, task, *args):
+                self.task = task
+                self.args = args
+
+        tasks = Tasks()
+        job = type("Job", (), {"id": 42})()
+        with patch("app.api.render_jobs.create_preview_job", return_value=job), patch("app.api.render_jobs.process_preview_job") as process:
+            render_jobs.create_render_job(1, tasks)
+            self.assertGreaterEqual(runtime_operations.business_writes_active(), 1)
+            tasks.task(*tasks.args)
+            process.assert_called_once_with(42)
+        self.assertEqual(runtime_operations.business_writes_active(), 0)
+
     def test_preview_job_succeeds_when_pdf_renderer_returns_file(self) -> None:
         project = database.create_project("预览成功测试")
         job = create_preview_job(project["id"], "final")

@@ -9,7 +9,7 @@ export interface RuntimeStatus {
 }
 
 export interface IntegrityStatus { integrity: string; schema_version: string }
-export interface UpgradePreparation { ready: boolean; backup_id: string; schema_version: string }
+export interface UpgradePreparation { ready: boolean; backup_id: string; schema_version: string; lease_id: string }
 
 /** 与同一台本机侧车通信的最小客户端，不接受远程地址。 */
 export class RuntimeApiClient {
@@ -44,6 +44,10 @@ export class RuntimeApiClient {
   async integrity(): Promise<IntegrityStatus> { return await this.request("/api/runtime/integrity", "GET"); }
 
   async prepareUpgrade(): Promise<UpgradePreparation> { return await this.request("/api/runtime/upgrade/prepare", "POST"); }
+
+  async cancelUpgrade(leaseId: string): Promise<{ cancelled: boolean }> {
+    return await this.request("/api/runtime/upgrade/cancel", "POST", { lease_id: leaseId });
+  }
 
   private async request<T>(path: string, method: "GET" | "POST", body?: object): Promise<T> {
     const response = await this.fetchImpl(`${this.origin}${path}`, {

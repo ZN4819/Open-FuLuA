@@ -1,11 +1,16 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 export interface PendingUpgradeMarker {
-  version: string;
+  fromVersion: string;
+  targetVersion: string;
+  schemaVersion: string;
   createdAt: string;
   backupId: string;
 }
+
+export interface StartupContext { currentVersion: string; schemaVersion: string }
 
 export interface RecoveryMarkerStore {
   hasRunMarker(): Promise<boolean>;
@@ -13,18 +18,30 @@ export interface RecoveryMarkerStore {
   clearRunMarker(): Promise<void>;
   readPendingUpgrade(): Promise<PendingUpgradeMarker | undefined>;
   writePendingUpgrade(marker: PendingUpgradeMarker): Promise<void>;
-  clearPendingUpgrade(): Promise<void>;
+  clearPendingUpgrade(expectedBackupId?: string): Promise<void>;
 }
 
 function validBackupId(value: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(value) && value.length <= 255;
 }
 
+function validVersion(value: unknown): value is string {
+  return typeof value === "string" && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+function isMissing(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ENOENT";
+}
+
 async function atomicJson(filePath: string, value: object): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const temporary = `${filePath}.${process.pid}.tmp`;
-  await writeFile(temporary, JSON.stringify(value), { encoding: "utf8", flag: "wx" });
-  await rename(temporary, filePath);
+  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    await writeFile(temporary, JSON.stringify(value), { encoding: "utf8", flag: "wx" });
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined);
+  }
 }
 
 export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
@@ -37,7 +54,18 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
   }
 
   async hasRunMarker(): Promise<boolean> {
-    try { await readFile(this.runPath); return true; } catch { return false; }
+    let text: string;
+    try { text = await readFile(this.runPath, "utf8"); } catch (error) {
+      if (isMissing(error)) return false;
+      throw error;
+    }
+    const value: unknown = JSON.parse(text);
+    if (!value || typeof value !== "object") throw new Error("运行标记损坏");
+    const marker = value as Record<string, unknown>;
+    if (!validVersion(marker.version) || typeof marker.startedAt !== "string" || !Number.isFinite(Date.parse(marker.startedAt))) {
+      throw new Error("运行标记字段无效");
+    }
+    return true;
   }
 
   async writeRunMarker(version: string): Promise<void> {
@@ -47,21 +75,46 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
   async clearRunMarker(): Promise<void> { await rm(this.runPath, { force: true }); }
 
   async readPendingUpgrade(): Promise<PendingUpgradeMarker | undefined> {
+    let text: string;
     try {
-      const value: unknown = JSON.parse(await readFile(this.pendingPath, "utf8"));
-      if (!value || typeof value !== "object") return undefined;
-      const marker = value as Record<string, unknown>;
-      if (typeof marker.version !== "string" || typeof marker.createdAt !== "string" || typeof marker.backupId !== "string" || !validBackupId(marker.backupId)) return undefined;
-      return { version: marker.version, createdAt: marker.createdAt, backupId: marker.backupId };
-    } catch { return undefined; }
+      text = await readFile(this.pendingPath, "utf8");
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw error;
+    }
+    const value: unknown = JSON.parse(text);
+    if (!value || typeof value !== "object") throw new Error("待升级标记损坏");
+    const marker = value as Record<string, unknown>;
+    if (!validVersion(marker.fromVersion) || !validVersion(marker.targetVersion) || marker.fromVersion === marker.targetVersion
+      || typeof marker.schemaVersion !== "string" || !marker.schemaVersion
+      || typeof marker.createdAt !== "string" || !Number.isFinite(Date.parse(marker.createdAt))
+      || typeof marker.backupId !== "string" || !validBackupId(marker.backupId)) {
+      throw new Error("待升级标记字段无效");
+    }
+    return {
+      fromVersion: marker.fromVersion,
+      targetVersion: marker.targetVersion,
+      schemaVersion: marker.schemaVersion,
+      createdAt: marker.createdAt,
+      backupId: marker.backupId,
+    };
   }
 
   async writePendingUpgrade(marker: PendingUpgradeMarker): Promise<void> {
-    if (!validBackupId(marker.backupId)) throw new Error("备份标识无效");
+    if (!validBackupId(marker.backupId) || !validVersion(marker.fromVersion) || !validVersion(marker.targetVersion)
+      || marker.fromVersion === marker.targetVersion || !marker.schemaVersion || !Number.isFinite(Date.parse(marker.createdAt))) {
+      throw new Error("待升级标记无效");
+    }
     await atomicJson(this.pendingPath, marker);
   }
 
-  async clearPendingUpgrade(): Promise<void> { await rm(this.pendingPath, { force: true }); }
+  async clearPendingUpgrade(expectedBackupId?: string): Promise<void> {
+    if (expectedBackupId !== undefined) {
+      const marker = await this.readPendingUpgrade();
+      if (!marker || marker.backupId !== expectedBackupId) throw new Error("待升级标记已变化");
+    }
+    await rm(this.pendingPath, { force: true });
+  }
 }
 
 export type CrashAction = "continue" | "logs" | "restore";
@@ -76,45 +129,84 @@ export interface RecoveryDependencies {
   restartSidecar(): Promise<void>;
   showLogs(): Promise<void>;
   showRecoveryFailure?(): Promise<void>;
+  now?(): number;
 }
 
 export class RecoveryCoordinator {
   constructor(private readonly markers: RecoveryMarkerStore, private readonly dependencies: RecoveryDependencies) {}
 
-  async openAfterStartup(): Promise<void> {
+  private pendingMatches(marker: PendingUpgradeMarker, context: StartupContext): boolean {
+    const now = this.dependencies.now?.() ?? Date.now();
+    const createdAt = Date.parse(marker.createdAt);
+    return marker.targetVersion === context.currentVersion
+      && marker.schemaVersion === context.schemaVersion
+      && createdAt <= now + 5 * 60_000
+      && createdAt >= now - 7 * 24 * 60 * 60_000;
+  }
+
+  async openAfterStartup(context: StartupContext): Promise<void> {
+    const pending = await this.markers.readPendingUpgrade();
+    if (pending) {
+      if (!this.pendingMatches(pending, context)) {
+        await this.dependencies.showRecoveryFailure?.();
+        return;
+      }
+      const integrity = await this.dependencies.checkIntegrity();
+      if (integrity.integrity === "ok" && integrity.schema_version === pending.schemaVersion) {
+        await this.markers.clearPendingUpgrade();
+        if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
+        await this.dependencies.loadBusinessPage();
+        return;
+      }
+      const action = await this.dependencies.chooseCrashAction(false);
+      if (action === "logs") return await this.dependencies.showLogs();
+      if (action === "restore" && !(await this.restorePendingUpgrade(context))) await this.dependencies.showRecoveryFailure?.();
+      return;
+    }
+
     if (!(await this.markers.hasRunMarker())) {
+      await this.markers.writeRunMarker(context.currentVersion);
       await this.dependencies.loadBusinessPage();
       return;
     }
     const integrity = await this.dependencies.checkIntegrity();
-    const canContinue = integrity.integrity === "ok";
+    const canContinue = integrity.integrity === "ok" && integrity.schema_version === context.schemaVersion;
     const action = await this.dependencies.chooseCrashAction(canContinue);
     if (action === "logs") return await this.dependencies.showLogs();
     if (action === "restore") {
-      const restored = await this.recoverWhenSidecarUnavailable();
+      const restored = await this.recoverWhenSidecarUnavailable(context);
       if (!restored) await this.dependencies.showRecoveryFailure?.();
       return;
     }
     if (action === "continue" && canContinue) await this.dependencies.loadBusinessPage();
   }
 
-  async restorePendingUpgrade(): Promise<boolean> {
+  async restorePendingUpgrade(context: StartupContext): Promise<boolean> {
     const pending = await this.markers.readPendingUpgrade();
-    if (!pending || !validBackupId(pending.backupId)) return false;
+    if (!pending || !this.pendingMatches(pending, context) || !validBackupId(pending.backupId)) return false;
     if (!(await this.dependencies.restoreOffline(pending.backupId))) return false;
     await this.dependencies.restartSidecar();
+    const integrity = await this.dependencies.checkIntegrity();
+    if (integrity.integrity !== "ok" || integrity.schema_version !== pending.schemaVersion) return false;
     await this.markers.clearPendingUpgrade();
+    if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
+    await this.dependencies.loadBusinessPage();
     return true;
   }
 
-  async recoverWhenSidecarUnavailable(): Promise<boolean> {
-    if (await this.markers.readPendingUpgrade()) return await this.restorePendingUpgrade();
+  async recoverWhenSidecarUnavailable(context: StartupContext): Promise<boolean> {
+    const pending = await this.markers.readPendingUpgrade();
+    if (pending) return this.pendingMatches(pending, context) ? await this.restorePendingUpgrade(context) : false;
     if (!this.dependencies.listOfflineBackups || !this.dependencies.chooseOfflineBackup) return false;
     const backups = await this.dependencies.listOfflineBackups();
     const selected = await this.dependencies.chooseOfflineBackup(backups);
     if (!selected || !validBackupId(selected) || !backups.some((backup) => backup.id === selected)) return false;
     if (!(await this.dependencies.restoreOffline(selected))) return false;
     await this.dependencies.restartSidecar();
+    const integrity = await this.dependencies.checkIntegrity();
+    if (integrity.integrity !== "ok" || integrity.schema_version !== context.schemaVersion) return false;
+    if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
+    await this.dependencies.loadBusinessPage();
     return true;
   }
 }

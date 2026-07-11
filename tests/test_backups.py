@@ -54,6 +54,18 @@ class BackupTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 resolve_backup_id(paths, link.name)
 
+    def test_backup_id_resolution_recursively_rejects_internal_reparse_points_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths)
+            backup = create_backup(paths, "daily")
+            from app.services import backups
+            real_check = backups._is_reparse_point
+
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: item == backup.storage_path or real_check(item)):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    resolve_backup_id(paths, backup.path.name)
+
     def test_backup_uses_consistent_sqlite_copy_and_safe_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))

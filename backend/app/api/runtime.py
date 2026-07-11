@@ -6,6 +6,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 import threading
+import uuid
 from typing import Iterator
 
 from fastapi import APIRouter, HTTPException
@@ -30,6 +31,20 @@ class RuntimeOperations:
         self._condition = threading.Condition()
         self._active = False
         self._writers = 0
+        self._lease_id: str | None = None
+
+    class WriteReservation:
+        def __init__(self, operations: "RuntimeOperations") -> None:
+            self._operations = operations
+            self._released = False
+
+        def release(self) -> None:
+            if self._released:
+                return
+            self._released = True
+            with self._operations._condition:
+                self._operations._writers -= 1
+                self._operations._condition.notify_all()
 
     def writes_blocked(self) -> bool:
         with self._condition:
@@ -41,31 +56,44 @@ class RuntimeOperations:
 
     @contextmanager
     def exclusive(self) -> Iterator[None]:
+        lease_id = self.acquire_exclusive()
+        try:
+            yield
+        finally:
+            self.release_exclusive(lease_id)
+
+    def acquire_exclusive(self) -> str:
         with self._condition:
             if self._active:
                 raise RuntimeError("当前正在进行数据迁移或恢复")
             self._active = True
             while self._writers:
                 self._condition.wait()
-        try:
-            yield
-        finally:
-            with self._condition:
-                self._active = False
-                self._condition.notify_all()
+            self._lease_id = uuid.uuid4().hex
+            return self._lease_id
+
+    def release_exclusive(self, lease_id: str) -> None:
+        with self._condition:
+            if not self._active or not self._lease_id or lease_id != self._lease_id:
+                raise ValueError("维护租约无效")
+            self._active = False
+            self._lease_id = None
+            self._condition.notify_all()
+
+    def reserve_business_write(self) -> "RuntimeOperations.WriteReservation":
+        with self._condition:
+            if self._active:
+                raise RuntimeError("正在进行数据迁移、恢复或升级，请稍后重试")
+            self._writers += 1
+        return self.WriteReservation(self)
 
     @contextmanager
     def business_write(self) -> Iterator[None]:
-        with self._condition:
-            if self._active:
-                raise RuntimeError("正在进行数据迁移或恢复，请等待本地服务重新启动")
-            self._writers += 1
+        reservation = self.reserve_business_write()
         try:
             yield
         finally:
-            with self._condition:
-                self._writers -= 1
-                self._condition.notify_all()
+            reservation.release()
 
 
 runtime_operations = RuntimeOperations()
@@ -147,12 +175,25 @@ def runtime_status() -> dict[str, object]:
 
 @router.post("/upgrade/prepare")
 def prepare_upgrade() -> dict[str, object]:
+    lease_id: str | None = None
     try:
-        with runtime_operations.exclusive():
-            backup = create_backup(resolve_runtime_paths(), "pre_upgrade")
-    except RuntimeError as exc:
+        lease_id = runtime_operations.acquire_exclusive()
+        backup = create_backup(resolve_runtime_paths(), "pre_upgrade")
+    except Exception as exc:
+        if lease_id is not None:
+            runtime_operations.release_exclusive(lease_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"ready": True, "backup_id": backup.path.name, "schema_version": SCHEMA_VERSION}
+    return {"ready": True, "backup_id": backup.path.name, "schema_version": SCHEMA_VERSION, "lease_id": lease_id}
+
+
+@router.post("/upgrade/cancel")
+def cancel_upgrade(payload: dict[str, str]) -> dict[str, bool]:
+    lease_id = payload.get("lease_id", "")
+    try:
+        runtime_operations.release_exclusive(lease_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="升级维护租约无效") from exc
+    return {"cancelled": True}
 
 
 @router.get("/integrity")

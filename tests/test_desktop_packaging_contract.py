@@ -19,6 +19,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertNotIn("electron-updater", package.get("devDependencies", {}))
         self.assertIn('import electronUpdater = require("electron-updater")', main)
         self.assertIn("app.isPackaged", main)
+        self.assertIn("catch (recoveryError)", main)
         self.assertLess(updater.rindex("prepareUpgrade"), updater.rindex("stopSidecar"))
         self.assertLess(updater.rindex("stopSidecar"), updater.rindex("clearRunMarker"))
         self.assertLess(updater.rindex("clearRunMarker"), updater.rindex("approveControlledQuit"))

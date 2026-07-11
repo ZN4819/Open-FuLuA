@@ -19,6 +19,7 @@ import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
+const CURRENT_SCHEMA_VERSION = "1";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -153,7 +154,7 @@ async function restoreOffline(backupId: string): Promise<boolean> {
   return event?.event === "FULUA_OFFLINE_RESTORE" && event.restored === true;
 }
 
-function recoveryCoordinator(): RecoveryCoordinator {
+function recoveryCoordinator(loadBusinessPage: () => Promise<void> = loadBackendPage): RecoveryCoordinator {
   return new RecoveryCoordinator(recoveryMarkers, {
     checkIntegrity: async () => await runtimeApi().integrity(),
     chooseCrashAction: async (canContinue) => {
@@ -173,7 +174,7 @@ function recoveryCoordinator(): RecoveryCoordinator {
       if (buttons[result.response] === "查看日志") return "logs";
       return "restore";
     },
-    loadBusinessPage: loadBackendPage,
+    loadBusinessPage,
     restoreOffline,
     listOfflineBackups: async () => {
       const event = await runOfflineRecovery("list");
@@ -197,7 +198,13 @@ function recoveryCoordinator(): RecoveryCoordinator {
       });
       return result.response < backups.length ? backups[result.response]?.id : undefined;
     },
-    restartSidecar: restartSidecarAndReload,
+    restartSidecar: async () => {
+      const controller = backend;
+      if (controller) await controller.stop();
+      if (backend === controller) backend = undefined;
+      backendOrigin = undefined;
+      await startBackend();
+    },
     showLogs: async () => {
       await mkdir(app.getPath("logs"), { recursive: true });
       await shell.openPath(app.getPath("logs"));
@@ -236,14 +243,24 @@ function configureUpdater(): UpdateCoordinator {
     schedule: (delay, callback) => setTimeout(callback, delay),
     runtimeStatus: async () => await runtimeApi().status(),
     prepareUpgrade: async () => await runtimeApi().prepareUpgrade(),
+    cancelUpgrade: async (leaseId) => { await runtimeApi().cancelUpgrade(leaseId); },
     writePendingUpgrade: async (marker) => await recoveryMarkers.writePendingUpgrade(marker),
+    clearPendingUpgrade: async (backupId) => await recoveryMarkers.clearPendingUpgrade(backupId),
     stopSidecar: async () => {
       if (backend) await backend.stop();
       backend = undefined;
       backendOrigin = undefined;
     },
+    restartSidecar: async () => {
+      backend = undefined;
+      backendOrigin = undefined;
+      await startBackend();
+    },
+    reloadBusinessPage: loadBackendPage,
     clearRunMarker: async () => await recoveryMarkers.clearRunMarker(),
+    writeRunMarker: async (version) => await recoveryMarkers.writeRunMarker(version),
     approveControlledQuit: async () => { quitApproved = true; },
+    revokeControlledQuit: async () => { quitApproved = false; },
     confirmInstall: async () => {
       const result = await dialog.showMessageBox(mainWindow ?? createWindow(), {
         type: "question",
@@ -257,6 +274,7 @@ function configureUpdater(): UpdateCoordinator {
       return result.response === 1;
     },
     notifyError: async (message) => { await dialog.showMessageBox({ type: "warning", title: "无法更新", message }); },
+    notifyFatal: async (message) => { await dialog.showMessageBox({ type: "error", title: "更新恢复失败", message }); },
     version: app.getVersion(),
   });
 }
@@ -427,18 +445,23 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
     await mkdir(dataRoot, { recursive: true });
     installApplicationMenu();
     const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
-    const previousRunWasInterrupted = await recoveryMarkers.hasRunMarker();
     createWindow();
     try {
       await startBackend();
-      if (isFirstRun) await offerFirstRunChoice();
-      if (previousRunWasInterrupted) await recoveryCoordinator().openAfterStartup();
-      else await loadBackendPage();
-      if (!previousRunWasInterrupted) await recoveryMarkers.writeRunMarker(app.getVersion());
+      await recoveryCoordinator(async () => {
+        if (isFirstRun) await offerFirstRunChoice();
+        await loadBackendPage();
+      }).openAfterStartup({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
       updateCoordinator = configureUpdater();
       updateCoordinator.start();
     } catch (error) {
-      const recovered = await recoveryCoordinator().recoverWhenSidecarUnavailable();
+      let recovered = false;
+      try {
+        recovered = await recoveryCoordinator().recoverWhenSidecarUnavailable({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
+      } catch (recoveryError) {
+        await showDiagnostics(recoveryError instanceof Error ? recoveryError : new Error("恢复标记无法读取"));
+        return;
+      }
       if (!recovered) await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
     }
   });

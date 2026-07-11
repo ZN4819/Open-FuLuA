@@ -6,6 +6,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +16,7 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_workflow_only_releases_from_semver_tags_or_manual_dispatch_with_write_permission(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertRegex(workflow, r"tags:\s*\n\s*- ['\"]v\[0-9\]")
+        self.assertRegex(workflow, r"tags:\s*\n\s*- ['\"]v\*['\"]")
         self.assertIn("contents: write", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertNotRegex(workflow, r"(?m)^\s{2}branches:")
@@ -25,10 +26,32 @@ class ReleaseManifestTests(unittest.TestCase):
         for value in ("CSC_LINK", "CSC_KEY_PASSWORD", "StableAllowed", "Get-AuthenticodeSignature", "Valid", "--prerelease"):
             self.assertIn(value, workflow)
         self.assertRegex(workflow, r"CSC_LINK.+-and.+CSC_KEY_PASSWORD")
+        self.assertRegex(workflow, r"\^\\d\+\\\.\\d\+\\\.\\d\+\$")
+
+    def test_workflow_passes_context_through_env_and_scopes_signing_secrets_to_build_step(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        run_blocks = [section.split("run: |", 1)[1] for section in workflow.split("\n      - name:") if "run: |" in section]
+        self.assertTrue(run_blocks)
+        self.assertTrue(all("${{" not in block for block in run_blocks), "PowerShell 源码不得直接插入 GitHub 表达式")
+        self.assertIn("RELEASE_INPUT_VERSION: ${{ inputs.version }}", workflow)
+        self.assertNotRegex(workflow, r"(?ms)^\s{4}env:\s*\n\s+CSC_LINK:")
+        build = re.search(r"(?ms)- name: Build NSIS.*?(?=\n\s+- name:)", workflow)
+        self.assertIsNotNone(build)
+        assert build is not None
+        self.assertIn("CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}", build.group(0))
+
+    def test_release_is_immutable_and_generates_dynamic_evidence_report(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertNotIn("upload --clobber", workflow)
+        self.assertNotIn("gh release upload", workflow)
+        self.assertIn("Release already exists", workflow)
+        self.assertIn("git ls-remote", workflow)
+        for evidence in ("RELEASE_COMMIT: ${{ github.sha }}", "test_status", "signature_status", "SHA256SUMS.txt", "发布检查报告.md"):
+            self.assertIn(evidence, workflow)
 
     def test_release_artifact_allowlist_is_complete(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
-        for artifact in ("*Setup*.exe", "latest.yml", "*.blockmap", "SHA256SUMS.txt", "发布检查表.md"):
+        for artifact in ("*setup*.exe", "latest.yml", "*.blockmap", "SHA256SUMS.txt", "发布检查报告.md"):
             self.assertIn(artifact, workflow)
         self.assertIn("verify_release_manifest.py", workflow)
 

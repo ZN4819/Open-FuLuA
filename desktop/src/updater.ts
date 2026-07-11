@@ -1,6 +1,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BUSY_RETRY_MS = 5 * 60 * 1000;
 
+interface UpdateInfo { version?: unknown }
+
 export interface AutoUpdaterPort {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
@@ -10,6 +12,13 @@ export interface AutoUpdaterPort {
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
 }
 
+export interface UpgradePreparation {
+  ready: boolean;
+  backup_id: string;
+  schema_version: string;
+  lease_id: string;
+}
+
 export interface UpdateDependencies {
   isPackaged: boolean;
   now(): number;
@@ -17,23 +26,47 @@ export interface UpdateDependencies {
   writeLastCheck(value: number): Promise<void>;
   schedule(delay: number, callback: () => void): unknown;
   runtimeStatus(): Promise<{ maintenance_active: boolean; business_writes_active: number }>;
-  prepareUpgrade(): Promise<{ ready: boolean; backup_id: string; schema_version: string }>;
-  writePendingUpgrade(marker: { version: string; createdAt: string; backupId: string }): Promise<void>;
+  prepareUpgrade(): Promise<UpgradePreparation>;
+  cancelUpgrade(leaseId: string): Promise<void>;
+  writePendingUpgrade(marker: { fromVersion: string; targetVersion: string; schemaVersion: string; createdAt: string; backupId: string }): Promise<void>;
+  clearPendingUpgrade(backupId: string): Promise<void>;
   stopSidecar(): Promise<void>;
+  restartSidecar(): Promise<void>;
+  reloadBusinessPage(): Promise<void>;
   clearRunMarker(): Promise<void>;
+  writeRunMarker(version: string): Promise<void>;
   approveControlledQuit(): Promise<void>;
+  revokeControlledQuit(): Promise<void>;
   confirmInstall(): Promise<boolean>;
   notifyError(message: string): Promise<void>;
-  version?: string;
+  notifyFatal?(message: string): Promise<void>;
+  version: string;
   startupDelayMs?: number;
 }
 
+function updateVersion(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const version = (value as UpdateInfo).version;
+  return typeof version === "string" && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) ? version : undefined;
+}
+
 export class UpdateCoordinator {
+  private checkFlight: Promise<void> | undefined;
+  private downloadFlight: Promise<void> | undefined;
+  private installFlight: Promise<void> | undefined;
+  private availableRetryScheduled = false;
+  private downloadedRetryScheduled = false;
+  private downloadRequested = false;
+  private downloaded = false;
+  private userDeclined = false;
+  private installStarted = false;
+  private targetVersion: string | undefined;
+
   constructor(private readonly updater: AutoUpdaterPort, private readonly dependencies: UpdateDependencies) {
     updater.autoDownload = false;
     updater.autoInstallOnAppQuit = false;
-    updater.on("update-available", () => void this.handleUpdateAvailable());
-    updater.on("update-downloaded", () => void this.handleUpdateDownloaded());
+    updater.on("update-available", (info) => void this.handleUpdateAvailable(info));
+    updater.on("update-downloaded", (info) => void this.handleUpdateDownloaded(info));
     updater.on("error", (error) => void this.handleError(error));
   }
 
@@ -58,12 +91,17 @@ export class UpdateCoordinator {
   }
 
   private async performCheck(now = this.dependencies.now()): Promise<void> {
-    try {
-      await this.updater.checkForUpdates();
-      await this.dependencies.writeLastCheck(now);
-    } catch (error) {
-      await this.handleError(error);
-    }
+    if (this.checkFlight) return await this.checkFlight;
+    const operation = (async () => {
+      try {
+        await this.updater.checkForUpdates();
+        await this.dependencies.writeLastCheck(now);
+      } catch (error) {
+        await this.handleError(error);
+      }
+    })();
+    this.checkFlight = operation;
+    try { await operation; } finally { if (this.checkFlight === operation) this.checkFlight = undefined; }
   }
 
   private async idle(): Promise<boolean> {
@@ -71,39 +109,129 @@ export class UpdateCoordinator {
     return !status.maintenance_active && status.business_writes_active === 0;
   }
 
-  async handleUpdateAvailable(): Promise<void> {
-    try {
-      if (!(await this.idle())) {
-        this.dependencies.schedule(BUSY_RETRY_MS, () => void this.handleUpdateAvailable());
-        return;
+  private acceptTarget(info: unknown): boolean {
+    const version = updateVersion(info);
+    if (!version) return false;
+    if (this.targetVersion && this.targetVersion !== version) return false;
+    this.targetVersion = version;
+    return true;
+  }
+
+  async handleUpdateAvailable(info: unknown): Promise<void> {
+    if (!this.acceptTarget(info) || this.downloadRequested || this.downloaded) return;
+    if (this.downloadFlight) return await this.downloadFlight;
+    const operation = (async () => {
+      try {
+        if (!(await this.idle())) {
+          if (!this.availableRetryScheduled) {
+            this.availableRetryScheduled = true;
+            this.dependencies.schedule(BUSY_RETRY_MS, () => {
+              this.availableRetryScheduled = false;
+              void this.handleUpdateAvailable({ version: this.targetVersion });
+            });
+          }
+          return;
+        }
+        this.downloadRequested = true;
+        await this.updater.downloadUpdate();
+      } catch (error) {
+        this.downloadRequested = false;
+        await this.handleError(error);
       }
-      await this.updater.downloadUpdate();
+    })();
+    this.downloadFlight = operation;
+    try { await operation; } finally { if (this.downloadFlight === operation) this.downloadFlight = undefined; }
+  }
+
+  async handleUpdateDownloaded(info: unknown): Promise<void> {
+    if (!this.acceptTarget(info) || this.installStarted || this.userDeclined) return;
+    this.downloaded = true;
+    if (this.installFlight) return await this.installFlight;
+    const operation = this.attemptInstall();
+    this.installFlight = operation;
+    try { await operation; } finally { if (this.installFlight === operation) this.installFlight = undefined; }
+  }
+
+  private async attemptInstall(): Promise<void> {
+    if (!(await this.idle())) {
+      if (!this.downloadedRetryScheduled) {
+        this.downloadedRetryScheduled = true;
+        this.dependencies.schedule(BUSY_RETRY_MS, () => {
+          this.downloadedRetryScheduled = false;
+          void this.handleUpdateDownloaded({ version: this.targetVersion });
+        });
+      }
+      return;
+    }
+    if (!(await this.dependencies.confirmInstall())) {
+      this.userDeclined = true;
+      return;
+    }
+
+    let prepared: UpgradePreparation | undefined;
+    let stopAttempted = false;
+    let stopped = false;
+    let pendingWritten = false;
+    let runCleared = false;
+    let approved = false;
+    try {
+      prepared = await this.dependencies.prepareUpgrade();
+      if (!prepared.ready || !/^[A-Za-z0-9._-]+$/.test(prepared.backup_id) || !/^[A-Za-z0-9._-]+$/.test(prepared.lease_id)) {
+        throw new Error("升级备份或维护租约无效");
+      }
+      stopAttempted = true;
+      await this.dependencies.stopSidecar();
+      stopped = true;
+      await this.dependencies.writePendingUpgrade({
+        fromVersion: this.dependencies.version,
+        targetVersion: this.targetVersion!,
+        schemaVersion: prepared.schema_version,
+        createdAt: new Date(this.dependencies.now()).toISOString(),
+        backupId: prepared.backup_id,
+      });
+      pendingWritten = true;
+      await this.dependencies.clearRunMarker();
+      runCleared = true;
+      await this.dependencies.approveControlledQuit();
+      approved = true;
+      this.updater.quitAndInstall(false, true);
+      this.installStarted = true;
     } catch (error) {
+      await this.rollbackInstall(prepared, { stopAttempted, stopped, pendingWritten, runCleared, approved });
       await this.handleError(error);
     }
   }
 
-  async handleUpdateDownloaded(): Promise<void> {
-    try {
-      if (!(await this.dependencies.confirmInstall())) return;
-      if (!(await this.idle())) return;
-      const prepared = await this.dependencies.prepareUpgrade();
-      if (!prepared.ready || !/^[A-Za-z0-9._-]+$/.test(prepared.backup_id)) throw new Error("升级备份无效");
-      await this.dependencies.writePendingUpgrade({
-        version: this.dependencies.version ?? "unknown",
-        createdAt: new Date(this.dependencies.now()).toISOString(),
-        backupId: prepared.backup_id,
-      });
-      await this.dependencies.stopSidecar();
-      await this.dependencies.clearRunMarker();
-      await this.dependencies.approveControlledQuit();
-      this.updater.quitAndInstall(false, true);
-    } catch (error) {
-      await this.handleError(error);
+  private async rollbackInstall(
+    prepared: UpgradePreparation | undefined,
+    state: { stopAttempted: boolean; stopped: boolean; pendingWritten: boolean; runCleared: boolean; approved: boolean },
+  ): Promise<void> {
+    let rollbackFailed = false;
+    if (state.approved) {
+      try { await this.dependencies.revokeControlledQuit(); } catch { rollbackFailed = true; }
+    }
+    if (state.pendingWritten && prepared) {
+      try { await this.dependencies.clearPendingUpgrade(prepared.backup_id); } catch { rollbackFailed = true; }
+    }
+    if (!state.stopped && prepared) {
+      try { await this.dependencies.cancelUpgrade(prepared.lease_id); } catch { rollbackFailed = true; }
+    }
+    if (state.stopAttempted) {
+      try {
+        await this.dependencies.restartSidecar();
+        if (state.runCleared) await this.dependencies.writeRunMarker(this.dependencies.version);
+        await this.dependencies.reloadBusinessPage();
+      } catch {
+        rollbackFailed = true;
+      }
+    }
+    if (rollbackFailed) {
+      await (this.dependencies.notifyFatal?.("更新安装已中止，但本地服务或恢复标记未能安全复原。请查看日志，暂勿继续编辑。")
+        ?? this.dependencies.notifyError("更新安装已中止且无法确认本地服务状态。请查看日志，暂勿继续编辑。"));
     }
   }
 
   async handleError(_error: unknown): Promise<void> {
-    await this.dependencies.notifyError("更新校验或下载失败。当前版本仍可继续使用，请稍后重试或查看日志。");
+    await this.dependencies.notifyError("更新校验、下载或安装准备失败。未开始安装；请查看日志确认本地服务状态。");
   }
 }
