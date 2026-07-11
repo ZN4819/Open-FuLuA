@@ -222,7 +222,7 @@ jobs:
           $hashes
           ``````
           "@
-          Set-Content -LiteralPath (Join-Path $root '发布检查报告.md') -Value $report -Encoding utf8
+          Set-Content -LiteralPath (Join-Path $root 'release-report.md') -Value $report -Encoding utf8
 
       - name: Create immutable GitHub release
         shell: pwsh
@@ -240,9 +240,9 @@ jobs:
             (Resolve-Path artifacts/desktop/electron/SHA256SUMS.txt).Path
             (Resolve-Path artifacts/desktop/electron/acceptance-evidence.json).Path
             (Resolve-Path artifacts/desktop/electron/dev-smoke-evidence.json).Path
-            (Resolve-Path 'artifacts/desktop/electron/发布检查报告.md').Path
+            (Resolve-Path 'artifacts/desktop/electron/release-report.md').Path
           )
-          $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/发布检查报告.md')
+          $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/release-report.md')
           if ($env:RELEASE_PRERELEASE -eq 'true') { $flags += '--prerelease' }
           if ($env:RELEASE_EVENT_NAME -ne 'push') { $flags += @('--target', $env:RELEASE_COMMIT) }
           gh release create $env:RELEASE_TAG @assets @flags
