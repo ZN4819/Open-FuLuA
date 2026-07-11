@@ -6,7 +6,7 @@ function Assert-BuildPathNotReparsePoint {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "拒绝清理包含重解析点的构建路径：$($item.FullName)"
+        throw "Refusing to clean a build path containing a reparse point: $($item.FullName)"
     }
 }
 
@@ -15,7 +15,7 @@ function Remove-ManagedBuildTree {
 
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "拒绝清理包含重解析点的构建树：$($item.FullName)"
+        throw "Refusing to clean a build tree containing a reparse point: $($item.FullName)"
     }
     if ($item.PSIsContainer) {
         foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force)) {
@@ -38,7 +38,7 @@ function Remove-ManagedBuildDirectory {
     $managedPrefix = "$managedRoot\"
 
     if ($candidate -eq $managedRoot -or -not $candidate.StartsWith($managedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "拒绝清理受管桌面构建目录之外的路径：$candidate"
+        throw "Refusing to clean a path outside the managed desktop build directory: $candidate"
     }
 
     foreach ($parent in @($workspace, $artifacts, $managedRoot)) {

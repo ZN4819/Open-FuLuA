@@ -391,6 +391,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
 
     def test_build_output_guard_enforces_containment_and_reparse_boundaries(self) -> None:
         helper = ROOT / "scripts" / "build_output_guard.ps1"
+        self.assertTrue(helper.read_bytes().isascii(), "Windows PowerShell 5.1 must load this helper without a UTF-8 BOM")
         self.assertTrue(helper.is_file())
         self.assertNotIn("Remove-Item -LiteralPath $candidate -Recurse", helper.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as temporary:
