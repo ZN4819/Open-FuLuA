@@ -102,6 +102,7 @@ function Assert-InstalledProgramResources {
     }
     $allowedResourcePaths = @(
         (Join-Path $InstallRoot 'resources\app.asar'),
+        (Join-Path $InstallRoot 'resources\app-update.yml'),
         (Join-Path $InstallRoot 'resources\frontend'),
         (Join-Path $InstallRoot 'resources\backend'),
         (Join-Path $InstallRoot 'resources\elevate.exe')

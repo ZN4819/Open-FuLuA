@@ -3,6 +3,14 @@ import type { MigrationExecution, MigrationPreflight } from "./migrationWindow.j
 
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+export interface RuntimeStatus {
+  maintenance_active: boolean;
+  business_writes_active: number;
+}
+
+export interface IntegrityStatus { integrity: string; schema_version: string }
+export interface UpgradePreparation { ready: boolean; backup_id: string; schema_version: string; lease_id: string }
+
 /** 与同一台本机侧车通信的最小客户端，不接受远程地址。 */
 export class RuntimeApiClient {
   private readonly origin: string;
@@ -29,6 +37,18 @@ export class RuntimeApiClient {
 
   async restore(backupId: string): Promise<RestoreExecution> {
     return await this.request(`/api/runtime/backups/${encodeURIComponent(backupId)}/restore`, "POST");
+  }
+
+  async status(): Promise<RuntimeStatus> { return await this.request("/api/runtime/status", "GET"); }
+
+  async integrity(): Promise<IntegrityStatus> { return await this.request("/api/runtime/integrity", "GET"); }
+
+  async prepareUpgrade(leaseId: string): Promise<UpgradePreparation> {
+    return await this.request("/api/runtime/upgrade/prepare", "POST", { lease_id: leaseId });
+  }
+
+  async cancelUpgrade(leaseId: string): Promise<{ cancelled: boolean }> {
+    return await this.request("/api/runtime/upgrade/cancel", "POST", { lease_id: leaseId });
   }
 
   private async request<T>(path: string, method: "GET" | "POST", body?: object): Promise<T> {

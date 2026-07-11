@@ -48,6 +48,16 @@ try {
         if ($SetupExecutables.Count -ne 1) {
             throw "Setup executable was not generated exactly once under: $ElectronOutput"
         }
+        $LatestMetadata = Join-Path $ElectronOutput 'latest.yml'
+        if (-not (Test-Path -LiteralPath $LatestMetadata -PathType Leaf)) {
+            throw "Update metadata was not generated: $LatestMetadata"
+        }
+        $Blockmaps = @(Get-ChildItem -LiteralPath $ElectronOutput -File -Filter '*.blockmap')
+        if ($Blockmaps.Count -lt 1) {
+            throw "Update blockmap was not generated under: $ElectronOutput"
+        }
+        & $BackendPython (Join-Path $Root 'scripts\verify_release_manifest.py') $LatestMetadata $ElectronOutput
+        if ($LASTEXITCODE -ne 0) { throw 'Update metadata SHA-512 verification failed.' }
         Write-Host "Desktop build completed: $DesktopExecutable"
         Write-Host "NSIS setup completed: $($SetupExecutables[0].FullName)"
     }
