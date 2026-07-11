@@ -7,6 +7,9 @@ directories:
 
 files:
   - dist/**/*
+  - "!dist/**/*.test.js"
+  - "!dist/**/*.test.js.map"
+  - "!dist/**/*.map"
   - package.json
 
 extraResources:
@@ -20,3 +23,15 @@ win:
   target:
     - target: dir
       arch: x64
+    - target: nsis
+      arch: x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 附录A编写工具
+  uninstallDisplayName: 附录A编写工具
