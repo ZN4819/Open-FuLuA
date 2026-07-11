@@ -172,8 +172,9 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
     def test_release_workflow_normalizes_windows_temp_paths_and_python_encoding(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
 
-        self.assertIn("TEMP: ${{ runner.temp }}", workflow)
-        self.assertIn("TMP: ${{ runner.temp }}", workflow)
+        self.assertIn("$env:RUNNER_TEMP", workflow)
+        self.assertIn('"TEMP=$normalizedTemp" >> $env:GITHUB_ENV', workflow)
+        self.assertIn('"TMP=$normalizedTemp" >> $env:GITHUB_ENV', workflow)
         self.assertIn("PYTHONUTF8: '1'", workflow)
         self.assertIn("PYTHONIOENCODING: utf-8", workflow)
 
