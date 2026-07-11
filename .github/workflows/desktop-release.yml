@@ -86,7 +86,7 @@ jobs:
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ steps.gate.outputs.version }}
-        run: npm --prefix desktop version $env:PACKAGE_VERSION --no-git-tag-version
+        run: npm --prefix desktop version $env:PACKAGE_VERSION --no-git-tag-version --allow-same-version
 
       - name: Run full checks
         id: tests
@@ -119,26 +119,48 @@ jobs:
           ./scripts/build_desktop.ps1 -Target nsis
           backend/.venv/Scripts/python.exe scripts/verify_release_manifest.py artifacts/desktop/electron/latest.yml artifacts/desktop/electron
 
+      - name: Run final RC installer acceptance
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe'
+          if (@($setup).Count -ne 1) { throw 'Expected exactly one final Setup executable.' }
+          ./scripts/test_desktop_acceptance.ps1 -InstallerPath $setup[0].FullName -EvidenceOutputPath artifacts/desktop/electron/acceptance-evidence.json
+
+      - name: Run development mode smoke acceptance
+        shell: pwsh
+        run: ./scripts/test_dev_smoke.ps1 -EvidenceOutputPath artifacts/desktop/electron/dev-smoke-evidence.json
+
       - name: Verify Authenticode result
         id: signature
         shell: pwsh
         env:
           STABLE_ALLOWED: ${{ steps.build.outputs.stable }}
         run: |
-          if ($env:STABLE_ALLOWED -eq 'true') {
-            $files = @(
-              Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe'
-              Get-Item artifacts/desktop/electron/win-unpacked/FuLuA.exe
-              Get-Item artifacts/desktop/electron/win-unpacked/resources/backend/fulua-backend.exe
-            )
-            foreach ($file in $files) {
-              $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
-              if ($signature.Status -ne 'Valid') { throw "Authenticode signature is not Valid: $($file.Name)" }
-            }
-            'signature_status=Valid' >> $env:GITHUB_OUTPUT
-          } else {
-            'signature_status=NotRequiredPrerelease' >> $env:GITHUB_OUTPUT
+          $files = @(
+            Get-ChildItem artifacts/desktop/electron -File -Filter '*setup*.exe'
+            Get-Item artifacts/desktop/electron/win-unpacked/FuLuA.exe
+            Get-Item artifacts/desktop/electron/win-unpacked/resources/backend/fulua-backend.exe
+          )
+          $statuses = foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($env:STABLE_ALLOWED -eq 'true' -and $signature.Status -ne 'Valid') { throw "Authenticode signature is not Valid: $($file.Name)" }
+            "$($file.Name)=$($signature.Status)"
           }
+          "signature_status=$($statuses -join ';')" >> $env:GITHUB_OUTPUT
+
+      - name: Upload acceptance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-acceptance-${{ steps.gate.outputs.version }}
+          path: artifacts/desktop/electron/acceptance-evidence.json
+          if-no-files-found: error
+
+      - name: Upload development smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-smoke-${{ steps.gate.outputs.version }}
+          path: artifacts/desktop/electron/dev-smoke-evidence.json
+          if-no-files-found: error
 
       - name: Create SHA-256 manifest
         shell: pwsh
@@ -165,6 +187,10 @@ jobs:
         run: |
           $root = Resolve-Path artifacts/desktop/electron
           $hashes = Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Raw
+          $evidence = Get-Content -LiteralPath (Join-Path $root 'acceptance-evidence.json') -Raw | ConvertFrom-Json
+          $devEvidence = Get-Content -LiteralPath (Join-Path $root 'dev-smoke-evidence.json') -Raw | ConvertFrom-Json
+          $evidenceSummary = ($evidence.checks.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
+          $devEvidenceSummary = "status=$($devEvidence.status), health=$($devEvidence.health.status), runtime_mode=$($devEvidence.health.runtime_mode), frontend_status=$($devEvidence.health.frontend_status)"
           $report = @"
           # Windows 客户端发布检查报告
 
@@ -174,6 +200,12 @@ jobs:
           - 稳定发布：$env:RELEASE_STABLE
           - 预发布：$env:RELEASE_PRERELEASE
           - 签名结果：$env:signature_status
+          - 最终安装包：$($evidence.installer_name)
+          - 安装包 SHA-512：$($evidence.installer_sha512)
+          - 安装包验收：$evidenceSummary
+          - 验收证据：acceptance-evidence.json
+          - 开发模式验收：$devEvidenceSummary
+          - 开发模式证据：dev-smoke-evidence.json
           - SHA-256：
 
           ``````text
@@ -196,6 +228,8 @@ jobs:
             (Resolve-Path artifacts/desktop/electron/latest.yml).Path
             (Get-ChildItem artifacts/desktop/electron -File -Filter '*.blockmap').FullName
             (Resolve-Path artifacts/desktop/electron/SHA256SUMS.txt).Path
+            (Resolve-Path artifacts/desktop/electron/acceptance-evidence.json).Path
+            (Resolve-Path artifacts/desktop/electron/dev-smoke-evidence.json).Path
             (Resolve-Path 'artifacts/desktop/electron/发布检查报告.md').Path
           )
           $flags = @('--title', "附录A编写工具 $env:RELEASE_TAG", '--notes-file', 'artifacts/desktop/electron/发布检查报告.md')

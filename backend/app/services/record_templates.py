@@ -8,14 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from .. import database
+from ..resource_paths import resolve_resource_path
 
 
-RECORD_TEMPLATES_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "templates"
-    / "appendix_a"
-    / "record_templates.json"
-)
 EXPORT_PROFILE_ID = "appendix_a_user_record_templates_v1"
 SLOT_EXPORT_PROFILE_ID = "appendix_a_record_template_slots_v1"
 
@@ -85,10 +80,11 @@ class RecordTemplatePermissionError(RecordTemplateError):
 
 @lru_cache(maxsize=1)
 def load_record_template_library() -> dict[str, Any]:
-    if not RECORD_TEMPLATES_PATH.exists():
-        raise RecordTemplateError(f"结果记录模板库不存在：{RECORD_TEMPLATES_PATH}")
+    record_templates_path = resolve_resource_path("templates", "appendix_a", "record_templates.json")
+    if not record_templates_path.exists():
+        raise RecordTemplateError(f"结果记录模板库不存在：{record_templates_path}")
 
-    with RECORD_TEMPLATES_PATH.open("r", encoding="utf-8") as template_file:
+    with record_templates_path.open("r", encoding="utf-8") as template_file:
         library = json.load(template_file)
 
     validate_record_template_library(library)
