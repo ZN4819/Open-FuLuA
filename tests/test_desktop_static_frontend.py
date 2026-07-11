@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -91,6 +92,12 @@ class DesktopStaticFrontendTests(unittest.TestCase):
             (dist_path / "index.html").write_bytes(index)
             (dist_path / "assets" / "app.js").write_bytes(asset)
             (data_path / "storage").mkdir(parents=True)
+            (data_path / "data").mkdir(parents=True)
+            connection = sqlite3.connect(data_path / "data" / "app.db")
+            try:
+                connection.execute("PRAGMA user_version = 1")
+            finally:
+                connection.close()
 
             with patch.dict(
                 os.environ,

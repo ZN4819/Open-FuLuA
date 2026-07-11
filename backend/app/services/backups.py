@@ -17,7 +17,7 @@ from app.runtime import RuntimePaths
 from app.services.data_migration import file_manifest, remove_sqlite_sidecars, sqlite_backup, validate_database_and_evidence
 
 
-_BACKUP_KINDS = {"daily", "pre_upgrade", "pre_migration", "pre_restore"}
+_BACKUP_KINDS = {"daily", "pre_upgrade", "pre_migration", "pre_restore", "recovery_rollback"}
 _RETENTION_LIMITS = {"daily": 7, "pre_upgrade": 3, "pre_migration": 3}
 _operation_lock = threading.RLock()
 
@@ -80,6 +80,54 @@ def _read_backup(path: Path) -> BackupInfo | None:
         return BackupInfo(path, kind, str(metadata["created_at"]), path / "data" / "app.db", path / "storage")
     except (OSError, ValueError, KeyError, TypeError):
         return None
+
+
+def _verify_staged_copy(source: BackupInfo, database_path: Path, storage_path: Path) -> None:
+    try:
+        metadata = json.loads((source.path / "metadata.json").read_text(encoding="utf-8"))
+        expected_database = str(metadata["database"]["sha256"])
+        expected_files = str(metadata["files"]["sha256"])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError("备份校验元数据无效") from exc
+    if hashlib.sha256(database_path.read_bytes()).hexdigest() != expected_database:
+        raise ValueError("备份数据库哈希不匹配")
+    if _digest_manifest(file_manifest(storage_path)) != expected_files:
+        raise ValueError("备份文件清单哈希不匹配")
+
+
+def _write_recovery_rollback_metadata(rollback: Path, *, state: str, failed_stage: str = "") -> None:
+    metadata_path = rollback / "metadata.json"
+    previous: dict[str, object] = {}
+    try:
+        previous = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        pass
+    database_path = rollback / "data" / "app.db"
+    storage_manifest = file_manifest(rollback / "storage")
+    metadata = {
+        "kind": "recovery_rollback",
+        "created_at": previous.get("created_at") or _utc_now(),
+        "state": state,
+        "failed_stage": failed_stage,
+        "database": {"sha256": hashlib.sha256(database_path.read_bytes()).hexdigest()},
+        "files": {"count": len(storage_manifest), "sha256": _digest_manifest(storage_manifest)},
+        "verification": {"snapshot": "preserved", "replay": state},
+    }
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _replay_rollback_database(paths: RuntimePaths, rollback: Path) -> None:
+    remove_sqlite_sidecars(paths.database_path)
+    if paths.database_path.exists():
+        paths.database_path.unlink()
+    paths.database_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(rollback / "data" / "app.db", paths.database_path)
+
+
+def _replay_rollback_storage(paths: RuntimePaths, rollback: Path) -> None:
+    if paths.storage_path.exists():
+        shutil.rmtree(paths.storage_path)
+    shutil.copytree(rollback / "storage", paths.storage_path, copy_function=shutil.copy2)
 
 
 def _apply_retention(paths: RuntimePaths, kind: str) -> None:
@@ -221,18 +269,23 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
                 raise ValueError("备份元数据无效")
             sqlite_backup(requested.database_path, staging / "data" / "app.db")
             _copy_storage(requested.storage_path, staging / "storage")
+            _verify_staged_copy(requested, staging / "data" / "app.db", staging / "storage")
             valid, reason, _, _, missing = validate_database_and_evidence(staging / "data" / "app.db", staging / "storage")
             if not valid:
                 raise RuntimeError(reason if not missing else "备份证据图片不完整")
 
-            rollback = paths.backup_path / f"restore-rollback-{uuid.uuid4()}"
-            rollback.mkdir(parents=True)
-            # 在删除 WAL/SHM 或替换任何对象前，先得到可回放的一致性当前快照。
-            if allow_damaged_live:
-                shutil.copy2(paths.database_path, rollback / "app.db")
-            else:
-                sqlite_backup(paths.database_path, rollback / "app.db")
-            _copy_storage(paths.storage_path, rollback / "storage")
+            # 完整 live 必须先快照；离线重试时若 live 已被二次回放破坏，则保留既有
+            # recovery_rollback 作为唯一可信源，不伪造不完整的新快照。
+            can_snapshot_live = paths.database_path.is_file() and paths.storage_path.is_dir()
+            if not allow_damaged_live or can_snapshot_live:
+                rollback = paths.backup_path / f"recovery_rollback-{uuid.uuid4()}"
+                (rollback / "data").mkdir(parents=True)
+                if allow_damaged_live:
+                    shutil.copy2(paths.database_path, rollback / "data" / "app.db")
+                else:
+                    sqlite_backup(paths.database_path, rollback / "data" / "app.db")
+                _copy_storage(paths.storage_path, rollback / "storage")
+                _write_recovery_rollback_metadata(rollback, state="captured")
             remove_sqlite_sidecars(paths.database_path)
             if paths.database_path.exists():
                 paths.database_path.unlink()
@@ -244,24 +297,30 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
             valid, reason, _, _, missing = validate_database_and_evidence(paths.database_path, paths.storage_path)
             if not valid:
                 raise RuntimeError(reason if not missing else "恢复后的证据图片校验失败")
-            shutil.rmtree(rollback, ignore_errors=True)
+            if rollback is not None:
+                shutil.rmtree(rollback, ignore_errors=True)
             shutil.rmtree(staging, ignore_errors=True)
             return RestoreResult(True, True)
         except Exception as exc:
-            # 已替换的任何一项均可由 rollback 原子回放，当前与选定备份均不会丢失。
-            try:
-                if rollback is not None:
-                    if (rollback / "app.db").exists():
-                        remove_sqlite_sidecars(paths.database_path)
-                        if paths.database_path.exists():
-                            paths.database_path.unlink()
-                        os.replace(rollback / "app.db", paths.database_path)
-                    if (rollback / "storage").exists():
-                        if paths.storage_path.exists():
-                            shutil.rmtree(paths.storage_path)
-                        os.replace(rollback / "storage", paths.storage_path)
-            finally:
-                shutil.rmtree(staging, ignore_errors=True)
-                if rollback is not None:
+            replay_failures: list[str] = []
+            if rollback is not None:
+                try:
+                    _replay_rollback_database(paths, rollback)
+                except Exception:
+                    replay_failures.append("database")
+                try:
+                    _replay_rollback_storage(paths, rollback)
+                except Exception:
+                    replay_failures.append("storage")
+                if replay_failures:
+                    try:
+                        _write_recovery_rollback_metadata(rollback, state="replay_failed", failed_stage=replay_failures[0])
+                    except Exception:
+                        pass
+                else:
                     shutil.rmtree(rollback, ignore_errors=True)
-            return RestoreResult(False, False, str(exc))
+            shutil.rmtree(staging, ignore_errors=True)
+            reason = str(exc)
+            if replay_failures:
+                reason = f"{reason}；回放失败阶段：{','.join(replay_failures)}，恢复现场已保留"
+            return RestoreResult(False, False, reason)

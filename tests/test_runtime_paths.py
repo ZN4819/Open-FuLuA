@@ -141,12 +141,19 @@ class RuntimePathsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             data_root = Path(temp_dir) / "FuLuA"
+            database_path = data_root / "data" / "app.db"
+            database_path.parent.mkdir(parents=True)
+            connection = __import__("sqlite3").connect(database_path)
+            try:
+                connection.execute("PRAGMA user_version = 7")
+            finally:
+                connection.close()
             with patch.dict(os.environ, {"FULUA_DATA_DIR": str(data_root)}, clear=True):
                 response = health()
 
         self.assertEqual(response.runtime_mode, "desktop")
         self.assertEqual(response.data_root, str(data_root))
-        self.assertTrue(response.schema_version)
+        self.assertEqual(response.schema_version, "7")
         self.assertTrue(response.backend_version)
 
     def test_startup_rebinds_files_route_to_desktop_storage_path_after_app_import(self) -> None:

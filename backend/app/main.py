@@ -19,8 +19,8 @@ from .api.sections import router as sections_router
 from .api.templates import router as templates_router
 from .api.validation import router as validation_router
 from .config import settings
-from .database import current_database_path, init_db
-from .runtime import BACKEND_VERSION, SCHEMA_VERSION, ensure_runtime_directories
+from .database import current_database_path, init_db, read_schema_version
+from .runtime import BACKEND_VERSION, ensure_runtime_directories
 from .schemas import HealthResponse
 from .web_assets import mount_frontend_assets
 
@@ -84,7 +84,7 @@ def health() -> HealthResponse:
         database_path=str(current_database_path()),
         runtime_mode=runtime_paths.mode,
         data_root=str(runtime_paths.data_root),
-        schema_version=SCHEMA_VERSION,
+        schema_version=read_schema_version(current_database_path(), readonly=True),
         backend_version=BACKEND_VERSION,
     )
 

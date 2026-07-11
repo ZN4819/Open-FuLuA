@@ -75,15 +75,23 @@ class RuntimeApiTests(unittest.TestCase):
         from app.api.runtime import prepare_upgrade
 
         backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
-        with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
-            "app.api.runtime.create_backup", return_value=backup
-        ) as create_backup:
-            response = prepare_upgrade({"lease_id": "client-known"})
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "app.db"
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.execute("PRAGMA user_version = 7")
+            finally:
+                connection.close()
+            with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
+                "app.api.runtime.create_backup", return_value=backup
+            ) as create_backup:
+                paths.return_value.database_path = database_path
+                response = prepare_upgrade({"lease_id": "client-known"})
 
         create_backup.assert_called_once_with(paths.return_value, "pre_upgrade")
         self.assertTrue(response["ready"])
         self.assertEqual(response["backup_id"], "pre_upgrade-safe")
-        self.assertEqual(response["schema_version"], "1")
+        self.assertEqual(response["schema_version"], "7")
         self.assertEqual(response["lease_id"], "client-known")
         from app.api.runtime import cancel_upgrade, runtime_operations
         self.assertTrue(runtime_operations.writes_blocked())
@@ -100,6 +108,7 @@ class RuntimeApiTests(unittest.TestCase):
             try:
                 connection.execute("CREATE TABLE private_body (body TEXT)")
                 connection.execute("INSERT INTO private_body VALUES ('不得泄露的正文')")
+                connection.execute("PRAGMA user_version = 7")
                 connection.commit()
             finally:
                 connection.close()
@@ -107,7 +116,7 @@ class RuntimeApiTests(unittest.TestCase):
                 paths.return_value.database_path = database_path
                 response = integrity_check()
 
-        self.assertEqual(response, {"integrity": "ok", "schema_version": "1"})
+        self.assertEqual(response, {"integrity": "ok", "schema_version": "7"})
         self.assertNotIn("不得泄露", repr(response))
 
     def test_exclusive_waits_for_started_write_and_rejects_new_write(self) -> None:

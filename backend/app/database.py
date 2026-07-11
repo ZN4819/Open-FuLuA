@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import settings
+from .runtime import SCHEMA_VERSION
 
 
 FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
@@ -37,6 +38,19 @@ def current_database_path() -> Path:
     return settings.database_path
 
 
+def read_schema_version(path: Path | None = None, *, readonly: bool = False) -> str:
+    database_path = path or current_database_path()
+    if readonly:
+        uri = f"{database_path.resolve(strict=True).as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True)
+    else:
+        connection = sqlite3.connect(database_path)
+    try:
+        return str(connection.execute("PRAGMA user_version").fetchone()[0])
+    finally:
+        connection.close()
+
+
 def ensure_database_dir(path: Path | None = None) -> None:
     database_path = path or current_database_path()
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +72,11 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 def init_db() -> None:
     with connect() as db:
+        target_version = int(SCHEMA_VERSION)
+        current_version = int(db.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > target_version:
+            raise RuntimeError("数据库 schema 版本高于当前后端目标版本")
+        db.execute("BEGIN IMMEDIATE")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
@@ -304,6 +323,7 @@ def init_db() -> None:
             ON section_subsystems(project_id, section_code, sort_order)
             """
         )
+        db.execute(f"PRAGMA user_version = {target_version}")
 
 
 def create_project(name: str) -> sqlite3.Row:

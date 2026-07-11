@@ -16,6 +16,7 @@ import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
 import { JsonRecoveryMarkerStore, RecoveryCoordinator } from "./recovery.js";
 import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
+import { GuardedStartupCoordinator, RecoverySessionGate } from "./startupGate.js";
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
@@ -47,6 +48,7 @@ let sessionToken = "";
 let quitApproved = false;
 const recoveryMarkers = new JsonRecoveryMarkerStore(path.join(dataRoot, "recovery"));
 let updateCoordinator: UpdateCoordinator | undefined;
+const recoverySessionGate = new RecoverySessionGate();
 
 function backendCommand(): { executable: string; prefix: string[]; cwd?: string; webDist: string } {
   const webDist = app.isPackaged
@@ -94,7 +96,10 @@ function backendController(): BackendProcessController {
     webDist: command.webDist,
     sessionToken,
   });
-  controller.onUnexpectedExit((error) => void recoverOrDiagnose(error));
+  controller.onUnexpectedExit((error) => {
+    if (recoverySessionGate.passed) void recoverOrDiagnose(error);
+    else void showDiagnostics(error, controller);
+  });
   return controller;
 }
 
@@ -124,7 +129,7 @@ async function restartSidecarAndReload(): Promise<void> {
   await loadBackendPage();
 }
 
-async function runOfflineRecovery(action: "list" | "restore", backupId?: string): Promise<Record<string, unknown> | undefined> {
+async function runOfflineRecovery(action: "integrity" | "list" | "restore", backupId?: string): Promise<Record<string, unknown> | undefined> {
   if (backupId !== undefined && !/^[A-Za-z0-9._-]+$/.test(backupId)) return undefined;
   const controller = backend;
   try {
@@ -147,6 +152,12 @@ async function runOfflineRecovery(action: "list" | "restore", backupId?: string)
   } catch {
     return undefined;
   }
+}
+
+async function offlineIntegrity(): Promise<{ integrity: string; schema_version: string } | undefined> {
+  const event = await runOfflineRecovery("integrity");
+  if (event?.event !== "FULUA_OFFLINE_INTEGRITY" || typeof event.integrity !== "string" || typeof event.schema_version !== "string") return undefined;
+  return { integrity: event.integrity, schema_version: event.schema_version };
 }
 
 async function restoreOffline(backupId: string): Promise<boolean> {
@@ -216,6 +227,43 @@ function recoveryCoordinator(loadBusinessPage: () => Promise<void> = loadBackend
         message: "备份未能恢复，现场和待恢复标记已保留。",
         detail: "请查看日志，不要手工覆盖本地数据目录。",
       });
+    },
+  });
+}
+
+function guardedStartupCoordinator(isFirstRun = false): GuardedStartupCoordinator {
+  return new GuardedStartupCoordinator(recoverySessionGate, {
+    hasRecoveryMarker: async () => {
+      const runMarker = await recoveryMarkers.hasRunMarker();
+      const pending = await recoveryMarkers.readPendingUpgrade();
+      return runMarker || pending !== undefined;
+    },
+    offlineIntegrity,
+    startBackend: async () => { await startBackend(); },
+    recoverWithSidecar: async () => {
+      let loaded = false;
+      await recoveryCoordinator(async () => {
+        if (isFirstRun) await offerFirstRunChoice();
+        await loadBackendPage();
+        loaded = true;
+      }).openAfterStartup({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
+      return loaded;
+    },
+    recoverWithoutSidecar: async () => {
+      let loaded = false;
+      const recovered = await recoveryCoordinator(async () => {
+        await loadBackendPage();
+        loaded = true;
+      }).recoverWhenSidecarUnavailable({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
+      return recovered && loaded;
+    },
+    startUpdater: async () => {
+      if (updateCoordinator) return;
+      updateCoordinator = configureUpdater();
+      updateCoordinator.start();
+    },
+    diagnose: async (error) => {
+      await showDiagnostics(error instanceof Error ? error : new Error("恢复闸门未通过"));
     },
   });
 }
@@ -420,16 +468,7 @@ ipcMain.handle("app:copy-diagnostics", (_event, details: unknown) => {
   clipboard.writeText(sanitizeDiagnostics(details));
 });
 ipcMain.handle("app:retry-backend", async () => {
-  if (!backend) backend = backendController();
-  try {
-    await backend.stop();
-    backend = backendController();
-    const url = await backend.start();
-    backendOrigin = url;
-    await (mainWindow ?? createWindow()).loadURL(url);
-  } catch (error) {
-    await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
-  }
+  await guardedStartupCoordinator().enter();
 });
 ipcMain.handle("runtime:migrate-legacy", async () => await runMigrationFlow());
 ipcMain.handle("runtime:list-backups", async () => await runtimeApi().listBackups());
@@ -447,24 +486,7 @@ runSingleInstance(app.requestSingleInstanceLock(), () => app.quit(), () => {
     installApplicationMenu();
     const isFirstRun = !existsSync(path.join(dataRoot, "data", "app.db"));
     createWindow();
-    try {
-      await startBackend();
-      await recoveryCoordinator(async () => {
-        if (isFirstRun) await offerFirstRunChoice();
-        await loadBackendPage();
-      }).openAfterStartup({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
-      updateCoordinator = configureUpdater();
-      updateCoordinator.start();
-    } catch (error) {
-      let recovered = false;
-      try {
-        recovered = await recoveryCoordinator().recoverWhenSidecarUnavailable({ currentVersion: app.getVersion(), schemaVersion: CURRENT_SCHEMA_VERSION });
-      } catch (recoveryError) {
-        await showDiagnostics(recoveryError instanceof Error ? recoveryError : new Error("恢复标记无法读取"));
-        return;
-      }
-      if (!recovered) await recoverOrDiagnose(error instanceof Error ? error : new Error("本地服务未能启动"));
-    }
+    await guardedStartupCoordinator(isFirstRun).enter();
   });
 });
 
@@ -481,10 +503,16 @@ app.on("before-quit", (event) => {
   });
   void guard.stopForQuit().then((canQuit) => {
     if (!canQuit) return;
-    void recoveryMarkers.clearRunMarker().then(() => {
+    const finishQuit = () => {
       if (backend === controller) backend = undefined;
       quitApproved = true;
       app.quit();
-    }, (error: unknown) => void showDiagnostics(error instanceof Error ? error : new Error("无法清理运行标记"), controller));
+    };
+    if (!recoverySessionGate.canClearRunMarker(true)) {
+      finishQuit();
+      return;
+    }
+    void recoveryMarkers.clearRunMarker().then(finishQuit,
+      (error: unknown) => void showDiagnostics(error instanceof Error ? error : new Error("无法清理运行标记"), controller));
   });
 });

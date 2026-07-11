@@ -168,6 +168,16 @@ export class UpdateCoordinator {
       this.userDeclined = true;
       return;
     }
+    if (!(await this.idle())) {
+      if (!this.downloadedRetryScheduled) {
+        this.downloadedRetryScheduled = true;
+        this.dependencies.schedule(BUSY_RETRY_MS, () => {
+          this.downloadedRetryScheduled = false;
+          void this.handleUpdateDownloaded({ version: this.targetVersion });
+        });
+      }
+      return;
+    }
 
     let prepared: UpgradePreparation | undefined;
     let requestedLeaseId: string | undefined;

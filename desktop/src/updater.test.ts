@@ -101,6 +101,26 @@ test("用户取消、备份失败或停止侧车失败都不安装", async () =>
   }
 });
 
+test("用户确认安装后再次确认运行时空闲才允许 prepare", async () => {
+  const updater = fakeUpdater(); let statusChecks = 0; let prepares = 0; let retries = 0;
+  const coordinator = new UpdateCoordinator(updater, dependencies({
+    runtimeStatus: async () => {
+      statusChecks += 1;
+      return statusChecks === 1
+        ? { maintenance_active: false, business_writes_active: 0 }
+        : { maintenance_active: true, business_writes_active: 1 };
+    },
+    prepareUpgrade: async (leaseId) => {
+      prepares += 1;
+      return { ready: true, backup_id: "pre_upgrade-safe", schema_version: "1", lease_id: leaseId };
+    },
+    schedule: () => { retries += 1; return 1; },
+  }));
+  await coordinator.handleUpdateDownloaded({ version: "0.2.0" });
+  assert.equal(statusChecks, 2); assert.equal(prepares, 0); assert.equal(retries, 1);
+  assert.equal(updater.calls.includes("install"), false);
+});
+
 test("仅确认、复查空闲、备份、写标记、停侧车与清标记全部成功后安装", async () => {
   const updater = fakeUpdater(); const order: string[] = [];
   const coordinator = new UpdateCoordinator(updater, dependencies({

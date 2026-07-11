@@ -40,6 +40,40 @@ class DesktopServerTests(unittest.TestCase):
             self.assertEqual(restored.returncode, 0, restored.stderr)
             self.assertIn('"restored": true', restored.stdout.lower())
 
+    def test_offline_integrity_is_read_only_and_reports_actual_user_version(self) -> None:
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            database_path = root / "data" / "app.db"
+            database_path.parent.mkdir(parents=True)
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.execute("CREATE TABLE sentinel (value TEXT)")
+                connection.execute("INSERT INTO sentinel VALUES ('unchanged')")
+                connection.execute("PRAGMA user_version = 7")
+                connection.commit()
+            finally:
+                connection.close()
+            before = database_path.read_bytes()
+            before_mtime = database_path.stat().st_mtime_ns
+
+            result = subprocess.run(self._command("--data-root", str(root), "--offline-recovery", "integrity"), cwd=ROOT / "backend", capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            event = json.loads(result.stdout.strip())
+            self.assertEqual(event, {"event": "FULUA_OFFLINE_INTEGRITY", "integrity": "ok", "schema_version": "7"})
+            self.assertEqual(database_path.read_bytes(), before)
+            self.assertEqual(database_path.stat().st_mtime_ns, before_mtime)
+
+    def test_offline_integrity_missing_database_fails_closed_without_creating_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "missing-root"
+            result = subprocess.run(self._command("--data-root", str(root), "--offline-recovery", "integrity"), cwd=ROOT / "backend", capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(json.loads(result.stdout.strip())["integrity"], "corrupt")
+            self.assertFalse((root / "data" / "app.db").exists())
+
     def test_offline_recovery_rejects_unknown_backup_without_modifying_live_database(self) -> None:
         from app.runtime import RuntimePaths
         from tests.test_backups import _create_live_data

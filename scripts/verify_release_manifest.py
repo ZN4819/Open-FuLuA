@@ -8,13 +8,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-
-
-def _scalar(text: str, key: str) -> str:
-    match = re.search(rf"(?m)^{re.escape(key)}:\s*(.+?)\s*$", text)
-    if not match:
-        raise ValueError(f"latest.yml 缺少 {key}")
-    return match.group(1).strip().strip("'\"")
+import yaml
 
 
 def _unsafe_path(path: Path) -> bool:
@@ -26,15 +20,41 @@ def _unsafe_path(path: Path) -> bool:
 
 
 def verify_latest_yml(metadata_path: Path, artifact_root: Path) -> dict[str, str]:
-    text = metadata_path.read_text(encoding="utf-8")
-    version = _scalar(text, "version")
+    root = artifact_root.resolve(strict=True)
+    if _unsafe_path(artifact_root) or _unsafe_path(metadata_path):
+        raise ValueError("latest.yml 或产物目录为重解析点")
+    try:
+        metadata_path.resolve(strict=True).relative_to(root)
+        value = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise ValueError("latest.yml 无法安全解析") from exc
+    if not isinstance(value, dict):
+        raise ValueError("latest.yml 顶层必须是映射")
+    version = value.get("version")
+    if not isinstance(version, str):
+        raise ValueError("latest.yml 缺少 version")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
         raise ValueError("latest.yml 版本不是语义版本")
-    relative_path = _scalar(text, "path")
-    expected_sha512 = _scalar(text, "sha512")
+    relative_path = value.get("path")
+    expected_sha512 = value.get("sha512")
+    files = value.get("files")
+    if not isinstance(relative_path, str) or not isinstance(expected_sha512, str) or not isinstance(files, list):
+        raise ValueError("latest.yml 缺少 path、sha512 或 files")
+    setup_entries = [
+        item for item in files
+        if isinstance(item, dict) and isinstance(item.get("url"), str)
+        and str(item["url"]).lower().endswith(".exe") and "setup" in str(item["url"]).lower()
+    ]
+    if len(setup_entries) != 1:
+        raise ValueError("latest.yml files 必须包含唯一 Setup 条目")
+    setup_entry = setup_entries[0]
+    if setup_entry.get("url") != relative_path or setup_entry.get("sha512") != expected_sha512:
+        raise ValueError("latest.yml files Setup 路径或 SHA-512 与顶层不一致")
+    expected_size = setup_entry.get("size")
+    if isinstance(expected_size, bool) or not isinstance(expected_size, int) or expected_size < 0:
+        raise ValueError("latest.yml Setup size 无效")
     if Path(relative_path).name != relative_path or not relative_path.lower().endswith(".exe") or "setup" not in relative_path.lower():
         raise ValueError("latest.yml 安装包路径不安全")
-    root = artifact_root.resolve(strict=True)
     installer = artifact_root / relative_path
     if _unsafe_path(installer):
         raise ValueError("latest.yml 安装包不存在或为重解析点")
@@ -45,6 +65,8 @@ def verify_latest_yml(metadata_path: Path, artifact_root: Path) -> dict[str, str
     actual = base64.b64encode(hashlib.sha512(installer.read_bytes()).digest()).decode("ascii")
     if not expected_sha512 or actual != expected_sha512:
         raise ValueError("latest.yml SHA-512 与安装包不匹配")
+    if installer.stat().st_size != expected_size:
+        raise ValueError("latest.yml Setup size 与安装包大小不匹配")
     return {"version": version, "path": relative_path, "sha512": actual}
 
 

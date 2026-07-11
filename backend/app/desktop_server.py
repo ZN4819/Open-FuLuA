@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import socket
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -69,7 +70,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--web-dist")
     parser.add_argument("--session-token")
-    parser.add_argument("--offline-recovery", choices=("list", "restore"))
+    parser.add_argument("--offline-recovery", choices=("integrity", "list", "restore"))
     parser.add_argument("--backup-id")
     arguments = parser.parse_args()
     if arguments.offline_recovery:
@@ -81,6 +82,19 @@ def _arguments() -> argparse.Namespace:
 
 
 def _offline_recovery(data_root: Path, action: str, backup_id: str | None) -> int:
+    if action == "integrity":
+        database_path = data_root / "data" / "app.db"
+        try:
+            uri = f"{database_path.resolve(strict=True).as_uri()}?mode=ro"
+            with sqlite3.connect(uri, uri=True) as connection:
+                rows = connection.execute("PRAGMA integrity_check").fetchall()
+                schema_version = str(connection.execute("PRAGMA user_version").fetchone()[0])
+            integrity = "ok" if rows == [("ok",)] else "corrupt"
+        except (OSError, sqlite3.DatabaseError, TypeError):
+            integrity, schema_version = "corrupt", ""
+        _event("FULUA_OFFLINE_INTEGRITY", integrity=integrity, schema_version=schema_version)
+        return 0 if integrity == "ok" else 2
+
     from app.runtime import resolve_runtime_paths
     from app.services.backups import list_backups, resolve_backup_id, restore_backup
 
@@ -108,12 +122,14 @@ def main() -> int:
         arguments = _arguments()
         data_root = Path(arguments.data_root).expanduser().resolve()
         # app.main 在其后导入，确保配置模块首次读取时就是桌面运行时路径。
-        data_root.mkdir(parents=True, exist_ok=True)
         import os
 
         os.environ["FULUA_DATA_DIR"] = str(data_root)
         if arguments.offline_recovery:
+            if arguments.offline_recovery != "integrity":
+                data_root.mkdir(parents=True, exist_ok=True)
             return _offline_recovery(data_root, arguments.offline_recovery, arguments.backup_id)
+        data_root.mkdir(parents=True, exist_ok=True)
         os.environ["FULUA_WEB_DIST_PATH"] = str(Path(arguments.web_dist).expanduser().resolve())
         os.environ["FULUA_SESSION_TOKEN"] = arguments.session_token
 

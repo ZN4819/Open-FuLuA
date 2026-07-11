@@ -13,7 +13,8 @@ from typing import Callable, Iterator
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..runtime import SCHEMA_VERSION, resolve_runtime_paths
+from ..runtime import resolve_runtime_paths
+from ..database import read_schema_version
 from ..services.backups import create_backup, list_backups, resolve_backup_id, restore_backup as restore_runtime_backup
 from ..services.data_migration import migrate_legacy_data, preflight_migration
 
@@ -276,7 +277,7 @@ def prepare_upgrade(payload: dict[str, str]) -> dict[str, object]:
         raise HTTPException(status_code=409, detail="升级准备已取消或超时")
     try:
         backup = create_backup(resolve_runtime_paths(), "pre_upgrade")
-        result = {"ready": True, "backup_id": backup.path.name, "schema_version": SCHEMA_VERSION, "lease_id": requested_lease_id}
+        result = {"ready": True, "backup_id": backup.path.name, "schema_version": read_schema_version(resolve_runtime_paths().database_path, readonly=True), "lease_id": requested_lease_id}
     except Exception as exc:
         runtime_operations.abort_upgrade_prepare(requested_lease_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -301,7 +302,8 @@ def integrity_check() -> dict[str, str]:
     try:
         with closing(sqlite3.connect(f"file:{database_path.as_posix()}?mode=ro", uri=True)) as connection:
             rows = connection.execute("PRAGMA integrity_check").fetchall()
+            schema_version = str(connection.execute("PRAGMA user_version").fetchone()[0])
         integrity = "ok" if rows == [("ok",)] else "corrupt"
     except (OSError, sqlite3.DatabaseError):
-        integrity = "corrupt"
-    return {"integrity": integrity, "schema_version": SCHEMA_VERSION}
+        integrity, schema_version = "corrupt", ""
+    return {"integrity": integrity, "schema_version": schema_version}

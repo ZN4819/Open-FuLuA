@@ -99,6 +99,40 @@ class ReleaseManifestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "SHA-512"):
                 module.verify_latest_yml(latest, root)
 
+    def test_latest_yml_requires_one_consistent_setup_entry_with_matching_size_and_hash(self) -> None:
+        script_path = ROOT / "scripts" / "verify_release_manifest.py"
+        spec = importlib.util.spec_from_file_location("release_manifest_strict", script_path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory); setup = root / "FuLuA Setup 0.2.0.exe"
+            setup.write_bytes(b"installer")
+            digest = base64.b64encode(hashlib.sha512(setup.read_bytes()).digest()).decode("ascii")
+            base = f"version: 0.2.0\nfiles:\n  - url: {setup.name}\n    sha512: {{file_hash}}\n    size: {{size}}\npath: {setup.name}\nsha512: {digest}\n"
+            for text, message in [
+                (base.format(file_hash="AAAA", size=setup.stat().st_size), "files|SHA-512"),
+                (base.format(file_hash=digest, size=setup.stat().st_size + 1), "size|大小"),
+                (base.format(file_hash=digest, size=setup.stat().st_size).replace(
+                    f"path: {setup.name}", f"  - url: Other Setup.exe\n    sha512: {digest}\n    size: {setup.stat().st_size}\npath: {setup.name}"
+                ), "唯一|Setup"),
+            ]:
+                latest = root / "latest.yml"; latest.write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    module.verify_latest_yml(latest, root)
+
+    def test_release_manifest_declares_direct_pyyaml_dependency_and_docs_match_dynamic_evidence(self) -> None:
+        requirements = (ROOT / "backend" / "requirements-packaging.txt").read_text(encoding="utf-8")
+        self.assertRegex(requirements, r"(?mi)^PyYAML==")
+        checklist = (ROOT / "docs" / "客户端发布检查表.md").read_text(encoding="utf-8")
+        self.assertIn("resources/backend/fulua-backend.exe", checklist)
+        self.assertIn("动态", checklist)
+        self.assertNotIn("和本检查表", checklist)
+
+    def test_upgrade_guide_does_not_claim_editing_can_continue_after_unsafe_sidecar_failure(self) -> None:
+        guide = (ROOT / "docs" / "客户端升级与恢复说明.md").read_text(encoding="utf-8")
+        self.assertIn("失败不会开始安装", guide)
+        self.assertIn("不可继续编辑", guide)
+
 
 if __name__ == "__main__":
     unittest.main()

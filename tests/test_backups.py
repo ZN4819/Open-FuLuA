@@ -236,6 +236,59 @@ class BackupTests(unittest.TestCase):
             finally:
                 connection.close()
 
+    def test_restore_rejects_private_staging_copy_when_hash_differs_from_backup_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            metadata_path = backup.path / "metadata.json"
+            metadata = __import__("json").loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["database"]["sha256"] = "0" * 64
+            metadata_path.write_text(__import__("json").dumps(metadata), encoding="utf-8")
+            result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+
+    def test_database_replay_failure_preserves_listable_recovery_rollback_scene(self) -> None:
+        self._assert_replay_failure_preserves_scene("database")
+
+    def test_storage_replay_failure_preserves_listable_recovery_rollback_scene(self) -> None:
+        self._assert_replay_failure_preserves_scene("storage")
+
+    def _assert_replay_failure_preserves_scene(self, failed_stage: str) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "现场")
+            backup = create_backup(paths, "daily")
+            source_hash = __import__("hashlib").sha256(backup.database_path.read_bytes()).hexdigest()
+            from app.services import backups
+            real_validate = backups.validate_database_and_evidence
+            patch_name = f"app.services.backups._replay_rollback_{failed_stage}"
+            def validate(database_path, storage_path):
+                if Path(database_path) == paths.database_path:
+                    return False, "强制恢复后失败", 0, 0, ()
+                return real_validate(database_path, storage_path)
+
+            def fail_replay(*_args):
+                if failed_stage == "database" and paths.database_path.exists():
+                    paths.database_path.unlink()
+                if failed_stage == "storage" and paths.storage_path.exists():
+                    __import__("shutil").rmtree(paths.storage_path)
+                raise OSError(f"{failed_stage} replay failed")
+
+            with patch("app.services.backups.validate_database_and_evidence", side_effect=validate), patch(
+                patch_name, side_effect=fail_replay, create=True
+            ):
+                result = restore_backup(paths, backup.path)
+            self.assertFalse(result.restored)
+            scenes = [item for item in list_backups(paths) if item.kind == "recovery_rollback"]
+            self.assertEqual(len(scenes), 1)
+            metadata = __import__("json").loads((scenes[0].path / "metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["state"], "replay_failed")
+            self.assertEqual(metadata["failed_stage"], failed_stage)
+            self.assertIn("database", metadata); self.assertIn("files", metadata)
+            self.assertEqual(__import__("hashlib").sha256(backup.database_path.read_bytes()).hexdigest(), source_hash)
+            self.assertEqual(resolve_backup_id(paths, scenes[0].path.name), scenes[0].path)
+            retried = restore_backup(paths, scenes[0].path, allow_damaged_live=True)
+            self.assertTrue(retried.restored, retried.reason)
+
     def test_wal_live_data_rolls_back_after_post_replace_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths, "WAL 原值")

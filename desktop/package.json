@@ -13,7 +13,7 @@
     "test:backend-process": "npm run compile && node --test dist/backendProcess.test.js dist/lifecycle.test.js",
     "test:cd5": "npm run compile && node --test dist/migrationWindow.test.js dist/backupActions.test.js dist/runtimeApi.test.js dist/restoreWindow.test.js",
     "package:win-unpacked": "npm run compile && electron-builder --config electron-builder.yml --win dir",
-    "test:cd7": "npm run compile && node --test dist/recovery.test.js dist/updater.test.js dist/runtimeApi.test.js",
+    "test:cd7": "npm run compile && node --test dist/recovery.test.js dist/updater.test.js dist/runtimeApi.test.js dist/startupGate.test.js",
     "package:nsis": "npm run compile && electron-builder --config electron-builder.yml --win nsis dir --publish never"
   },
   "devDependencies": {
