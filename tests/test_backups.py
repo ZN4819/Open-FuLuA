@@ -35,6 +35,36 @@ def _create_live_data(paths: RuntimePaths, name: str = "初始项目") -> None:
 
 
 class BackupTests(unittest.TestCase):
+    def test_create_backup_rejects_reparse_backup_root_without_returning_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths)
+            paths.backup_path.mkdir(parents=True)
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: Path(item) == paths.backup_path):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    create_backup(paths, "daily")
+
+    def test_create_backup_revalidates_published_tree_before_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths)
+            from app.services import backups
+            real_check = backups._is_reparse_point
+            with patch("app.services.backups._is_reparse_point", side_effect=lambda item: (
+                Path(item).parent == paths.backup_path and Path(item).name.startswith("daily-")
+            ) or real_check(Path(item))):
+                with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                    create_backup(paths, "daily")
+
+    def test_create_backup_rejects_real_reparse_backup_root_when_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); paths = _runtime_paths(root); _create_live_data(paths)
+            real_root = root / "real-backups"; real_root.mkdir()
+            try:
+                paths.backup_path.symlink_to(real_root, target_is_directory=True)
+            except OSError:
+                self.skipTest("当前环境不能创建目录符号链接")
+            with self.assertRaisesRegex(ValueError, "重解析|不安全"):
+                create_backup(paths, "daily")
+
     def test_backup_id_resolution_rejects_unknown_traversal_and_reparse_point(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))

@@ -139,6 +139,15 @@ def _apply_retention(paths: RuntimePaths, kind: str) -> None:
         shutil.rmtree(old.path)
 
 
+def _validate_backup_root(root: Path) -> Path:
+    if not root.is_dir() or _is_reparse_point(root):
+        raise ValueError("备份根目录为重解析点或不安全")
+    resolved = root.resolve(strict=True)
+    if resolved != root.absolute():
+        raise ValueError("备份根目录解析结果不安全")
+    return resolved
+
+
 def create_backup(paths: RuntimePaths, kind: str) -> BackupInfo:
     if kind not in _BACKUP_KINDS:
         raise ValueError("不支持的备份类型")
@@ -146,6 +155,7 @@ def create_backup(paths: RuntimePaths, kind: str) -> BackupInfo:
         raise FileNotFoundError("当前运行时数据不完整，不能创建备份")
     with _operation_lock:
         paths.backup_path.mkdir(parents=True, exist_ok=True)
+        _validate_backup_root(paths.backup_path)
         staging = paths.backup_path / f"staging-{uuid.uuid4()}"
         created_at = _utc_now()
         try:
@@ -164,8 +174,10 @@ def create_backup(paths: RuntimePaths, kind: str) -> BackupInfo:
             }
             (staging / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
             published = paths.backup_path / f"{kind}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex[:8]}"
+            _validate_backup_root(paths.backup_path)
             os.replace(staging, published)
-            result = _read_backup(published)
+            safe_published = _validate_backup_tree(paths.backup_path, published)
+            result = _read_backup(safe_published)
             assert result is not None
             _apply_retention(paths, kind)
             return result

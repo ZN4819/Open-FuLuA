@@ -31,28 +31,74 @@ export class GuardedStartupCoordinator {
       await this.dependencies.diagnose(error);
       return false;
     }
-    try {
-      if (hasMarker) {
+    if (hasMarker) {
+      try {
         const offline = await this.dependencies.offlineIntegrity();
         if (!offline || offline.integrity !== "ok") {
-          const recovered = await this.dependencies.recoverWithoutSidecar();
-          if (!recovered) {
-            await this.dependencies.diagnose(new Error("离线完整性检查未通过且未完成恢复"));
-            return false;
-          }
-          this.gate.markPassed();
-          await this.dependencies.startUpdater();
-          return true;
+          return await this.recoverOffline(new Error("离线完整性检查未通过且未完成恢复"));
         }
+      } catch (error) {
+        await this.dependencies.diagnose(error);
+        return false;
       }
+    }
+    try {
       await this.dependencies.startBackend();
+    } catch (error) {
+      if (hasMarker) return await this.recoverOffline(error);
+      await this.dependencies.diagnose(error);
+      return false;
+    }
+    try {
       if (!(await this.dependencies.recoverWithSidecar())) return false;
-      this.gate.markPassed();
-      await this.dependencies.startUpdater();
-      return true;
+      return await this.passGateAndStartUpdater();
     } catch (error) {
       await this.dependencies.diagnose(error);
       return false;
+    }
+  }
+
+  private async recoverOffline(error: unknown): Promise<boolean> {
+    try {
+      if (!(await this.dependencies.recoverWithoutSidecar())) {
+        await this.dependencies.diagnose(error);
+        return false;
+      }
+      return await this.passGateAndStartUpdater();
+    } catch (recoveryError) {
+      await this.dependencies.diagnose(recoveryError);
+      return false;
+    }
+  }
+
+  private async passGateAndStartUpdater(): Promise<boolean> {
+    this.gate.markPassed();
+    await this.dependencies.startUpdater();
+    return true;
+  }
+}
+
+export interface UnexpectedExitDependencies {
+  enterGuarded(): Promise<boolean>;
+  diagnoseNested(error: unknown): Promise<void>;
+}
+
+export class UnexpectedExitRecovery {
+  private active = false;
+
+  constructor(private readonly gate: RecoverySessionGate, private readonly dependencies: UnexpectedExitDependencies) {}
+
+  async handle(error: unknown): Promise<boolean> {
+    this.gate.reset();
+    if (this.active) {
+      await this.dependencies.diagnoseNested(error);
+      return false;
+    }
+    this.active = true;
+    try {
+      return await this.dependencies.enterGuarded();
+    } finally {
+      this.active = false;
     }
   }
 }

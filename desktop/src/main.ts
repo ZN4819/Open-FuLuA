@@ -16,7 +16,7 @@ import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
 import { JsonRecoveryMarkerStore, RecoveryCoordinator } from "./recovery.js";
 import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
-import { GuardedStartupCoordinator, RecoverySessionGate } from "./startupGate.js";
+import { GuardedStartupCoordinator, RecoverySessionGate, UnexpectedExitRecovery } from "./startupGate.js";
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
@@ -96,10 +96,7 @@ function backendController(): BackendProcessController {
     webDist: command.webDist,
     sessionToken,
   });
-  controller.onUnexpectedExit((error) => {
-    if (recoverySessionGate.passed) void recoverOrDiagnose(error);
-    else void showDiagnostics(error, controller);
-  });
+  controller.onUnexpectedExit((error) => void unexpectedExitRecovery.handle(error));
   return controller;
 }
 
@@ -268,6 +265,13 @@ function guardedStartupCoordinator(isFirstRun = false): GuardedStartupCoordinato
   });
 }
 
+const unexpectedExitRecovery = new UnexpectedExitRecovery(recoverySessionGate, {
+  enterGuarded: async () => await guardedStartupCoordinator().enter(),
+  diagnoseNested: async (error) => {
+    await showDiagnostics(error instanceof Error ? error : new Error("本地服务重复异常退出"));
+  },
+});
+
 async function readLastUpdateCheck(): Promise<number> {
   try {
     const value: unknown = JSON.parse(await readFile(path.join(dataRoot, "recovery", "update-check.json"), "utf8"));
@@ -430,18 +434,6 @@ async function offerFirstRunChoice(): Promise<void> {
     message: outcome.message,
     detail: "旧数据没有被修改。您可以继续使用空数据，或稍后重新选择旧数据目录。",
   });
-}
-
-async function recoverOrDiagnose(error: Error): Promise<void> {
-  const window = mainWindow ?? createWindow();
-  try {
-    if (!backend) throw error;
-    const url = await backend.restartOnce();
-    backendOrigin = url;
-    await window.loadURL(url);
-  } catch (restartError) {
-    await showDiagnostics(restartError instanceof Error ? restartError : error, backend, window);
-  }
 }
 
 async function showDiagnostics(error: Error, controller = backend, preferredWindow?: BrowserWindow): Promise<void> {
