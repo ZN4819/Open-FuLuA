@@ -155,6 +155,7 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
 
         self.assertIn("test_dev_smoke.ps1", workflow)
         self.assertIn("dev-smoke-evidence.json", workflow)
+
         self.assertRegex(
             workflow,
             re.compile(r"Build NSIS and decide signing gate.*?test_dev_smoke\.ps1", re.DOTALL),
@@ -167,6 +168,14 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         release_assets = workflow[workflow.index("$assets = @(") :]
         self.assertIn("dev-smoke-evidence.json", release_assets)
         self.assertRegex(workflow, re.compile(r"开发模式.*?\$devEvidence", re.DOTALL))
+
+    def test_release_workflow_normalizes_windows_temp_paths_and_python_encoding(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("TEMP: ${{ runner.temp }}", workflow)
+        self.assertIn("TMP: ${{ runner.temp }}", workflow)
+        self.assertIn("PYTHONUTF8: '1'", workflow)
+        self.assertIn("PYTHONIOENCODING: utf-8", workflow)
 
     def test_delivery_docs_separate_verified_facts_from_release_gates(self) -> None:
         acceptance = (ROOT / "docs" / "CD-8客户端封装验收记录.md").read_text(encoding="utf-8")
