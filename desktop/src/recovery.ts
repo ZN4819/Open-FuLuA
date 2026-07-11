@@ -140,30 +140,41 @@ export interface RecoveryDependencies {
 export class RecoveryCoordinator {
   constructor(private readonly markers: RecoveryMarkerStore, private readonly dependencies: RecoveryDependencies) {}
 
-  private pendingMatches(marker: PendingUpgradeMarker, context: StartupContext): boolean {
+  private pendingMode(marker: PendingUpgradeMarker, context: StartupContext): "target" | "rollback" | undefined {
     const now = this.dependencies.now?.() ?? Date.now();
     const createdAt = Date.parse(marker.createdAt);
-    return validVersion(marker.fromVersion)
+    const valid = validVersion(marker.fromVersion)
       && validVersion(marker.targetVersion)
       && marker.fromVersion !== marker.targetVersion
       && validBackupId(marker.backupId)
-      && marker.targetVersion === context.currentVersion
       && createdAt <= now + 5 * 60_000
       && createdAt >= now - 7 * 24 * 60 * 60_000;
+    if (!valid) return undefined;
+    if (marker.targetVersion === context.currentVersion) return "target";
+    if (marker.fromVersion === context.currentVersion) return "rollback";
+    return undefined;
   }
 
   async openAfterStartup(context: StartupContext): Promise<void> {
     const pending = await this.markers.readPendingUpgrade();
     if (pending) {
-      if (!this.pendingMatches(pending, context)) {
+      const mode = this.pendingMode(pending, context);
+      if (!mode) {
         await this.dependencies.showRecoveryFailure?.();
         return;
       }
       const integrity = await this.dependencies.checkIntegrity();
-      if (integrity.integrity === "ok" && validSchemaVersion(integrity.schema_version)) {
+      const expectedSchema = mode === "target" ? context.schemaVersion : pending.fromSchemaVersion;
+      if (integrity.integrity === "ok" && integrity.schema_version === expectedSchema) {
         await this.markers.clearPendingUpgrade();
-        if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
+        if (mode === "rollback" || !(await this.markers.hasRunMarker())) {
+          await this.markers.writeRunMarker(context.currentVersion);
+        }
         await this.dependencies.loadBusinessPage();
+        return;
+      }
+      if (mode === "rollback") {
+        await this.dependencies.showRecoveryFailure?.();
         return;
       }
       const action = await this.dependencies.chooseCrashAction(false);
@@ -191,11 +202,11 @@ export class RecoveryCoordinator {
 
   async restorePendingUpgrade(context: StartupContext): Promise<boolean> {
     const pending = await this.markers.readPendingUpgrade();
-    if (!pending || !this.pendingMatches(pending, context) || !validBackupId(pending.backupId)) return false;
+    if (!pending || this.pendingMode(pending, context) !== "target" || !validBackupId(pending.backupId)) return false;
     if (!(await this.dependencies.restoreOffline(pending.backupId))) return false;
     await this.dependencies.restartSidecar();
     const integrity = await this.dependencies.checkIntegrity();
-    if (integrity.integrity !== "ok" || !validSchemaVersion(integrity.schema_version)) return false;
+    if (integrity.integrity !== "ok" || integrity.schema_version !== context.schemaVersion) return false;
     await this.markers.clearPendingUpgrade();
     if (!(await this.markers.hasRunMarker())) await this.markers.writeRunMarker(context.currentVersion);
     await this.dependencies.loadBusinessPage();
@@ -204,7 +215,7 @@ export class RecoveryCoordinator {
 
   async recoverWhenSidecarUnavailable(context: StartupContext): Promise<boolean> {
     const pending = await this.markers.readPendingUpgrade();
-    if (pending) return this.pendingMatches(pending, context) ? await this.restorePendingUpgrade(context) : false;
+    if (pending) return this.pendingMode(pending, context) === "target" ? await this.restorePendingUpgrade(context) : false;
     if (!this.dependencies.listOfflineBackups || !this.dependencies.chooseOfflineBackup) return false;
     const backups = await this.dependencies.listOfflineBackups();
     const selected = await this.dependencies.chooseOfflineBackup(backups);

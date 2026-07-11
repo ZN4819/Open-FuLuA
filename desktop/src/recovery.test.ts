@@ -266,3 +266,52 @@ test("从升级前备份恢复并由新后端迁移到新 schema 后可清 marke
   await recovery.openAfterStartup({ currentVersion: "0.2.0", schemaVersion: "2" });
   assert.equal(markers.pending, undefined); assert.equal(checks, 2);
 });
+
+test("目标版本启动时 runtime schema 必须等于目标 context schema", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe";
+  let loaded = false; let diagnosed = false;
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => ({ integrity: "ok", schema_version: "1" }), chooseCrashAction: async () => "logs",
+    loadBusinessPage: async () => { loaded = true; }, restoreOffline: async () => false,
+    restartSidecar: async () => undefined, showLogs: async () => { diagnosed = true; },
+  });
+  await recovery.openAfterStartup({ currentVersion: "0.2.0", schemaVersion: "2" });
+  assert.equal(loaded, false); assert.equal(diagnosed, true); assert.notEqual(markers.pending, undefined);
+});
+
+test("目标版本从旧备份恢复后 runtime schema 不等于目标 schema 时保留 marker", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe";
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => ({ integrity: "ok", schema_version: "1" }), chooseCrashAction: async () => "restore",
+    loadBusinessPage: async () => undefined, restoreOffline: async () => true,
+    restartSidecar: async () => undefined, showLogs: async () => undefined,
+  });
+  assert.equal(await recovery.restorePendingUpgrade({ currentVersion: "0.2.0", schemaVersion: "2" }), false);
+  assert.notEqual(markers.pending, undefined);
+});
+
+test("更新未应用而回到来源版本时 schema 匹配可安全清理 pending 并加载", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe"; markers.runMarker = true;
+  const order: string[] = [];
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => ({ integrity: "ok", schema_version: "1" }), chooseCrashAction: async () => "continue",
+    loadBusinessPage: async () => { order.push("load"); }, restoreOffline: async () => false,
+    restartSidecar: async () => undefined, showLogs: async () => undefined,
+  });
+  markers.writeRunMarker = async () => { order.push("write-run"); markers.runMarker = true; };
+  await recovery.openAfterStartup({ currentVersion: "0.1.0", schemaVersion: "1" });
+  assert.equal(markers.pending, undefined); assert.deepEqual(order, ["write-run", "load"]);
+});
+
+test("pending 遇到来源和目标之外的第三版本继续 fail-closed", async () => {
+  const markers = new MemoryMarkers(); markers.pendingBackupId = "pre_upgrade-safe";
+  let loaded = false; let diagnosed = false;
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => ({ integrity: "ok", schema_version: "1" }), chooseCrashAction: async () => "continue",
+    loadBusinessPage: async () => { loaded = true; }, restoreOffline: async () => false,
+    restartSidecar: async () => undefined, showLogs: async () => undefined,
+    showRecoveryFailure: async () => { diagnosed = true; },
+  });
+  await recovery.openAfterStartup({ currentVersion: "0.1.5", schemaVersion: "1" });
+  assert.equal(loaded, false); assert.equal(diagnosed, true); assert.notEqual(markers.pending, undefined);
+});

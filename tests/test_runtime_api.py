@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import threading
 import time
+import re
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -129,13 +130,14 @@ class RuntimeApiTests(unittest.TestCase):
         worker.join(timeout=1)
         self.assertTrue(exclusive_entered.is_set())
 
-    def test_upgrade_lease_timeout_self_heals_but_standard_exclusive_never_times_out(self) -> None:
+    def test_ready_upgrade_lease_timeout_self_heals_but_standard_exclusive_never_times_out(self) -> None:
         from app.api.runtime import RuntimeOperations
 
         now = [100.0]
         operations = RuntimeOperations(clock=lambda: now[0])
-        lease = operations.acquire_exclusive("client-known")
-        operations.arm_upgrade_timeout(lease, 5)
+        state, _ = operations.begin_upgrade_prepare("client-known", 5)
+        self.assertEqual(state, "started")
+        self.assertTrue(operations.complete_upgrade_prepare("client-known", {"ready": True}))
         now[0] = 106.0
         self.assertFalse(operations.writes_blocked())
         with operations.business_write():
@@ -144,6 +146,134 @@ class RuntimeApiTests(unittest.TestCase):
         now[0] = 10_000.0
         self.assertTrue(operations.writes_blocked())
         operations.release_exclusive(lease)
+
+    def test_desktop_target_schema_contract_matches_backend_schema(self) -> None:
+        from app.runtime import SCHEMA_VERSION
+
+        source = (Path(__file__).resolve().parents[1] / "desktop" / "src" / "main.ts").read_text(encoding="utf-8")
+        match = re.search(r'const CURRENT_SCHEMA_VERSION = "([^"]+)";', source)
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertEqual(match.group(1), SCHEMA_VERSION)
+
+    def test_cancel_during_blocked_upgrade_backup_keeps_gate_closed_until_backup_returns(self) -> None:
+        from fastapi import HTTPException
+        from app.api.runtime import RuntimeOperations, cancel_upgrade, prepare_upgrade
+
+        operations = RuntimeOperations()
+        entered = threading.Event()
+        release = threading.Event()
+        errors: list[Exception] = []
+        backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
+
+        def blocked_backup(*_args):
+            entered.set()
+            release.wait(timeout=2)
+            return backup
+
+        def prepare() -> None:
+            try:
+                prepare_upgrade({"lease_id": "blocked-cancel"})
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch("app.api.runtime.runtime_operations", operations), patch(
+            "app.api.runtime.create_backup", side_effect=blocked_backup
+        ), patch("app.api.runtime.resolve_runtime_paths"):
+            worker = threading.Thread(target=prepare)
+            worker.start()
+            self.assertTrue(entered.wait(timeout=1))
+            self.assertEqual(cancel_upgrade({"lease_id": "blocked-cancel"}), {"cancelled": True})
+            self.assertTrue(operations.writes_blocked())
+            with self.assertRaises(RuntimeError):
+                operations.reserve_business_write()
+            release.set()
+            worker.join(timeout=1)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], HTTPException)
+        self.assertFalse(operations.writes_blocked())
+
+    def test_timeout_during_blocked_upgrade_backup_keeps_gate_closed_until_backup_returns(self) -> None:
+        from fastapi import HTTPException
+        from app.api.runtime import RuntimeOperations, prepare_upgrade
+
+        now = [100.0]
+        operations = RuntimeOperations(clock=lambda: now[0])
+        entered = threading.Event()
+        release = threading.Event()
+        errors: list[Exception] = []
+        backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
+
+        def blocked_backup(*_args):
+            entered.set()
+            release.wait(timeout=2)
+            return backup
+
+        def prepare() -> None:
+            try:
+                prepare_upgrade({"lease_id": "blocked-timeout"})
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch("app.api.runtime.runtime_operations", operations), patch(
+            "app.api.runtime.create_backup", side_effect=blocked_backup
+        ), patch("app.api.runtime.resolve_runtime_paths"):
+            worker = threading.Thread(target=prepare)
+            worker.start()
+            self.assertTrue(entered.wait(timeout=1))
+            now[0] = 401.0
+            self.assertTrue(operations.writes_blocked())
+            with self.assertRaises(RuntimeError):
+                operations.reserve_business_write()
+            release.set()
+            worker.join(timeout=1)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], HTTPException)
+        self.assertFalse(operations.writes_blocked())
+
+    def test_same_lease_retry_while_preparing_does_not_create_second_backup(self) -> None:
+        from app.api.runtime import RuntimeOperations, cancel_upgrade, prepare_upgrade
+
+        operations = RuntimeOperations()
+        entered = threading.Event()
+        release = threading.Event()
+        calls = 0
+        errors: list[Exception] = []
+        backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
+
+        def blocked_backup(*_args):
+            nonlocal calls
+            calls += 1
+            entered.set()
+            release.wait(timeout=2)
+            return backup
+
+        with patch("app.api.runtime.runtime_operations", operations), patch(
+            "app.api.runtime.create_backup", side_effect=blocked_backup
+        ), patch("app.api.runtime.resolve_runtime_paths"):
+            def prepare() -> None:
+                try:
+                    prepare_upgrade({"lease_id": "same-lease"})
+                except Exception as exc:
+                    errors.append(exc)
+
+            worker = threading.Thread(target=prepare)
+            worker.start()
+            self.assertTrue(entered.wait(timeout=1))
+            retry = prepare_upgrade({"lease_id": "same-lease"})
+            self.assertEqual(retry, {"ready": False, "status": "preparing", "lease_id": "same-lease"})
+            self.assertEqual(calls, 1)
+            self.assertEqual(cancel_upgrade({"lease_id": "same-lease"}), {"cancelled": True})
+            release.set()
+            worker.join(timeout=1)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(calls, 1)
+        self.assertEqual(len(errors), 1)
 
     @staticmethod
     def _enter_exclusive(operations, entered) -> None:

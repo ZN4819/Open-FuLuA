@@ -41,6 +41,7 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertIn("CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}", build.group(0))
         self.assertIn("SetEnvironmentVariable('CSC_LINK', $null, 'Process')", build.group(0))
         self.assertIn("SetEnvironmentVariable('CSC_KEY_PASSWORD', $null, 'Process')", build.group(0))
+        self.assertIn("$env:CSC_IDENTITY_AUTO_DISCOVERY='false'", build.group(0))
 
     def test_push_tag_is_single_v_semver_and_manual_release_targets_checked_out_commit(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")

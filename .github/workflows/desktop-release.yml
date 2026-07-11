@@ -112,6 +112,7 @@ jobs:
           if (-not $hasBothCredentials) {
             [Environment]::SetEnvironmentVariable('CSC_LINK', $null, 'Process')
             [Environment]::SetEnvironmentVariable('CSC_KEY_PASSWORD', $null, 'Process')
+            $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
           }
           "stable=$($StableAllowed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "prerelease=$(((-not $StableAllowed)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
