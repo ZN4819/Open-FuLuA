@@ -25,6 +25,8 @@ export type MetricResult = {
   d?: string | null;
   a?: string | null;
   k?: string | null;
+  ra?: string | null;
+  rk?: string | null;
   object_score?: string | null;
   unit_score?: string | null;
   compliance?: string | null;

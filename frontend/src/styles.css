@@ -1925,7 +1925,7 @@ a:hover {
 }
 
 .technical-table {
-  min-width: 1240px;
+  min-width: 1380px;
 }
 
 .management-table {
@@ -1964,6 +1964,10 @@ a:hover {
 
 .technical-table .col-metric {
   width: 62px;
+}
+
+.technical-table .col-factor {
+  width: 66px;
 }
 
 .technical-table .col-score {
@@ -2012,13 +2016,17 @@ a:hover {
 
 .technical-table td:nth-child(4),
 .technical-table td:nth-child(5),
-.technical-table td:nth-child(6) {
+.technical-table td:nth-child(6),
+.technical-table td:nth-child(7),
+.technical-table td:nth-child(8) {
   padding: 8px;
 }
 
 .technical-table td:nth-child(4) select,
 .technical-table td:nth-child(5) select,
-.technical-table td:nth-child(6) select {
+.technical-table td:nth-child(6) select,
+.technical-table td:nth-child(7) select,
+.technical-table td:nth-child(8) select {
   padding-right: 4px;
   padding-left: 6px;
 }
@@ -2377,6 +2385,7 @@ a:hover {
 }
 
 .metric-cell,
+.factor-cell,
 .score-cell,
 .compliance-cell,
 .row-action-cell {
@@ -2384,12 +2393,14 @@ a:hover {
 }
 
 .metric-select,
+.factor-select,
 .score-input,
 .compliance-select {
   text-align: center;
 }
 
-.metric-select {
+.metric-select,
+.factor-select {
   padding-right: 4px;
   padding-left: 6px;
 }
@@ -2403,6 +2414,7 @@ a:hover {
   background: #fbfcfd;
 }
 
+.score-output,
 .unit-score-output {
   display: flex;
   align-items: center;
@@ -2410,6 +2422,12 @@ a:hover {
   min-height: 36px;
   font-weight: 800;
   color: var(--color-text);
+}
+
+.score-output {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
 }
 
 .row-action-cell .danger-button {
