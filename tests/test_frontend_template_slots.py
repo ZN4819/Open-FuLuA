@@ -326,6 +326,28 @@ class FrontendTemplateSlotSourceTest(unittest.TestCase):
         self.assertNotIn("optgroup", table_source)
         self.assertNotIn("onSaveRowAsTemplate", table_source)
 
+    def test_management_sections_render_profile_driven_fixed_objects(self) -> None:
+        client_source = (FRONTEND_SRC / "api" / "client.ts").read_text(encoding="utf-8")
+        table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
+        page_source = (FRONTEND_SRC / "pages" / "ProjectPage.tsx").read_text(encoding="utf-8")
+        styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("fixed_object_names?: string[]", client_source)
+        self.assertIn("function fixedObjectNamesForSection", table_source)
+        self.assertIn("function normalizeFixedObjectRows", table_source)
+        self.assertIn("function fixedObjectRowsMatch", table_source)
+        self.assertIn("const hasFixedObjects = fixedObjectNames.length > 0", table_source)
+        self.assertIn("onRowsHydrate?.(normalizedRows)", table_source)
+        self.assertIn("onRowsHydrate={(rows) => handleRowsHydrate(activeCode, rows)}", page_source)
+        self.assertIn("function handleRowsHydrate", page_source)
+        self.assertIn("已按样本文档补齐固定测评对象，请保存", page_source)
+        self.assertIn('aria-label="固定测评对象"', table_source)
+        self.assertIn("!hasFixedObjects && canAddWithinUnit", table_source)
+        self.assertIn("hasExcessFixedRows ? \"删除多余对象\"", table_source)
+        self.assertIn('className="fixed-object-chip">固定</span>', table_source)
+        self.assertIn(".fixed-object-name", styles_source)
+        self.assertIn(".fixed-object-chip", styles_source)
+
     def test_assessment_table_previews_evidence_image_when_hovering_reference_label(self) -> None:
         table_source = (FRONTEND_SRC / "components" / "AssessmentTable.tsx").read_text(encoding="utf-8")
         styles_source = (FRONTEND_SRC / "styles.css").read_text(encoding="utf-8")

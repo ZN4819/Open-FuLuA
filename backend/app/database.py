@@ -13,6 +13,7 @@ from typing import Any, Iterator
 from .config import settings
 from .runtime import SCHEMA_VERSION
 from .services.scoring import TECHNICAL_SECTION_CODES, calculate_flat_technical_rows, calculate_technical_rows
+from .services.template_profile import load_template_profile
 
 
 FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
@@ -1359,7 +1360,7 @@ def replace_section_rows(
     subsystems: list[str] | None = None,
 ) -> sqlite3.Row | None:
     timestamp = utc_now()
-    rows = _prepare_section_rows(code, rows)
+    rows = prepare_section_rows(code, rows)
     subsystem_names = _unique_nonempty_values(
         (subsystems or []) + [str(row.get("subsystem", "")) for row in rows]
     )
@@ -1476,6 +1477,8 @@ def append_section_to_project(
 
         source_rows = list_effective_assessment_rows(source_section["id"], db)
         target_rows = list_assessment_rows(target_section["id"], db)
+        if fixed_object_names_for_section(code) and source_rows and target_rows:
+            raise ValueError(f"{code} 使用固定测评对象，目标章节已有数据时不能追加导入。")
         source_object_names = _unique_nonempty_values([row["object_name"] for row in source_rows])
         target_object_names = set(_unique_nonempty_values([row["object_name"] for row in target_rows]))
         duplicate_names = [name for name in source_object_names if name in target_object_names]
@@ -1587,7 +1590,7 @@ def append_section_to_project(
                 }
             )
 
-        rows_for_scores = _prepare_section_rows(code, rows_for_scores)
+        rows_for_scores = prepare_section_rows(code, rows_for_scores)
         for row in rows_for_scores:
             cursor = db.execute(
                 """
@@ -1727,9 +1730,15 @@ def _active_reference_tokens(record_text: str) -> set[str]:
     return {match.group(0) for match in FIG_TOKEN_RE.finditer(record_text or "")}
 
 
-def _prepare_section_rows(code: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def prepare_section_rows(
+    code: str,
+    rows: list[dict[str, Any]],
+    *,
+    strict: bool = True,
+) -> list[dict[str, Any]]:
     if code in TECHNICAL_SECTION_CODES:
-        return calculate_technical_rows(rows, strict=True)
+        return calculate_technical_rows(rows, strict=strict)
+    rows = _prepare_fixed_management_rows(code, rows)
     output: list[dict[str, Any]] = []
     for source in rows:
         row = dict(source)
@@ -1739,6 +1748,64 @@ def _prepare_section_rows(code: str, rows: list[dict[str, Any]]) -> list[dict[st
         row["metric_result"] = metric
         output.append(row)
     return output
+
+
+def fixed_object_names_for_section(code: str) -> list[str]:
+    section_profile = next(
+        (section for section in load_template_profile()["sections"] if section["code"] == code),
+        {},
+    )
+    return list(section_profile.get("fixed_object_names", []))
+
+
+def _prepare_fixed_management_rows(code: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    fixed_object_names = fixed_object_names_for_section(code)
+    if not fixed_object_names or not rows:
+        return rows
+
+    unit_order = _unique_nonempty_values([str(row.get("unit", "")) for row in rows])
+    prepared_rows: list[dict[str, Any]] = []
+    for unit in unit_order:
+        unit_rows = [dict(row) for row in rows if str(row.get("unit", "")).strip() == unit]
+        if len(unit_rows) > len(fixed_object_names):
+            raise ValueError(
+                f"{code} 的测评单元“{unit}”只允许 {len(fixed_object_names)} 个固定测评对象。"
+            )
+
+        assigned_indexes: dict[str, int] = {}
+        unused_indexes = list(range(len(unit_rows)))
+        for object_name in fixed_object_names:
+            matching_index = next(
+                (
+                    index
+                    for index in unused_indexes
+                    if str(unit_rows[index].get("object_name", "")).strip() == object_name
+                ),
+                None,
+            )
+            if matching_index is not None:
+                assigned_indexes[object_name] = matching_index
+                unused_indexes.remove(matching_index)
+
+        for object_name in fixed_object_names:
+            matching_index = assigned_indexes.get(object_name)
+            if matching_index is None and unused_indexes:
+                matching_index = unused_indexes.pop(0)
+            if matching_index is None:
+                row = {
+                    "unit": unit,
+                    "object_name": object_name,
+                    "subsystem": "",
+                    "record_text": "",
+                    "metric_result": {},
+                    "cross_references": [],
+                }
+            else:
+                row = unit_rows[matching_index]
+                row["object_name"] = object_name
+            prepared_rows.append(row)
+
+    return prepared_rows
 
 
 def replace_validation_issues(project_id: int, issues: list[dict[str, Any]]) -> list[sqlite3.Row]:

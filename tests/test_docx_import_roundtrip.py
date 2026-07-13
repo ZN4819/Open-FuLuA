@@ -186,7 +186,10 @@ class DocxImportRoundtripTest(unittest.TestCase):
         reference = detail.cross_references[0]
 
         self.assertEqual(row.unit, "管理制度")
-        self.assertEqual(row.object_name, "管理制度文件")
+        self.assertEqual(
+            row.object_name,
+            "管理体系（包括安全管理制度类文档、密码应用方案、密钥管理制度及策略类文档、操作规程类文档、记录表单类文档、系统相关人员）",
+        )
         self.assertIn("查阅管理制度文件", row.record_text)
         self.assertIn(f"[[FIG:{image.id}]]", row.record_text)
         self.assertNotIn("[[FIG:import:", row.record_text)

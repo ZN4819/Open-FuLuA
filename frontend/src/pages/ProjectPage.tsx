@@ -668,6 +668,12 @@ export function ProjectPage() {
     setSaveMessage(undefined);
   }
 
+  function handleRowsHydrate(code: string, rows: AssessmentRowInput[]) {
+    setDraftRows((current) => ({ ...current, [code]: rows }));
+    setDirtySections((current) => new Set([...current, code]));
+    setSaveMessage(`${code} 已按样本文档补齐固定测评对象，请保存。`);
+  }
+
   function subsystemNamesForSave(code: string) {
     const uiState = subsystemUiStateBySection[code] ?? EMPTY_SUBSYSTEM_UI_STATE;
     return uniqueNonEmptyValues([
@@ -1279,6 +1285,7 @@ export function ProjectPage() {
               recordTemplateSlots={activeRecordTemplateSlots}
               subsystemUiState={subsystemUiStateBySection[activeCode] ?? EMPTY_SUBSYSTEM_UI_STATE}
               onRowsChange={(rows) => handleRowsChange(activeCode, rows)}
+              onRowsHydrate={(rows) => handleRowsHydrate(activeCode, rows)}
               onSubsystemUiStateChange={(updater, options) => handleSubsystemUiStateChange(activeCode, updater, options)}
               onVisibleEvidenceFilterChange={(filter) => handleEvidenceFilterChange(activeCode, filter)}
               onUploadEvidenceImages={(files, options) => handleInlineEvidenceUpload(activeCode, files, options)}

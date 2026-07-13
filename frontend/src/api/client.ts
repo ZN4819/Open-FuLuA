@@ -112,6 +112,7 @@ export type TemplateProfile = {
     table_title: string;
     table_type: "technical" | "management";
     figure_prefix: string;
+    fixed_object_names?: string[];
   }>;
   tables: {
     technical: { columns: TemplateColumn[] };

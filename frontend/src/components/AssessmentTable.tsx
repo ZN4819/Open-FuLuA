@@ -38,6 +38,7 @@ type AssessmentTableProps = {
   recordTemplateSlots: RecordTemplateSlot[];
   subsystemUiState: SubsystemUiState;
   onRowsChange: (rows: AssessmentRowInput[]) => void;
+  onRowsHydrate?: (rows: AssessmentRowInput[]) => void;
   onSubsystemUiStateChange: (updater: SubsystemUiStateUpdater, options?: SubsystemUiStateChangeOptions) => void;
   onVisibleEvidenceFilterChange?: (filter: EvidenceImageFilterState) => void;
   onUploadEvidenceImages?: (files: File[], options?: EvidenceUploadOptions) => Promise<EvidenceImage[]>;
@@ -662,9 +663,57 @@ function replaceRecordTemplateSection(recordText: string, sectionText: string, t
   const verificationPart = scoreIndex >= 0 ? currentText.slice(0, scoreIndex).trim() : currentText;
   return [verificationPart, nextSectionText].filter(Boolean).join("\n");
 }
-function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = [], calculateUnitScores = false) {
+
+function fixedObjectNamesForSection(profile: TemplateProfile, sectionCode: string) {
+  return profile.sections.find((section) => section.code === sectionCode)?.fixed_object_names ?? [];
+}
+
+function normalizeFixedObjectRows(
+  rows: AssessmentRowInput[],
+  unitOrder: string[],
+  fixedObjectNames: string[]
+) {
+  if (fixedObjectNames.length === 0) {
+    return rows;
+  }
+
+  return unitOrder.flatMap((unit) => {
+    const unitRows = rows.filter((row) => row.unit.trim() === unit);
+    if (unitRows.length > fixedObjectNames.length) {
+      return unitRows;
+    }
+    const unusedRows = [...unitRows];
+    const exactRows = new Map<string, AssessmentRowInput>();
+    fixedObjectNames.forEach((objectName) => {
+      const exactIndex = unusedRows.findIndex((row) => row.object_name.trim() === objectName);
+      if (exactIndex >= 0) {
+        exactRows.set(objectName, unusedRows.splice(exactIndex, 1)[0]);
+      }
+    });
+    return fixedObjectNames.map((objectName, objectIndex) => {
+      const source = exactRows.get(objectName)
+        ?? unusedRows.shift()
+        ?? createEmptyRow(rows.length + objectIndex + 1, unit);
+      return { ...source, unit, object_name: objectName };
+    });
+  });
+}
+
+function fixedObjectRowsMatch(rows: AssessmentRowInput[], normalizedRows: AssessmentRowInput[]) {
+  return rows.length === normalizedRows.length && rows.every((row, index) => (
+    row.unit.trim() === normalizedRows[index]?.unit.trim() &&
+    row.object_name.trim() === normalizedRows[index]?.object_name.trim()
+  ));
+}
+
+function normalizeRows(
+  rows: AssessmentRowInput[],
+  unitOrder: string[] = [],
+  calculateUnitScores = false,
+  fixedObjectNames: string[] = []
+) {
   const order = new Map(unitOrder.map((unit, index) => [unit, index]));
-  const normalizedRows = rows
+  const normalizedRows = normalizeFixedObjectRows(rows, unitOrder, fixedObjectNames)
     .map((row, index) => {
       const unit = row.unit.trim();
       return {
@@ -702,6 +751,7 @@ export function AssessmentTable({
   recordTemplateSlots,
   subsystemUiState,
   onRowsChange,
+  onRowsHydrate,
   onSubsystemUiStateChange,
   onVisibleEvidenceFilterChange,
   onUploadEvidenceImages,
@@ -734,7 +784,14 @@ export function AssessmentTable({
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K / Ra / Rk 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
-  const normalizedRows = normalizeRows(rows, unitOrder, technical);
+  const fixedObjectNames = fixedObjectNamesForSection(profile, sectionCode);
+  const hasFixedObjects = fixedObjectNames.length > 0;
+  const normalizedRows = normalizeRows(rows, unitOrder, technical, fixedObjectNames);
+  useEffect(() => {
+    if (hasFixedObjects && !fixedObjectRowsMatch(rows, normalizedRows)) {
+      onRowsHydrate?.(normalizedRows);
+    }
+  }, [sectionCode, hasFixedObjects, rows, recordTemplateSlots, onRowsHydrate]);
   const sectionSupportsSubsystem = supportsSubsystem(sectionCode);
   const manualSubsystemNames = subsystemUiState.manualSubsystemNames;
   const activeSubsystem = subsystemUiState.activeSubsystem;
@@ -1551,7 +1608,7 @@ export function AssessmentTable({
                       <div className="fixed-unit-content">
                         <strong>{group.unit}</strong>
                         <span>对象 0</span>
-                        {canAddObjectWithinUnit(sectionCode, group.unit, technical) ? (
+                        {!hasFixedObjects && canAddObjectWithinUnit(sectionCode, group.unit, technical) ? (
                           <button
                             type="button"
                             className="unit-add-button"
@@ -1573,6 +1630,7 @@ export function AssessmentTable({
                     const scoreBasisTemplateSlots = templateSlotsForGroup(recordTemplateSlots, "score_basis");
                     const canAddWithinUnit = canAddObjectWithinUnit(sectionCode, group.unit, technical);
                     const showObjectDeleteLabel = technical && isSectionManagedTechnicalObjectUnit(sectionCode, row.unit);
+                    const hasExcessFixedRows = hasFixedObjects && group.entries.length > fixedObjectNames.length;
                     const recordDisplayText = displayRecordText(row, evidenceImages, sectionCode, profile);
                     const figureReferenceItems = recordFigureReferenceItems(row, evidenceImages, sectionCode, profile);
                     return (
@@ -1582,7 +1640,7 @@ export function AssessmentTable({
                             <div className="fixed-unit-content">
                               <strong>{group.unit}</strong>
                               <span>对象 {group.entries.length}</span>
-                              {canAddWithinUnit ? (
+                              {!hasFixedObjects && canAddWithinUnit ? (
                                 <button
                                   type="button"
                                   className="unit-add-button"
@@ -1596,11 +1654,15 @@ export function AssessmentTable({
                           </td>
                         ) : null}
                         <td className="object-cell">
-                          <textarea
-                            value={row.object_name}
-                            onChange={(event) => updateRow(index, { object_name: event.target.value })}
-                            rows={2}
-                          />
+                          {hasFixedObjects ? (
+                            <div className="fixed-object-name" aria-label="固定测评对象">{row.object_name}</div>
+                          ) : (
+                            <textarea
+                              value={row.object_name}
+                              onChange={(event) => updateRow(index, { object_name: event.target.value })}
+                              rows={2}
+                            />
+                          )}
                         </td>
                         <td className="record-cell">
                           <div className="record-input-group">
@@ -1751,13 +1813,17 @@ export function AssessmentTable({
                           </>
                         )}
                         <td className="row-action-cell">
-                          <button
-                            type="button"
-                            className="danger-button"
-                            onClick={() => removeRow(index)}
-                          >
-                            {showObjectDeleteLabel ? "删除对象" : "删除"}
-                          </button>
+                          {!hasFixedObjects || hasExcessFixedRows ? (
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => removeRow(index)}
+                            >
+                              {hasExcessFixedRows ? "删除多余对象" : (showObjectDeleteLabel ? "删除对象" : "删除")}
+                            </button>
+                          ) : (
+                            <span className="fixed-object-chip">固定</span>
+                          )}
                         </td>
                       </tr>
                     );

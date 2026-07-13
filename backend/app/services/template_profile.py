@@ -41,6 +41,17 @@ def validate_template_profile(profile: dict[str, Any]) -> None:
     if section_codes != [f"A-{index}" for index in range(1, 9)]:
         raise TemplateProfileError("章节 code 必须按 A-1 至 A-8 排列。")
 
+    for section in sections:
+        fixed_object_names = section.get("fixed_object_names", [])
+        if not isinstance(fixed_object_names, list) or any(
+            not isinstance(name, str) or not name.strip() for name in fixed_object_names
+        ):
+            raise TemplateProfileError(f"{section.get('code', '未知章节')} 的固定测评对象配置无效。")
+        if len(fixed_object_names) != len(set(fixed_object_names)):
+            raise TemplateProfileError(f"{section.get('code', '未知章节')} 的固定测评对象不能重复。")
+        if section.get("table_type") == "management" and not fixed_object_names:
+            raise TemplateProfileError(f"{section.get('code', '未知章节')} 必须配置固定测评对象。")
+
     technical = tables.get("technical", {})
     management = tables.get("management", {})
     if len(technical.get("columns", [])) != 8:
