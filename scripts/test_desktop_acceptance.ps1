@@ -169,7 +169,7 @@ function Wait-DesktopHealth {
                 $client.Timeout = [TimeSpan]::FromSeconds(2)
                 try { $health = ($client.GetStringAsync("$baseUri/api/health").GetAwaiter().GetResult() | ConvertFrom-Json) }
                 finally { $client.Dispose() }
-                if ($health.status -eq 'ok' -and [System.IO.Path]::GetFullPath([string]$health.data_root) -eq $expected) {
+                if ($health.status -eq 'ok' -and [System.IO.Path]::GetFullPath([string]$health.data_root) -eq $expected -and [string]$health.schema_version -eq $ExpectedSchemaVersion) {
                     return [pscustomobject]@{ BaseUri = $baseUri; Health = $health }
                 }
             }
@@ -179,7 +179,7 @@ function Wait-DesktopHealth {
         }
         Start-Sleep -Milliseconds 300
     }
-    throw "未在 $TimeoutSeconds 秒内发现使用预期数据目录的桌面侧车。"
+    throw "未在 $TimeoutSeconds 秒内发现使用预期数据目录且 schema 为 $ExpectedSchemaVersion 的桌面侧车。"
 }
 
 function Invoke-JsonRequest {
@@ -344,6 +344,9 @@ function Get-SignatureEvidence {
 }
 
 $Root = Split-Path -Parent $PSScriptRoot
+$runtimeSource = Get-Content -LiteralPath (Join-Path $Root 'backend\app\runtime.py') -Raw -Encoding UTF8
+if ($runtimeSource -notmatch 'SCHEMA_VERSION\s*=\s*"([0-9]+)"') { throw '无法从后端运行时读取目标 schema 版本。' }
+$ExpectedSchemaVersion = $Matches[1]
 $ArtifactsDirectory = Join-Path $Root 'artifacts\desktop\electron'
 if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
     if (-not $BuildIfMissing) { throw '请通过 -InstallerPath 明确提供 NSIS Setup EXE，或使用 -BuildIfMissing 受控构建。' }
@@ -382,6 +385,7 @@ $Result = [ordered]@{
     failure_message = ''
     source_commit = ([string](& git -C $Root rev-parse HEAD)).Trim()
     version = [string]((Get-Content -Raw -Encoding UTF8 (Join-Path $Root 'desktop\package.json') | ConvertFrom-Json).version)
+    schema_version = ''
     installer = $installer
     installer_sha512 = (Get-FileHash -LiteralPath $installer -Algorithm SHA512).Hash.ToLowerInvariant()
     signatures = @()
@@ -425,6 +429,7 @@ try {
     New-AcceptanceImage -Path $EvidencePath
     $AuthorLaunch = Start-InstalledClient -Executable $installedExecutable -LocalAppData $AuthorLocalAppData
     $authorServer = Wait-DesktopHealth -ExpectedDataRoot $AuthorDataRoot
+    $Result.schema_version = [string]$authorServer.Health.schema_version
     $slots = @(Invoke-JsonRequest -Method GET -Uri "$($authorServer.BaseUri)/api/record-template-slots?section_code=A-1")
     if ($slots.Count -eq 0 -or @($slots | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.unit) }).Count -eq 0) { throw 'A-1 固定测评单元模板槽位为空。' }
     $Result.template_slots_checked = $true
@@ -563,7 +568,7 @@ finally {
             if ($evidenceParent) { New-Item -ItemType Directory -Force -Path $evidenceParent | Out-Null }
             $checks = [ordered]@{}
             foreach ($key in @('package_contents_checked','project_saved','image_uploaded','template_slots_checked','validation_checked','editable_exported','final_exported','docx_imported','close_reopen_checked','business_state_reopen','migration_preflight_checked','migration_checked','business_state_migration','uninstall_data_retained','reinstall_checked','business_state_reinstall')) { $checks[$key] = [bool]$Result[$key] }
-            $evidence = [ordered]@{ schema_version = 1; source_commit = $Result.source_commit; version = $Result.version; installer_name = [System.IO.Path]::GetFileName($installer); installer_sha512 = $Result.installer_sha512; signatures = $Result.signatures; checks = $checks; source_database_unchanged = ($Result.source_database_hash_before -eq $Result.source_database_hash_after); manual_items = $Result.manual_items }
+            $evidence = [ordered]@{ schema_version = $Result.schema_version; source_commit = $Result.source_commit; version = $Result.version; installer_name = [System.IO.Path]::GetFileName($installer); installer_sha512 = $Result.installer_sha512; signatures = $Result.signatures; checks = $checks; source_database_unchanged = ($Result.source_database_hash_before -eq $Result.source_database_hash_after); manual_items = $Result.manual_items }
             [System.IO.File]::WriteAllText($evidencePath, ($evidence | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
         }
         if ($cleanupAllowed) {
