@@ -53,6 +53,8 @@ class DocxGeneratorTest(unittest.TestCase):
         self.assertEqual(analysis.images, 1)
         self.assertEqual(analysis.missing_ref_targets, [])
         self.assertIn("4x8", analysis.table_shapes)
+        self.assertNotIn("Ra", _first_table_header_text(path))
+        self.assertNotIn("Rk", _first_table_header_text(path))
         self.assertTrue(_all_tables_have_grid(path))
         paragraph_texts = _nonempty_paragraph_texts(path)
         self.assertEqual(paragraph_texts[:3], ["附录A测评结果记录", "A.1 物理和环境安全", "表A-1物理和环境安全测评结果记录"])
@@ -339,6 +341,15 @@ def _first_table_uses_template_header(path: Path) -> bool:
         and first_spans[3] is not None
         and first_spans[3].get(f"{{{NS['w']}}}val") == "4"
     )
+
+
+def _first_table_header_text(path: Path) -> str:
+    with zipfile.ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    table = document.find(".//w:tbl", NS)
+    if table is None:
+        return ""
+    return "".join(_cell_text(cell) for row in table.findall("w:tr", NS)[:2] for cell in row.findall("w:tc", NS))
 
 
 def _cell_text(cell: ET.Element) -> str:

@@ -311,7 +311,7 @@ function Assert-BusinessState {
         $rows = @($detail.rows); $images = @($detail.evidence_images); $references = @($detail.cross_references)
         if ($rows.Count -ne 1 -or $images.Count -ne 1 -or $references.Count -ne 1) { throw "业务状态数量不一致：$name" }
         $row = $rows[0]; $image = $images[0]; $reference = $references[0]
-        if ([string]$row.record_text -notmatch '\[\[FIG:\d+\]\]' -or $row.metric_result.d -ne '√' -or $row.metric_result.a -ne '√' -or $row.metric_result.k -ne '/' -or $row.metric_result.object_score -ne '1.0000') { throw "业务行正文或评分不一致：$name" }
+        if ([string]$row.record_text -notmatch '\[\[FIG:\d+\]\]' -or $row.metric_result.d -ne '√' -or $row.metric_result.a -ne '×' -or $row.metric_result.k -ne '×' -or $row.metric_result.ra -ne '0.2' -or $row.metric_result.rk -ne '1.2' -or $row.metric_result.object_score -ne '0.0600' -or $row.metric_result.unit_score -ne '0.0600') { throw "业务行正文或评分不一致：$name" }
         if ([string]::IsNullOrWhiteSpace([string]$image.file_url) -or $image.caption -ne 'CD-8 验收图片' -or $image.pixel_width -ne 640 -or $image.pixel_height -ne 360) { throw "图片元数据不一致：$name" }
         if ([int]$reference.target_image_id -ne [int]$image.id -or [string]$reference.token -ne "[[FIG:$([int]$image.id)]]") { throw "图片交叉引用不一致：$name" }
         $fileUri = if ([string]$image.file_url -match '^https?://') { [string]$image.file_url } else { "$BaseUri$([string]$image.file_url)" }
@@ -448,7 +448,7 @@ try {
             subsystem = '业务系统'
             record_text = "检查登录策略，见 [[FIG:$imageId]]。"
             sort_order = 1
-            metric_result = @{ d = '√'; a = '√'; k = '/'; object_score = '1.0000'; unit_score = '1.0000' }
+            metric_result = @{ d = '√'; a = '×'; k = '×'; ra = '0.2'; rk = '1.2'; object_score = '9.9999'; unit_score = '9.9999' }
             cross_references = @(@{ target_image_id = $imageId; token = "[[FIG:$imageId]]"; display_text = '图A-1-1' })
         })
     }
