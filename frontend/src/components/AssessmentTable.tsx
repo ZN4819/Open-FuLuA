@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent, type MouseEvent } from "react";
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
+import { calculateTechnicalRows, RA_OPTIONS, RK_OPTIONS } from "../scoring";
 
 export type SubsystemUiState = {
   manualSubsystemNames: string[];
@@ -576,78 +577,8 @@ function replaceAllText(text: string, search: string, replacement: string) {
   return text.split(search).join(replacement);
 }
 
-const SCORE_EXCLUDED_VALUE = "/";
-
 function scoreText(value: string | null | undefined) {
   return (value ?? "").trim();
-}
-
-function formatScoreToFourDecimals(value: string | null | undefined) {
-  const text = scoreText(value);
-  if (!text || text === SCORE_EXCLUDED_VALUE) {
-    return text;
-  }
-  const score = Number(text);
-  if (!Number.isFinite(score)) {
-    return text;
-  }
-  return score.toFixed(4);
-}
-
-function calculateTechnicalUnitScore(rows: AssessmentRowInput[]) {
-  const numericScores: number[] = [];
-  let filledScores = 0;
-  let excludedScores = 0;
-
-  rows.forEach((row) => {
-    const score = scoreText(row.metric_result?.object_score);
-    if (!score) {
-      return;
-    }
-    filledScores += 1;
-    if (score === SCORE_EXCLUDED_VALUE) {
-      excludedScores += 1;
-      return;
-    }
-    const numericScore = Number(score);
-    if (Number.isFinite(numericScore)) {
-      numericScores.push(numericScore);
-    }
-  });
-
-  if (numericScores.length > 0) {
-    const total = numericScores.reduce((sum, score) => sum + score, 0);
-    return (total / numericScores.length).toFixed(4);
-  }
-  if (rows.length > 0 && filledScores === rows.length && excludedScores === rows.length) {
-    return SCORE_EXCLUDED_VALUE;
-  }
-  return "";
-}
-
-function applyCalculatedUnitScores(rows: AssessmentRowInput[], shouldCalculate: boolean) {
-  if (!shouldCalculate) {
-    return rows;
-  }
-
-  const rowsByUnit = new Map<string, AssessmentRowInput[]>();
-  rows.forEach((row) => {
-    const unit = row.unit.trim();
-    rowsByUnit.set(unit, [...(rowsByUnit.get(unit) ?? []), row]);
-  });
-
-  const scoreByUnit = new Map<string, string>();
-  rowsByUnit.forEach((unitRows, unit) => {
-    scoreByUnit.set(unit, calculateTechnicalUnitScore(unitRows));
-  });
-
-  return rows.map((row) => ({
-    ...row,
-    metric_result: {
-      ...(row.metric_result ?? EMPTY_METRIC),
-      unit_score: scoreByUnit.get(row.unit.trim()) ?? ""
-    }
-  }));
 }
 function fixedUnitsFromSlots(recordTemplateSlots: RecordTemplateSlot[], rows: AssessmentRowInput[]) {
   return uniqueValues([
@@ -758,7 +689,7 @@ function normalizeRows(rows: AssessmentRowInput[], unitOrder: string[] = [], cal
       sort_order: index + 1
     }));
 
-  return applyCalculatedUnitScores(normalizedRows, calculateUnitScores);
+  return calculateUnitScores ? calculateTechnicalRows(normalizedRows) : normalizedRows;
 }
 
 export function AssessmentTable({
@@ -801,7 +732,7 @@ export function AssessmentTable({
     setShowSubsystemList(false);
     setShowTechnicalObjectList(false);
   }, [sectionCode]);
-  const tableTitle = technical ? "D / A / K 指标录入" : "符合情况录入";
+  const tableTitle = technical ? "D / A / K / Ra / Rk 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
   const normalizedRows = normalizeRows(rows, unitOrder, technical);
   const sectionSupportsSubsystem = supportsSubsystem(sectionCode);
@@ -872,10 +803,12 @@ export function AssessmentTable({
   const groupedUnitOrder = technical && activeUnitFilter ? [activeUnitFilter] : unitOrder;
   const groupedRows = groupedUnitOrder.map((unit) => {
     const entries = visibleRowEntries.filter((entry) => entry.row.unit.trim() === unit);
-    const unitScore = technical ? calculateTechnicalUnitScore(entries.map((entry) => entry.row)) : scoreText(entries[0]?.row.metric_result?.unit_score);
+    const unitScore = technical
+      ? scoreText(normalizedRows.find((row) => row.unit.trim() === unit)?.metric_result?.unit_score)
+      : scoreText(entries[0]?.row.metric_result?.unit_score);
     return { unit, entries, unitScore };
   });
-  const tableColumnCount = technical ? 9 : 6;
+  const tableColumnCount = technical ? 11 : 6;
   const visibleEvidenceFilterKey = `${filterActive ? "1" : "0"}:${visibleEvidenceImageIds.join(",")}`;
 
   useEffect(() => {
@@ -922,11 +855,6 @@ export function AssessmentTable({
         [key]: value
       }
     });
-  }
-
-  function formatObjectScore(index: number) {
-    const value = normalizedRows[index]?.metric_result?.object_score;
-    updateMetric(index, "object_score", formatScoreToFourDecimals(value));
   }
 
   function addSubsystem() {
@@ -1578,6 +1506,8 @@ export function AssessmentTable({
                   <col className="col-metric" />
                   <col className="col-metric" />
                   <col className="col-metric" />
+                  <col className="col-factor" />
+                  <col className="col-factor" />
                   <col className="col-score" />
                   <col className="col-score" />
                 </>
@@ -1599,6 +1529,8 @@ export function AssessmentTable({
                     <th>D</th>
                     <th>A</th>
                     <th>K</th>
+                    <th>Ra</th>
+                    <th>Rk</th>
                     <th>对象评分</th>
                     <th>单元得分</th>
                   </>
@@ -1765,13 +1697,25 @@ export function AssessmentTable({
                                 </select>
                               </td>
                             ))}
+                            {([
+                              ["ra", RA_OPTIONS],
+                              ["rk", RK_OPTIONS]
+                            ] as const).map(([key, options]) => (
+                              <td className="factor-cell" key={key}>
+                                <select
+                                  className="factor-select"
+                                  value={row.metric_result?.[key] ?? "1"}
+                                  onChange={(event) => updateMetric(index, key, event.target.value)}
+                                  aria-label={`${key.toUpperCase()} 评分参数`}
+                                >
+                                  {options.map((option) => (
+                                    <option key={option} value={option}>{option}</option>
+                                  ))}
+                                </select>
+                              </td>
+                            ))}
                             <td className="score-cell">
-                              <input
-                                className="score-input"
-                                value={row.metric_result?.object_score ?? ""}
-                                onChange={(event) => updateMetric(index, "object_score", event.target.value)}
-                                onBlur={() => formatObjectScore(index)}
-                              />
+                              <output className="score-output">{row.metric_result?.object_score ?? ""}</output>
                             </td>
                             {entryIndex === 0 ? (
                               <td className="score-cell unit-score-cell" rowSpan={group.entries.length}>

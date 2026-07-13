@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 from docx import Document
@@ -11,6 +10,7 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.table import _Cell, Table
 
+from ..scoring import calculate_flat_technical_rows
 from .content_controls import wrap_cell_paragraph_with_dropdown
 from .fields import add_complex_field
 from .styles import (
@@ -285,35 +285,7 @@ def _mark_repeat_header(row) -> None:
 def _rows_with_calculated_unit_scores(rows: list[Any], table_type: str) -> list[Any]:
     if table_type != "technical":
         return rows
-
-    rows_by_unit: dict[str, list[Any]] = {}
-    for row in rows:
-        rows_by_unit.setdefault(_value(row, "unit").strip(), []).append(row)
-    score_by_unit = {
-        unit: _calculate_unit_score(unit_rows)
-        for unit, unit_rows in rows_by_unit.items()
-    }
-
-    output_rows: list[dict[str, Any]] = []
-    for row in rows:
-        row_data = _row_to_dict(row)
-        row_data["object_score"] = _format_score_to_four_decimals(_value(row, "object_score"))
-        row_data["unit_score"] = score_by_unit.get(_value(row, "unit").strip(), "")
-        output_rows.append(row_data)
-    return output_rows
-
-
-def _format_score_to_four_decimals(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text or text == "/":
-        return text
-    try:
-        score = Decimal(text)
-        if not score.is_finite():
-            return text
-        return str(score.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    except InvalidOperation:
-        return text
+    return calculate_flat_technical_rows([_row_to_dict(row) for row in rows], strict=False)
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     if isinstance(row, dict):
@@ -321,31 +293,6 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     if hasattr(row, "keys"):
         return {key: row[key] for key in row.keys()}
     return {}
-
-
-def _calculate_unit_score(rows: list[Any]) -> str:
-    numeric_scores: list[Decimal] = []
-    filled_scores = 0
-    excluded_scores = 0
-    for row in rows:
-        score = _format_score_to_four_decimals(_value(row, "object_score"))
-        if not score:
-            continue
-        filled_scores += 1
-        if score == "/":
-            excluded_scores += 1
-            continue
-        try:
-            numeric_scores.append(Decimal(score))
-        except InvalidOperation:
-            continue
-
-    if numeric_scores:
-        average = sum(numeric_scores) / Decimal(len(numeric_scores))
-        return str(average.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    if rows and filled_scores == len(rows) and excluded_scores == len(rows):
-        return "/"
-    return ""
 
 
 def _merge_repeated_unit_cells(

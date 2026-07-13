@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -80,15 +82,19 @@ class MetricResultRead(BaseModel):
     d: str | None = None
     a: str | None = None
     k: str | None = None
+    ra: str | None = None
+    rk: str | None = None
     object_score: str | None = None
     unit_score: str | None = None
     compliance: str | None = None
 
 
 class MetricResultWrite(BaseModel):
-    d: str | None = None
-    a: str | None = None
-    k: str | None = None
+    d: Literal["√", "×", "/", ""] | None = None
+    a: Literal["√", "×", "/", ""] | None = None
+    k: Literal["√", "×", "/", ""] | None = None
+    ra: Literal["1", "0.5", "0.2", ""] | None = None
+    rk: Literal["1", "1.2", ""] | None = None
     object_score: str | None = None
     unit_score: str | None = None
     compliance: str | None = None

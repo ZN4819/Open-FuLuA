@@ -27,7 +27,7 @@ def validate_project(project_id: int) -> ValidationResponse:
 
     for section in database.list_sections(project_id):
         section_profile = _section_profile(profile, section["code"])
-        rows = database.list_assessment_rows(section["id"])
+        rows = database.list_effective_assessment_rows(section["id"])
         images = database.list_evidence_images(project_id, section["code"])
         references = database.list_cross_references(section["id"])
 
@@ -84,6 +84,21 @@ def _validate_rows(section: Any, section_profile: dict[str, Any], rows: list[Any
                             "error",
                             "INVALID_DROPDOWN_VALUE",
                             f"{row_label} 的 {key.upper()} 指标值“{value}”不在模板选项内。",
+                            "row",
+                            row["id"],
+                        )
+                    )
+            for key, label, allowed in (
+                ("ra", "Ra", {"1", "0.5", "0.2"}),
+                ("rk", "Rk", {"1", "1.2"}),
+            ):
+                value = _text(row[key])
+                if value not in allowed:
+                    issues.append(
+                        _issue(
+                            "error",
+                            "INVALID_SCORING_FACTOR",
+                            f"{row_label} 的 {label} 参数值“{value}”不合法。",
                             "row",
                             row["id"],
                         )

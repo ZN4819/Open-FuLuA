@@ -10,6 +10,7 @@ from ... import database
 from ...config import settings
 from ...schemas import DocxImportJobRead
 from ..projects import remove_project_runtime_files
+from ..scoring import TECHNICAL_SECTION_CODES, calculate_technical_rows
 from .preview import docx_import_job_to_schema
 
 
@@ -111,7 +112,10 @@ def _create_project_from_payload(job_id: int, project_name: str, parsed_payload:
                 section_row = database.get_section(project_id, section.get("code", ""), db)
                 if section_row is None:
                     continue
-                for index, row in enumerate(section.get("rows") or [], start=1):
+                section_rows = list(section.get("rows") or [])
+                if section.get("code") in TECHNICAL_SECTION_CODES:
+                    section_rows = calculate_technical_rows(section_rows, strict=False)
+                for index, row in enumerate(section_rows, start=1):
                     _insert_assessment_row(db, section_row["id"], row, index, image_id_by_import_key, token_by_import_key, timestamp)
 
             db.execute(
@@ -221,14 +225,16 @@ def _insert_assessment_row(
     db.execute(
         """
         INSERT INTO metric_results
-            (row_id, d, a, k, object_score, unit_score, compliance)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (row_id, d, a, k, ra, rk, object_score, unit_score, compliance)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             row_id,
             metric.get("d"),
             metric.get("a"),
             metric.get("k"),
+            metric.get("ra"),
+            metric.get("rk"),
             metric.get("object_score"),
             metric.get("unit_score"),
             metric.get("compliance"),

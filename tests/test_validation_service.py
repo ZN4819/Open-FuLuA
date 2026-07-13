@@ -57,6 +57,10 @@ class ValidationServiceTest(unittest.TestCase):
                 }
             ],
         )
+        section = database.get_section(project["id"], "A-1")
+        row = database.list_assessment_rows(section["id"])[0]
+        with database.connect() as db:
+            db.execute("UPDATE metric_results SET ra = ? WHERE row_id = ?", ("0.3", row["id"]))
 
         result = validate_project(project["id"])
         codes = {issue.code for issue in result.issues}
@@ -65,7 +69,7 @@ class ValidationServiceTest(unittest.TestCase):
         self.assertIn("REQUIRED_FIELD_MISSING", codes)
         self.assertIn("INVALID_DROPDOWN_VALUE", codes)
         self.assertIn("METRIC_REQUIRED", codes)
-        self.assertIn("INVALID_SCORE", codes)
+        self.assertIn("INVALID_SCORING_FACTOR", codes)
         self.assertIn("SCORE_REQUIRED", codes)
         self.assertIn("BROKEN_IMAGE_REFERENCE", codes)
         self.assertIn("BROKEN_STORED_REFERENCE", codes)
