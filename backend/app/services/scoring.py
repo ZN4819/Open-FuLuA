@@ -6,7 +6,14 @@ from typing import Any
 
 
 TECHNICAL_SECTION_CODES = frozenset({"A-1", "A-2", "A-3", "A-4"})
+MANAGEMENT_SECTION_CODES = frozenset({"A-5", "A-6", "A-7", "A-8"})
 TECHNICAL_METRIC_VALUES = frozenset({"√", "×", "/"})
+MANAGEMENT_COMPLIANCE_SCORES = {
+    "符合": "1.0000",
+    "部分符合": "0.5000",
+    "不符合": "0.0000",
+    "不适用": "/",
+}
 RA_VALUES = frozenset({"1", "0.5", "0.2"})
 RK_VALUES = frozenset({"1", "1.2"})
 DEFAULT_RA = "1"
@@ -112,6 +119,41 @@ def calculate_flat_technical_rows(
     return _with_unit_scores(output, nested=False)
 
 
+def calculate_management_unit_score(
+    compliances: Iterable[Any],
+    *,
+    strict: bool = True,
+) -> str:
+    scores: list[str] = []
+    for compliance in compliances:
+        normalized = _text(compliance)
+        if not normalized:
+            return ""
+        score = MANAGEMENT_COMPLIANCE_SCORES.get(normalized)
+        if score is None:
+            if strict:
+                raise ValueError("符合情况只能为符合、部分符合、不符合或不适用")
+            return ""
+        scores.append(score)
+    return calculate_unit_score(scores)
+
+
+def calculate_management_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    strict: bool = True,
+) -> list[dict[str, Any]]:
+    return _with_management_unit_scores([dict(row) for row in rows], nested=True, strict=strict)
+
+
+def calculate_flat_management_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    strict: bool = False,
+) -> list[dict[str, Any]]:
+    return _with_management_unit_scores([dict(row) for row in rows], nested=False, strict=strict)
+
+
 def _with_unit_scores(rows: list[dict[str, Any]], *, nested: bool) -> list[dict[str, Any]]:
     scores_by_unit: dict[str, list[Any]] = {}
     for row in rows:
@@ -128,6 +170,35 @@ def _with_unit_scores(rows: list[dict[str, Any]], *, nested: bool) -> list[dict[
             row["metric_result"] = metric
         else:
             row["unit_score"] = unit_scores.get(_text(row.get("unit")), "")
+        output.append(row)
+    return output
+
+
+def _with_management_unit_scores(
+    rows: list[dict[str, Any]],
+    *,
+    nested: bool,
+    strict: bool,
+) -> list[dict[str, Any]]:
+    compliances_by_unit: dict[str, list[Any]] = {}
+    for row in rows:
+        metric = (row.get("metric_result") or {}) if nested else row
+        compliances_by_unit.setdefault(_text(row.get("unit")), []).append(metric.get("compliance"))
+    unit_scores = {
+        unit: calculate_management_unit_score(compliances, strict=strict)
+        for unit, compliances in compliances_by_unit.items()
+    }
+
+    output: list[dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
+        unit_score = unit_scores.get(_text(row.get("unit")), "")
+        if nested:
+            metric = dict(row.get("metric_result") or {})
+            metric["unit_score"] = unit_score
+            row["metric_result"] = metric
+        else:
+            row["unit_score"] = unit_score
         output.append(row)
     return output
 

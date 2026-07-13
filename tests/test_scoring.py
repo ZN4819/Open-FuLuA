@@ -4,6 +4,9 @@ import unittest
 
 from app.services.scoring import (
     calculate_flat_technical_rows,
+    calculate_flat_management_rows,
+    calculate_management_rows,
+    calculate_management_unit_score,
     calculate_object_score,
     calculate_technical_rows,
     calculate_unit_score,
@@ -61,6 +64,29 @@ class ScoringTests(unittest.TestCase):
         )
         self.assertEqual(output[0]["object_score"], "0.6000")
         self.assertEqual(output[0]["unit_score"], "0.6000")
+
+    def test_management_scores_map_compliance_and_average_effective_objects(self) -> None:
+        self.assertEqual(calculate_management_unit_score(["符合", "部分符合"]), "0.7500")
+        self.assertEqual(calculate_management_unit_score(["符合", "不适用"]), "1.0000")
+        self.assertEqual(calculate_management_unit_score(["不适用", "不适用"]), "/")
+        self.assertEqual(calculate_management_unit_score(["符合", ""]), "")
+
+    def test_management_invalid_compliance_is_strict_or_blank(self) -> None:
+        with self.assertRaises(ValueError):
+            calculate_management_unit_score(["未知"])
+        self.assertEqual(calculate_management_unit_score(["未知"], strict=False), "")
+
+    def test_management_rows_replace_manual_unit_score(self) -> None:
+        source = [
+            {"unit": "制度", "metric_result": {"compliance": "符合", "unit_score": "1.5000"}},
+            {"unit": "制度", "metric_result": {"compliance": "部分符合", "unit_score": "1.5000"}},
+        ]
+        nested = calculate_management_rows(source)
+        self.assertEqual([row["metric_result"]["unit_score"] for row in nested], ["0.7500", "0.7500"])
+        flat = calculate_flat_management_rows(
+            [{"unit": "制度", "compliance": "符合", "unit_score": "9.9999"}]
+        )
+        self.assertEqual(flat[0]["unit_score"], "1.0000")
 
 
 if __name__ == "__main__":

@@ -309,6 +309,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
             (
                 ("templates/appendix_a/template_profile.json", "templates/appendix_a"),
                 ("templates/appendix_a/record_templates.json", "templates/appendix_a"),
+                ("templates/scoring/scoring_template_v1.xlsx", "templates/scoring"),
                 ("frontend/dist", "frontend"),
             ),
         )

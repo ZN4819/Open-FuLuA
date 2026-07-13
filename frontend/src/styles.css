@@ -866,6 +866,7 @@ a:hover {
   color: var(--color-danger);
   background: var(--color-danger-soft);
   border: 1px solid #e5b8b4;
+  white-space: pre-wrap;
 }
 
 .success {

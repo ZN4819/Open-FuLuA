@@ -248,7 +248,7 @@ for (const [environment, expected] of [
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("import.meta.env.DEV", client_source)
+        self.assertIn("runtimeEnv.DEV", client_source)
         self.assertIn('"http://127.0.0.1:8000"', client_source)
         self.assertIn(': ""', client_source)
         self.assertNotIn('VITE_API_BASE_URL ?? "http://127.0.0.1:8000"', client_source)

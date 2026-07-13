@@ -12,7 +12,14 @@ from typing import Any, Iterator
 
 from .config import settings
 from .runtime import SCHEMA_VERSION
-from .services.scoring import TECHNICAL_SECTION_CODES, calculate_flat_technical_rows, calculate_technical_rows
+from .services.scoring import (
+    MANAGEMENT_SECTION_CODES,
+    TECHNICAL_SECTION_CODES,
+    calculate_flat_management_rows,
+    calculate_flat_technical_rows,
+    calculate_management_rows,
+    calculate_technical_rows,
+)
 from .services.template_profile import load_template_profile
 
 
@@ -328,6 +335,8 @@ def init_db() -> None:
             ON section_subsystems(project_id, section_code, sort_order)
             """
         )
+        if current_version < 3:
+            _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
 
 
@@ -357,6 +366,23 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def _migrate_management_unit_scores(db: sqlite3.Connection) -> None:
+    sections = db.execute(
+        "SELECT id FROM appendix_sections WHERE code IN ('A-5', 'A-6', 'A-7', 'A-8')"
+    ).fetchall()
+    for section in sections:
+        rows = [dict(row) for row in list_assessment_rows(int(section["id"]), db)]
+        calculated = calculate_flat_management_rows(rows, strict=False)
+        for row in calculated:
+            unit_score = str(row.get("unit_score") or "").strip()
+            if not unit_score:
+                continue
+            db.execute(
+                "UPDATE metric_results SET unit_score = ? WHERE row_id = ?",
+                (unit_score, row["id"]),
+            )
 
 
 def _ensure_record_template_slots_schema(db: sqlite3.Connection) -> None:
@@ -1077,9 +1103,13 @@ def list_effective_assessment_rows(
         "SELECT code FROM appendix_sections WHERE id = ?",
         (section_id,),
     ).fetchone()
-    if section is None or section["code"] not in TECHNICAL_SECTION_CODES:
+    if section is None:
         return rows
-    return calculate_flat_technical_rows(rows, strict=False)
+    if section["code"] in TECHNICAL_SECTION_CODES:
+        return calculate_flat_technical_rows(rows, strict=False)
+    if section["code"] in MANAGEMENT_SECTION_CODES:
+        return calculate_flat_management_rows(rows, strict=False)
+    return rows
 
 
 def list_section_subsystems(project_id: int, section_code: str, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
@@ -1747,7 +1777,7 @@ def prepare_section_rows(
         metric["rk"] = None
         row["metric_result"] = metric
         output.append(row)
-    return output
+    return calculate_management_rows(output, strict=strict)
 
 
 def fixed_object_names_for_section(code: str) -> list[str]:
