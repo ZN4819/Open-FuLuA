@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import HTTPException
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -446,6 +448,128 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual(detail.rows[0].metric_result.compliance, "符合")
         self.assertEqual(detail.evidence_images, [])
         self.assertEqual(detail.cross_references, [])
+
+    def test_management_object_name_is_canonicalized_from_template_profile(self) -> None:
+        project = database.create_project("固定管理对象测试")
+
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-5",
+            rows=[
+                {
+                    "unit": "具备密码应用安全管理制度",
+                    "object_name": "用户输入的对象",
+                    "record_text": "保留原结果记录",
+                    "metric_result": {"compliance": "符合", "unit_score": "1"},
+                }
+            ],
+        )
+
+        detail = build_section_detail(project["id"], "A-5")
+        self.assertEqual(
+            detail.rows[0].object_name,
+            "管理体系（包括安全管理制度类文档、密码应用方案、密钥管理制度及策略类文档、操作规程类文档、记录表单类文档、系统相关人员）",
+        )
+        self.assertEqual(detail.rows[0].record_text, "保留原结果记录")
+
+    def test_a7_save_materializes_both_fixed_objects_for_each_unit(self) -> None:
+        project = database.create_project("A-7 双固定对象测试")
+
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-7",
+            rows=[
+                {
+                    "unit": "制定密码应用方案",
+                    "object_name": "旧对象",
+                    "record_text": "已有记录",
+                    "metric_result": {"compliance": "部分符合", "unit_score": "0.5"},
+                }
+            ],
+        )
+
+        detail = build_section_detail(project["id"], "A-7")
+        self.assertEqual(len(detail.rows), 2)
+        self.assertEqual(
+            [row.object_name for row in detail.rows],
+            [
+                "密码应用方案、密钥管理制度及策略类文档、密码实施方案、商用密码应用安全性评估报告、密码应用安全管理制度、攻防对抗演习报告、整改文档",
+                "管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）",
+            ],
+        )
+        self.assertEqual(detail.rows[0].record_text, "已有记录")
+        self.assertEqual(detail.rows[1].record_text, "")
+
+    def test_a7_normalization_preserves_later_exact_object_record(self) -> None:
+        project = database.create_project("A-7 精确对象匹配测试")
+        second_object = "管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）"
+
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-7",
+            rows=[
+                {
+                    "unit": "制定密码应用方案",
+                    "object_name": second_object,
+                    "record_text": "第二固定对象的已有记录",
+                },
+                {
+                    "unit": "制定密码应用方案",
+                    "object_name": "旧版自定义对象",
+                    "record_text": "应归入第一固定对象的旧记录",
+                },
+            ],
+        )
+
+        detail = build_section_detail(project["id"], "A-7")
+        self.assertEqual(detail.rows[0].record_text, "应归入第一固定对象的旧记录")
+        self.assertEqual(detail.rows[1].object_name, second_object)
+        self.assertEqual(detail.rows[1].record_text, "第二固定对象的已有记录")
+
+    def test_management_section_import_rejects_append_to_existing_fixed_rows(self) -> None:
+        source = database.create_project("固定对象导入源项目")
+        target = database.create_project("固定对象导入目标项目")
+        for project, record_text in ((source, "源记录"), (target, "目标记录")):
+            database.replace_section_rows(
+                project_id=project["id"],
+                code="A-5",
+                rows=[
+                    {
+                        "unit": "具备密码应用安全管理制度",
+                        "object_name": "旧对象名",
+                        "record_text": record_text,
+                    }
+                ],
+            )
+            section = database.get_section(project["id"], "A-5")
+            with database.connect() as db:
+                db.execute(
+                    "UPDATE assessment_rows SET object_name = ? WHERE section_id = ?",
+                    (f"{record_text}旧对象", section["id"]),
+                )
+
+        with self.assertRaises(ValueError) as context:
+            database.append_section_to_project(source["id"], target["id"], "A-5")
+
+        self.assertIn("目标章节已有数据时不能追加导入", str(context.exception))
+        target_detail = build_section_detail(target["id"], "A-5")
+        self.assertEqual(len(target_detail.rows), 1)
+        self.assertEqual(target_detail.rows[0].record_text, "目标记录")
+
+    def test_management_save_rejects_rows_beyond_fixed_object_count(self) -> None:
+        project = database.create_project("固定对象数量校验测试")
+        payload = SectionUpdate(
+            rows=[
+                {"unit": "应急策略", "object_name": "对象一", "record_text": "记录一"},
+                {"unit": "应急策略", "object_name": "对象二", "record_text": "记录二"},
+            ]
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            update_section_detail(project["id"], "A-8", payload)
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("只允许 1 个固定测评对象", context.exception.detail)
 
     def test_section_update_schema_accepts_rows(self) -> None:
         payload = SectionUpdate(

@@ -121,10 +121,47 @@
     { "code": "A-2", "title": "网络和通信安全", "table_title": "表A-2网络和通信安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-2-" },
     { "code": "A-3", "title": "设备和计算安全", "table_title": "表A-3设备和计算安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-3-" },
     { "code": "A-4", "title": "应用和数据安全", "table_title": "表A-4应用和数据安全测评结果记录", "table_type": "technical", "figure_prefix": "图A-4-" },
-    { "code": "A-5", "title": "管理制度", "table_title": "表A-5管理制度测评结果记录", "table_type": "management", "figure_prefix": "图A-5-" },
-    { "code": "A-6", "title": "人员管理", "table_title": "表A-6人员管理测评结果记录", "table_type": "management", "figure_prefix": "图A-6-" },
-    { "code": "A-7", "title": "建设运行", "table_title": "表A-7建设运行测评结果记录", "table_type": "management", "figure_prefix": "图A-7-" },
-    { "code": "A-8", "title": "应急处置", "table_title": "表A-8应急处置测评结果记录", "table_type": "management", "figure_prefix": "图A-8-" }
+    {
+      "code": "A-5",
+      "title": "管理制度",
+      "table_title": "表A-5管理制度测评结果记录",
+      "table_type": "management",
+      "figure_prefix": "图A-5-",
+      "fixed_object_names": [
+        "管理体系（包括安全管理制度类文档、密码应用方案、密钥管理制度及策略类文档、操作规程类文档、记录表单类文档、系统相关人员）"
+      ]
+    },
+    {
+      "code": "A-6",
+      "title": "人员管理",
+      "table_title": "表A-6人员管理测评结果记录",
+      "table_type": "management",
+      "figure_prefix": "图A-6-",
+      "fixed_object_names": [
+        "管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）"
+      ]
+    },
+    {
+      "code": "A-7",
+      "title": "建设运行",
+      "table_title": "表A-7建设运行测评结果记录",
+      "table_type": "management",
+      "figure_prefix": "图A-7-",
+      "fixed_object_names": [
+        "密码应用方案、密钥管理制度及策略类文档、密码实施方案、商用密码应用安全性评估报告、密码应用安全管理制度、攻防对抗演习报告、整改文档",
+        "管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）"
+      ]
+    },
+    {
+      "code": "A-8",
+      "title": "应急处置",
+      "table_title": "表A-8应急处置测评结果记录",
+      "table_type": "management",
+      "figure_prefix": "图A-8-",
+      "fixed_object_names": [
+        "管理体系（包括密码应用应急处置方案、应急处置记录类文档、安全事件发生情况及处置情况报告、系统相关人员）"
+      ]
+    }
   ],
   "content_controls": {
     "technical_metric": {

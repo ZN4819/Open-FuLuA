@@ -85,6 +85,30 @@ class TemplateProfileTest(unittest.TestCase):
         self.assertEqual(page["orientation"], "landscape")
         self.assertAlmostEqual(page["usable_width_in"], 9.69, places=2)
 
+    def test_management_sections_define_sample_document_fixed_objects(self) -> None:
+        profile = load_template_profile()
+        sections = {section["code"]: section for section in profile["sections"]}
+
+        self.assertEqual(
+            sections["A-5"]["fixed_object_names"],
+            ["管理体系（包括安全管理制度类文档、密码应用方案、密钥管理制度及策略类文档、操作规程类文档、记录表单类文档、系统相关人员）"],
+        )
+        self.assertEqual(
+            sections["A-6"]["fixed_object_names"],
+            ["管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）"],
+        )
+        self.assertEqual(
+            sections["A-7"]["fixed_object_names"],
+            [
+                "密码应用方案、密钥管理制度及策略类文档、密码实施方案、商用密码应用安全性评估报告、密码应用安全管理制度、攻防对抗演习报告、整改文档",
+                "管理体系（包括安全管理制度类文档、记录表单类文档、系统相关人员）",
+            ],
+        )
+        self.assertEqual(
+            sections["A-8"]["fixed_object_names"],
+            ["管理体系（包括密码应用应急处置方案、应急处置记录类文档、安全事件发生情况及处置情况报告、系统相关人员）"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

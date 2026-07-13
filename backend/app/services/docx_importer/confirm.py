@@ -10,7 +10,6 @@ from ... import database
 from ...config import settings
 from ...schemas import DocxImportJobRead
 from ..projects import remove_project_runtime_files
-from ..scoring import TECHNICAL_SECTION_CODES, calculate_technical_rows
 from .preview import docx_import_job_to_schema
 
 
@@ -113,8 +112,11 @@ def _create_project_from_payload(job_id: int, project_name: str, parsed_payload:
                 if section_row is None:
                     continue
                 section_rows = list(section.get("rows") or [])
-                if section.get("code") in TECHNICAL_SECTION_CODES:
-                    section_rows = calculate_technical_rows(section_rows, strict=False)
+                section_rows = database.prepare_section_rows(
+                    section.get("code", ""),
+                    section_rows,
+                    strict=False,
+                )
                 for index, row in enumerate(section_rows, start=1):
                     _insert_assessment_row(db, section_row["id"], row, index, image_id_by_import_key, token_by_import_key, timestamp)
 

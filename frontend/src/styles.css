@@ -2035,6 +2035,18 @@ a:hover {
   min-height: 76px;
 }
 
+.fixed-object-name {
+  min-height: 76px;
+  padding: 10px 12px;
+  line-height: 1.55;
+  text-align: left;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .record-cell {
   min-width: 360px;
 }
@@ -2433,6 +2445,20 @@ a:hover {
 .row-action-cell .danger-button {
   min-height: 34px;
   padding: 0 10px;
+}
+
+.fixed-object-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
 }
 
 .evidence-panel {

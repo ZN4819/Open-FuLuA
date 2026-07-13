@@ -142,10 +142,10 @@ class ValidationServiceTest(unittest.TestCase):
 
     def test_validation_ignores_stale_stored_references_not_in_record_text(self) -> None:
         project = database.create_project("stale reference project")
-        image = self._create_image(project["id"], "A-7", "current.png", alt_text="current evidence", dpi=150)
+        image = self._create_image(project["id"], "A-5", "current.png", alt_text="current evidence", dpi=150)
         database.replace_section_rows(
             project_id=project["id"],
-            code="A-7",
+            code="A-5",
             rows=[
                 {
                     "unit": "Unit",
@@ -165,7 +165,7 @@ class ValidationServiceTest(unittest.TestCase):
                 }
             ],
         )
-        section = database.get_section(project["id"], "A-7")
+        section = database.get_section(project["id"], "A-5")
         row = database.list_assessment_rows(section["id"])[0]
         with database.connect() as db:
             db.execute(

@@ -92,14 +92,17 @@ def get_section_detail(project_id: int, code: str) -> SectionDetailRead:
 
 @router.put("/{code}", response_model=SectionDetailRead)
 def update_section_detail(project_id: int, code: str, payload: SectionUpdate) -> SectionDetailRead:
-    updated = database.replace_section_rows(
-        project_id=project_id,
-        code=code,
-        title=payload.title,
-        table_title=payload.table_title,
-        subsystems=payload.subsystems,
-        rows=[row.model_dump() for row in payload.rows],
-    )
+    try:
+        updated = database.replace_section_rows(
+            project_id=project_id,
+            code=code,
+            title=payload.title,
+            table_title=payload.table_title,
+            subsystems=payload.subsystems,
+            rows=[row.model_dump() for row in payload.rows],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail="章节不存在")
     return build_section_detail(project_id, code)
