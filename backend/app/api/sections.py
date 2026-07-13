@@ -40,6 +40,8 @@ def assessment_row_to_schema(row) -> AssessmentRowRead:
             d=row["d"],
             a=row["a"],
             k=row["k"],
+            ra=row["ra"],
+            rk=row["rk"],
             object_score=row["object_score"],
             unit_score=row["unit_score"],
             compliance=row["compliance"],
@@ -62,7 +64,7 @@ def build_section_detail(project_id: int, code: str) -> SectionDetailRead:
     if section is None:
         raise HTTPException(status_code=404, detail="章节不存在")
 
-    rows = [assessment_row_to_schema(row) for row in database.list_assessment_rows(section["id"])]
+    rows = [assessment_row_to_schema(row) for row in database.list_effective_assessment_rows(section["id"])]
     subsystems = _unique_values(
         [row["name"] for row in database.list_section_subsystems(project_id, code)] +
         [row.subsystem for row in rows]

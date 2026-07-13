@@ -55,7 +55,7 @@ def generate_project_docx(project_id: int, mode: ExportMode = "editable") -> Pat
 
         images = database.list_evidence_images(project_id, section["code"])
         figure_refs = build_figure_refs(section["code"], images)
-        rows = database.list_assessment_rows(section["id"])
+        rows = database.list_effective_assessment_rows(section["id"])
         add_assessment_table(document, section, rows, profile, mode, figure_refs)
         add_section_images(document, section["code"], images, profile, bookmark_writer, figure_refs)
 

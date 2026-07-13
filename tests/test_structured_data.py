@@ -14,7 +14,7 @@ from app.api.projects import delete_project as delete_project_schema  # noqa: E4
 from app.api.sections import build_section_detail  # noqa: E402
 from app.api.sections import import_section_to_project  # noqa: E402
 from app.api.sections import update_section_detail  # noqa: E402
-from app.schemas import SectionProjectImport  # noqa: E402
+from app.schemas import MetricResultWrite, SectionProjectImport  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.schemas import SectionUpdate  # noqa: E402
 
@@ -339,13 +339,13 @@ class StructuredDataTest(unittest.TestCase):
                     "unit": "Unit A",
                     "object_name": "Object 1",
                     "record_text": "record 1",
-                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "1", "unit_score": "9.9999"},
+                    "metric_result": {"d": "√", "a": "√", "k": "√", "object_score": "9.9999", "unit_score": "9.9999"},
                 },
                 {
                     "unit": "Unit A",
                     "object_name": "Object 2",
                     "record_text": "record 2",
-                    "metric_result": {"d": "/", "a": "/", "k": "/", "object_score": "0", "unit_score": "9.9999"},
+                    "metric_result": {"d": "×", "a": "√", "k": "√", "object_score": "9.9999", "unit_score": "9.9999"},
                 },
                 {
                     "unit": "Unit A",
@@ -374,6 +374,52 @@ class StructuredDataTest(unittest.TestCase):
         self.assertEqual([row["object_score"] for row in rows[:3]], ["1.0000", "0.0000", "/"])
         self.assertEqual([row["unit_score"] for row in rows[:3]], ["0.5000", "0.5000", "0.5000"])
         self.assertEqual([row["unit_score"] for row in rows[3:]], ["/", "/"])
+
+    def test_technical_scores_are_authoritative_and_legacy_rows_are_recalculated_on_read(self) -> None:
+        project = database.create_project("权威评分测试")
+        database.replace_section_rows(
+            project_id=project["id"],
+            code="A-1",
+            rows=[
+                {
+                    "unit": "身份鉴别",
+                    "object_name": "服务器",
+                    "record_text": "记录",
+                    "metric_result": {
+                        "d": "√",
+                        "a": "×",
+                        "k": "×",
+                        "ra": "0.2",
+                        "rk": "1.2",
+                        "object_score": "9.9999",
+                        "unit_score": "9.9999",
+                    },
+                }
+            ],
+        )
+        section = database.get_section(project["id"], "A-1")
+        raw = database.list_assessment_rows(section["id"])[0]
+        self.assertEqual((raw["object_score"], raw["unit_score"]), ("0.0600", "0.0600"))
+
+        with database.connect() as db:
+            db.execute(
+                "UPDATE metric_results SET ra = NULL, rk = NULL, object_score = '9.9999', unit_score = '9.9999' WHERE row_id = ?",
+                (raw["id"],),
+            )
+        detail = build_section_detail(project["id"], "A-1")
+        metric = detail.rows[0].metric_result
+        self.assertEqual((metric.ra, metric.rk), ("1", "1"))
+        self.assertEqual((metric.object_score, metric.unit_score), ("0.2500", "0.2500"))
+        stored = database.list_assessment_rows(section["id"])[0]
+        self.assertEqual((stored["ra"], stored["rk"], stored["object_score"]), (None, None, "9.9999"))
+
+    def test_metric_write_rejects_invalid_indicators_and_factors(self) -> None:
+        with self.assertRaises(Exception):
+            MetricResultWrite(d="非法")
+        with self.assertRaises(Exception):
+            MetricResultWrite(ra="0.3")
+        with self.assertRaises(Exception):
+            MetricResultWrite(rk="2")
 
     def test_section_detail_shape_matches_api_contract(self) -> None:
         project = database.create_project("章节详情测试")

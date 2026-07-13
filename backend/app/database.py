@@ -4,7 +4,6 @@ import json
 import re
 import shutil
 import uuid
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -13,6 +12,7 @@ from typing import Any, Iterator
 
 from .config import settings
 from .runtime import SCHEMA_VERSION
+from .services.scoring import TECHNICAL_SECTION_CODES, calculate_flat_technical_rows, calculate_technical_rows
 
 
 FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
@@ -111,6 +111,8 @@ def init_db() -> None:
                 d TEXT,
                 a TEXT,
                 k TEXT,
+                ra TEXT,
+                rk TEXT,
                 object_score TEXT,
                 unit_score TEXT,
                 compliance TEXT,
@@ -288,6 +290,8 @@ def init_db() -> None:
         _ensure_column(db, "render_jobs", "page_count", "INTEGER")
         _ensure_column(db, "render_jobs", "log_path", "TEXT")
         _ensure_column(db, "assessment_rows", "subsystem", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "metric_results", "ra", "TEXT")
+        _ensure_column(db, "metric_results", "rk", "TEXT")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS appendix_sections (
@@ -1043,6 +1047,8 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
             m.d,
             m.a,
             m.k,
+            m.ra,
+            m.rk,
             m.object_score,
             m.unit_score,
             m.compliance
@@ -1055,6 +1061,24 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
         return db.execute(query, (section_id,)).fetchall()
     with connect() as connection:
         return connection.execute(query, (section_id,)).fetchall()
+
+
+def list_effective_assessment_rows(
+    section_id: int,
+    db: sqlite3.Connection | None = None,
+) -> list[dict[str, Any]]:
+    if db is None:
+        with connect() as connection:
+            return list_effective_assessment_rows(section_id, connection)
+
+    rows = [dict(row) for row in list_assessment_rows(section_id, db)]
+    section = db.execute(
+        "SELECT code FROM appendix_sections WHERE id = ?",
+        (section_id,),
+    ).fetchone()
+    if section is None or section["code"] not in TECHNICAL_SECTION_CODES:
+        return rows
+    return calculate_flat_technical_rows(rows, strict=False)
 
 
 def list_section_subsystems(project_id: int, section_code: str, db: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
@@ -1335,7 +1359,7 @@ def replace_section_rows(
     subsystems: list[str] | None = None,
 ) -> sqlite3.Row | None:
     timestamp = utc_now()
-    rows = _rows_with_calculated_unit_scores(rows)
+    rows = _prepare_section_rows(code, rows)
     subsystem_names = _unique_nonempty_values(
         (subsystems or []) + [str(row.get("subsystem", "")) for row in rows]
     )
@@ -1396,14 +1420,16 @@ def replace_section_rows(
             db.execute(
                 """
                 INSERT INTO metric_results
-                    (row_id, d, a, k, object_score, unit_score, compliance)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (row_id, d, a, k, ra, rk, object_score, unit_score, compliance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row_id,
                     metric.get("d"),
                     metric.get("a"),
                     metric.get("k"),
+                    metric.get("ra"),
+                    metric.get("rk"),
                     metric.get("object_score"),
                     metric.get("unit_score"),
                     metric.get("compliance"),
@@ -1448,7 +1474,7 @@ def append_section_to_project(
         if source_section is None or target_section is None:
             return None
 
-        source_rows = list_assessment_rows(source_section["id"], db)
+        source_rows = list_effective_assessment_rows(source_section["id"], db)
         target_rows = list_assessment_rows(target_section["id"], db)
         source_object_names = _unique_nonempty_values([row["object_name"] for row in source_rows])
         target_object_names = set(_unique_nonempty_values([row["object_name"] for row in target_rows]))
@@ -1540,6 +1566,8 @@ def append_section_to_project(
                 "d": source_row["d"],
                 "a": source_row["a"],
                 "k": source_row["k"],
+                "ra": source_row["ra"],
+                "rk": source_row["rk"],
                 "object_score": source_row["object_score"],
                 "unit_score": source_row["unit_score"],
                 "compliance": source_row["compliance"],
@@ -1559,7 +1587,7 @@ def append_section_to_project(
                 }
             )
 
-        rows_for_scores = _rows_with_calculated_unit_scores(rows_for_scores)
+        rows_for_scores = _prepare_section_rows(code, rows_for_scores)
         for row in rows_for_scores:
             cursor = db.execute(
                 """
@@ -1583,14 +1611,16 @@ def append_section_to_project(
             db.execute(
                 """
                 INSERT INTO metric_results
-                    (row_id, d, a, k, object_score, unit_score, compliance)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (row_id, d, a, k, ra, rk, object_score, unit_score, compliance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row_id,
                     metric.get("d"),
                     metric.get("a"),
                     metric.get("k"),
+                    metric.get("ra"),
+                    metric.get("rk"),
                     metric.get("object_score"),
                     metric.get("unit_score"),
                     metric.get("compliance"),
@@ -1643,30 +1673,14 @@ def _refresh_unit_scores_for_section(
     if not normalized_units:
         return
 
-    rows = list_assessment_rows(section_id, db)
-    rows_by_unit: dict[str, list[dict[str, Any]]] = {}
+    rows = list_effective_assessment_rows(section_id, db)
     for row in rows:
         unit = str(row["unit"] or "").strip()
         if unit not in normalized_units:
             continue
-        rows_by_unit.setdefault(unit, []).append(
-            {
-                "unit": row["unit"],
-                "metric_result": {"object_score": row["object_score"]},
-            }
-        )
-
-    score_by_unit = {
-        unit: _calculate_unit_score(unit_rows)
-        for unit, unit_rows in rows_by_unit.items()
-    }
-    for row in rows:
-        unit = str(row["unit"] or "").strip()
-        if unit not in score_by_unit:
-            continue
         db.execute(
             "UPDATE metric_results SET unit_score = ? WHERE row_id = ?",
-            (score_by_unit[unit], row["id"]),
+            (row["unit_score"], row["id"]),
         )
 
 
@@ -1713,65 +1727,18 @@ def _active_reference_tokens(record_text: str) -> set[str]:
     return {match.group(0) for match in FIG_TOKEN_RE.finditer(record_text or "")}
 
 
-def _rows_with_calculated_unit_scores(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not any((row.get("metric_result") or {}).get("object_score") is not None for row in rows):
-        return rows
-
-    rows_by_unit: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        rows_by_unit.setdefault(str(row.get("unit", "")).strip(), []).append(row)
-
-    score_by_unit = {
-        unit: _calculate_unit_score(unit_rows)
-        for unit, unit_rows in rows_by_unit.items()
-    }
-    output_rows: list[dict[str, Any]] = []
-    for row in rows:
+def _prepare_section_rows(code: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if code in TECHNICAL_SECTION_CODES:
+        return calculate_technical_rows(rows, strict=True)
+    output: list[dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
         metric = dict(row.get("metric_result") or {})
-        metric["object_score"] = _format_score_to_four_decimals(metric.get("object_score"))
-        metric["unit_score"] = score_by_unit.get(str(row.get("unit", "")).strip(), "")
-        output_rows.append({**row, "metric_result": metric})
-    return output_rows
-
-
-def _format_score_to_four_decimals(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text or text == "/":
-        return text
-    try:
-        score = Decimal(text)
-        if not score.is_finite():
-            return text
-        return str(score.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    except InvalidOperation:
-        return text
-
-def _calculate_unit_score(rows: list[dict[str, Any]]) -> str:
-    numeric_scores: list[Decimal] = []
-    filled_scores = 0
-    excluded_scores = 0
-    for row in rows:
-        metric = row.get("metric_result") or {}
-        score = _format_score_to_four_decimals(metric.get("object_score")) or ""
-        if not score:
-            continue
-        filled_scores += 1
-        if score == "/":
-            excluded_scores += 1
-            continue
-        try:
-            numeric_scores.append(Decimal(score))
-        except InvalidOperation:
-            continue
-
-    if numeric_scores:
-        average = sum(numeric_scores) / Decimal(len(numeric_scores))
-        return str(average.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    if rows and filled_scores == len(rows) and excluded_scores == len(rows):
-        return "/"
-    return ""
+        metric["ra"] = None
+        metric["rk"] = None
+        row["metric_result"] = metric
+        output.append(row)
+    return output
 
 
 def replace_validation_issues(project_id: int, issues: list[dict[str, Any]]) -> list[sqlite3.Row]:

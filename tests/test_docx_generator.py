@@ -86,7 +86,7 @@ class DocxGeneratorTest(unittest.TestCase):
                 "second_text": "",
             },
         )
-        self.assertEqual(_first_table_object_score_column(path), ["1.0000", "0.0000"])
+        self.assertEqual(_first_table_object_score_column(path), ["0.5000", "0.5000"])
         self.assertEqual(
             _first_figure_caption_format(path),
             {
