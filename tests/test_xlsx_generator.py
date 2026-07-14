@@ -71,6 +71,7 @@ class XlsxGeneratorTests(unittest.TestCase):
             self.assertTrue(workbook.calculation.fullCalcOnLoad)
             self.assertTrue(workbook.calculation.forceFullCalc)
             self.assertEqual(workbook.calculation.calcMode, "auto")
+            self.assertTrue(all(worksheet.freeze_panes is None for worksheet in workbook.worksheets))
             self.assertGreaterEqual(len(workbook["2网络和通信安全"].data_validations.dataValidation), 3)
             self.assertFalse(any(
                 marker in str(cell.value)
