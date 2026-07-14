@@ -115,6 +115,14 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         self.assertIn("Get-AuthenticodeSignature", script)
         self.assertRegex(script, r"Get-FileHash\b[^\r\n]*-Algorithm\s+SHA512")
 
+    def test_acceptance_distinguishes_internal_factors_from_word_roundtrip_defaults(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_acceptance.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("$isImportedProject = $name -eq $ImportedProjectName", script)
+        self.assertIn("$expectedRa = if ($isImportedProject) { '1' } else { '0.2' }", script)
+        self.assertIn("$expectedRk = if ($isImportedProject) { '1' } else { '1.2' }", script)
+        self.assertIn("$expectedScore = if ($isImportedProject) { '0.2500' } else { '0.0600' }", script)
+
     def test_package_version_evidence_and_release_workflow_are_consistent(self) -> None:
         package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
         lock = json.loads((ROOT / "desktop" / "package-lock.json").read_text(encoding="utf-8"))

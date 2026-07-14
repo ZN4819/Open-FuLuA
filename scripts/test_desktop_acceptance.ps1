@@ -311,7 +311,14 @@ function Assert-BusinessState {
         $rows = @($detail.rows); $images = @($detail.evidence_images); $references = @($detail.cross_references)
         if ($rows.Count -ne 1 -or $images.Count -ne 1 -or $references.Count -ne 1) { throw "业务状态数量不一致：$name" }
         $row = $rows[0]; $image = $images[0]; $reference = $references[0]
-        if ([string]$row.record_text -notmatch '\[\[FIG:\d+\]\]' -or $row.metric_result.d -ne '√' -or $row.metric_result.a -ne '×' -or $row.metric_result.k -ne '×' -or $row.metric_result.ra -ne '0.2' -or $row.metric_result.rk -ne '1.2' -or $row.metric_result.object_score -ne '0.0600' -or $row.metric_result.unit_score -ne '0.0600') { throw "业务行正文或评分不一致：$name" }
+        if ([string]$row.record_text -notmatch '\[\[FIG:\d+\]\]' -or $row.metric_result.d -ne '√' -or $row.metric_result.a -ne '×' -or $row.metric_result.k -ne '×') { throw "业务行正文或 D/A/K 不一致：$name" }
+        $isImportedProject = $name -eq $ImportedProjectName
+        $expectedRa = if ($isImportedProject) { '1' } else { '0.2' }
+        $expectedRk = if ($isImportedProject) { '1' } else { '1.2' }
+        $expectedScore = if ($isImportedProject) { '0.2500' } else { '0.0600' }
+        if ($row.metric_result.ra -ne $expectedRa -or $row.metric_result.rk -ne $expectedRk -or $row.metric_result.object_score -ne $expectedScore -or $row.metric_result.unit_score -ne $expectedScore) {
+            throw "业务行 Ra/Rk 或评分不一致：$name；期望 Ra/Rk/得分=$expectedRa/$expectedRk/$expectedScore，实际=$($row.metric_result.ra)/$($row.metric_result.rk)/$($row.metric_result.object_score)/$($row.metric_result.unit_score)"
+        }
         if ([string]::IsNullOrWhiteSpace([string]$image.file_url) -or $image.caption -ne 'CD-8 验收图片' -or $image.pixel_width -ne 640 -or $image.pixel_height -ne 360) { throw "图片元数据不一致：$name" }
         if ([int]$reference.target_image_id -ne [int]$image.id -or [string]$reference.token -ne "[[FIG:$([int]$image.id)]]") { throw "图片交叉引用不一致：$name" }
         $fileUri = if ([string]$image.file_url -match '^https?://') { [string]$image.file_url } else { "$BaseUri$([string]$image.file_url)" }
