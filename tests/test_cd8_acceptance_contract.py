@@ -115,15 +115,15 @@ class Cd8AcceptanceContractTests(unittest.TestCase):
         self.assertIn("Get-AuthenticodeSignature", script)
         self.assertRegex(script, r"Get-FileHash\b[^\r\n]*-Algorithm\s+SHA512")
 
-    def test_rc_version_evidence_and_release_workflow_are_consistent(self) -> None:
+    def test_package_version_evidence_and_release_workflow_are_consistent(self) -> None:
         package = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
         lock = json.loads((ROOT / "desktop" / "package-lock.json").read_text(encoding="utf-8"))
         script = (ROOT / "scripts" / "test_desktop_acceptance.ps1").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
 
-        self.assertEqual(package["version"], "0.1.0-rc.1")
-        self.assertEqual(lock["version"], "0.1.0-rc.1")
-        self.assertEqual(lock["packages"][""]["version"], "0.1.0-rc.1")
+        self.assertRegex(package["version"], r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+        self.assertEqual(lock["version"], package["version"])
+        self.assertEqual(lock["packages"][""]["version"], package["version"])
         self.assertIn("EvidenceOutputPath", script)
         for field in ("source_commit", "version", "installer_sha512", "signatures"):
             self.assertIn(field, script)
