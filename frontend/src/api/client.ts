@@ -1,8 +1,9 @@
-const rawExplicitApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const runtimeEnv = import.meta.env ?? {};
+const rawExplicitApiBaseUrl = runtimeEnv.VITE_API_BASE_URL?.trim();
 const explicitApiBaseUrl = rawExplicitApiBaseUrl?.replace(/\/+$/, "") ?? "";
 const API_BASE_URL = rawExplicitApiBaseUrl
   ? explicitApiBaseUrl
-  : (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
+  : (runtimeEnv.DEV ? "http://127.0.0.1:8000" : "");
 
 export type Section = {
   id: number;
@@ -665,6 +666,29 @@ export async function exportProjectDocx(projectId: number, mode: "editable" | "f
   return fileName;
 }
 
+export async function exportProjectXlsx(projectId: number): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/exports/xlsx`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, `导出打分表失败：${response.status}`));
+  }
+
+  const blob = await response.blob();
+  const fileName = _fileNameFromDisposition(response.headers.get("content-disposition")) ??
+    `score_workbook_project_${projectId}.xlsx`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return fileName;
+}
+
 export function validateProject(projectId: number): Promise<ValidationResponse> {
   return request<ValidationResponse>(`/api/projects/${projectId}/validate`, {
     method: "POST"
@@ -719,6 +743,23 @@ async function responseErrorMessage(response: Response, fallback: string): Promi
     const detail = payload.detail ?? payload.message;
     if (typeof detail === "string" && detail.trim()) {
       return detail;
+    }
+    if (detail && typeof detail === "object") {
+      const structured = detail as {
+        message?: unknown;
+        issues?: Array<{ section_code?: string; unit?: string; object_name?: string; field?: string; message?: string }>;
+      };
+      const message = typeof structured.message === "string" ? structured.message.trim() : "";
+      const issueMessages = Array.isArray(structured.issues)
+        ? structured.issues.slice(0, 5).map((issue) => {
+            const location = [issue.section_code, issue.unit, issue.object_name].filter(Boolean).join(" / ");
+            return `${location ? `${location}：` : ""}${issue.message ?? issue.field ?? "评分数据不完整"}`;
+          })
+        : [];
+      if (message || issueMessages.length > 0) {
+        const remainder = (structured.issues?.length ?? 0) - issueMessages.length;
+        return [message, ...issueMessages, remainder > 0 ? `另有 ${remainder} 项问题。` : ""].filter(Boolean).join("\n");
+      }
     }
   } catch {
     // Plain-text error bodies can be shown directly.

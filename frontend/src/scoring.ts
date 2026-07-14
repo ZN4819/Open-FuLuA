@@ -16,8 +16,24 @@ type TechnicalRow = {
   metric_result?: TechnicalMetric | null;
 };
 
+type ManagementMetric = {
+  compliance?: string | null;
+  unit_score?: string | null;
+};
+
+type ManagementRow = {
+  unit: string;
+  metric_result?: ManagementMetric | null;
+};
+
 const METRIC_OPTIONS = new Set(["√", "×", "/"]);
 const SCORE_SCALE = 10_000;
+const MANAGEMENT_SCORES = new Map([
+  ["符合", "1.0000"],
+  ["部分符合", "0.5000"],
+  ["不符合", "0.0000"],
+  ["不适用", "/"]
+]);
 
 export function calculateObjectScore(metric: TechnicalMetric): string {
   const d = text(metric.d);
@@ -100,6 +116,25 @@ export function calculateTechnicalRows<T extends TechnicalRow>(rows: T[]): T[] {
     metric_result: {
       ...(source.metric_result ?? {}),
       unit_score: unitScores.get(source.unit.trim()) ?? ""
+    }
+  } as T));
+}
+
+export function calculateManagementRows<T extends ManagementRow>(rows: T[]): T[] {
+  const scoresByUnit = new Map<string, string[]>();
+  rows.forEach((row) => {
+    const compliance = text(row.metric_result?.compliance);
+    const score = MANAGEMENT_SCORES.get(compliance) ?? "";
+    const unit = row.unit.trim();
+    scoresByUnit.set(unit, [...(scoresByUnit.get(unit) ?? []), score]);
+  });
+  const unitScores = new Map<string, string>();
+  scoresByUnit.forEach((scores, unit) => unitScores.set(unit, calculateUnitScore(scores)));
+  return rows.map((row) => ({
+    ...row,
+    metric_result: {
+      ...(row.metric_result ?? {}),
+      unit_score: unitScores.get(row.unit.trim()) ?? ""
     }
   } as T));
 }

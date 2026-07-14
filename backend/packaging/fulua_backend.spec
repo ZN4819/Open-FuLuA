@@ -10,6 +10,7 @@ PACKAGING_ROOT = BACKEND_ROOT / "packaging"
 PACKAGED_DATA_SOURCES = (
     ("templates/appendix_a/template_profile.json", "templates/appendix_a"),
     ("templates/appendix_a/record_templates.json", "templates/appendix_a"),
+    ("templates/scoring/scoring_template_v1.xlsx", "templates/scoring"),
     ("frontend/dist", "frontend"),
 )
 
@@ -20,6 +21,7 @@ hiddenimports = [
     "app.desktop_server",
     *collect_submodules("PIL"),
     *collect_submodules("lxml"),
+    *collect_submodules("openpyxl"),
 ]
 
 analysis = Analysis(

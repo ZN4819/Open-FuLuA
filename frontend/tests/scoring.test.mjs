@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { calculateObjectScore, calculateTechnicalRows, calculateUnitScore } from "../src/scoring.ts";
+import { calculateManagementRows, calculateObjectScore, calculateTechnicalRows, calculateUnitScore } from "../src/scoring.ts";
 
 test("对象评分覆盖全部公式分支", () => {
   const cases = [
@@ -36,4 +36,32 @@ test("整行计算补默认系数并按完整单元聚合", () => {
   assert.equal(rows[0].metric_result.unit_score, "0.0600");
   assert.equal(rows[1].metric_result.ra, "1");
   assert.equal(rows[1].metric_result.rk, "1");
+});
+
+test("管理评分由符合情况映射并按有效对象平均", () => {
+  const rows = calculateManagementRows([
+    { unit: "建设运行", metric_result: { compliance: "符合", unit_score: "9.9999" } },
+    { unit: "建设运行", metric_result: { compliance: "部分符合", unit_score: "9.9999" } }
+  ]);
+  assert.equal(rows[0].metric_result.unit_score, "0.7500");
+  assert.equal(rows[1].metric_result.unit_score, "0.7500");
+  assert.equal(calculateManagementRows([
+    { unit: "制度", metric_result: { compliance: "不适用" } },
+    { unit: "制度", metric_result: { compliance: "不适用" } }
+  ])[0].metric_result.unit_score, "/");
+});
+
+test("管理评分覆盖不符合、混合不适用、未完成、非法值和单元隔离", () => {
+  const rows = calculateManagementRows([
+    { unit: "单元甲", metric_result: { compliance: "不符合" } },
+    { unit: "单元甲", metric_result: { compliance: "不适用" } },
+    { unit: "单元乙", metric_result: { compliance: "符合" } },
+    { unit: "单元丙", metric_result: { compliance: "" } },
+    { unit: "单元丁", metric_result: { compliance: "非法值" } }
+  ]);
+  assert.equal(rows[0].metric_result.unit_score, "0.0000");
+  assert.equal(rows[1].metric_result.unit_score, "0.0000");
+  assert.equal(rows[2].metric_result.unit_score, "1.0000");
+  assert.equal(rows[3].metric_result.unit_score, "");
+  assert.equal(rows[4].metric_result.unit_score, "");
 });

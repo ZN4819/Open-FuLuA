@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent, type MouseEvent } from "react";
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
-import { calculateTechnicalRows, RA_OPTIONS, RK_OPTIONS } from "../scoring";
+import { calculateManagementRows, calculateTechnicalRows, RA_OPTIONS, RK_OPTIONS } from "../scoring";
 
 export type SubsystemUiState = {
   manualSubsystemNames: string[];
@@ -738,7 +738,7 @@ function normalizeRows(
       sort_order: index + 1
     }));
 
-  return calculateUnitScores ? calculateTechnicalRows(normalizedRows) : normalizedRows;
+  return calculateUnitScores ? calculateTechnicalRows(normalizedRows) : calculateManagementRows(normalizedRows);
 }
 
 export function AssessmentTable({
@@ -1050,26 +1050,6 @@ export function AssessmentTable({
       return;
     }
     onRowsChange(nextRows);
-  }
-
-  function updateUnitScoreForUnit(unit: string, value: string) {
-    const next = normalizeRows(
-      normalizedRows.map((row) => {
-        if (row.unit.trim() !== unit) {
-          return row;
-        }
-        return {
-          ...row,
-          metric_result: {
-            ...(row.metric_result ?? EMPTY_METRIC),
-            unit_score: value
-          }
-        };
-      }),
-      unitOrder,
-      false
-    );
-    onRowsChange(next);
   }
 
   function rememberRecordSelection(index: number, target: HTMLElement) {
@@ -1803,11 +1783,7 @@ export function AssessmentTable({
                             </td>
                             {entryIndex === 0 ? (
                               <td className="score-cell unit-score-cell" rowSpan={group.entries.length}>
-                                <input
-                                  className="score-input"
-                                  value={group.unitScore}
-                                  onChange={(event) => updateUnitScoreForUnit(group.unit, event.target.value)}
-                                />
+                                <output className="unit-score-output">{group.unitScore}</output>
                               </td>
                             ) : null}
                           </>

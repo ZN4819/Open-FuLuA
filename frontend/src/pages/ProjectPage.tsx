@@ -5,6 +5,7 @@ import {
   deleteEvidenceImage,
   deleteProject,
   exportProjectDocx,
+  exportProjectXlsx,
   exportRecordTemplateSlots,
   getProject,
   getRecordTemplateSlots,
@@ -34,6 +35,7 @@ import {
 } from "../api/client";
 import { AssessmentTable, type EvidenceImageFilterState, type SubsystemUiState } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
+import { scoreWorkbookExportBlockReason } from "../exporting";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
 import { TemplateManagerPanel } from "../components/TemplateManagerPanel";
@@ -360,6 +362,7 @@ export function ProjectPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [isExporting, setIsExporting] = useState<"editable" | "final" | null>(null);
+  const [isExportingXlsx, setIsExportingXlsx] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validation, setValidation] = useState<ValidationResponse>();
   const [saveMessage, setSaveMessage] = useState<string>();
@@ -1016,6 +1019,28 @@ export function ProjectPage() {
     }
   }
 
+  async function handleExportXlsx() {
+    if (!project) {
+      return;
+    }
+    const blockedReason = scoreWorkbookExportBlockReason(dirtySections.size);
+    if (blockedReason) {
+      setError(blockedReason);
+      return;
+    }
+
+    setIsExportingXlsx(true);
+    setError(undefined);
+    try {
+      const fileName = await exportProjectXlsx(project.id);
+      setSaveMessage(`已生成 ${fileName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导出打分表失败");
+    } finally {
+      setIsExportingXlsx(false);
+    }
+  }
+
   async function handleValidate() {
     if (!project) {
       return;
@@ -1229,11 +1254,14 @@ export function ProjectPage() {
               </div>
               <div className="action-group project-command-group project-command-group-export">
                 <span className="command-group-label">交付</span>
-                <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null || isSavingAny}>
+                <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
                   {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
                 </button>
-                <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null || isSavingAny}>
+                <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
                   {isExporting === "final" ? "生成中..." : "导出最终版"}
+                </button>
+                <button type="button" onClick={handleExportXlsx} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
+                  {isExportingXlsx ? "生成中..." : "导出打分表"}
                 </button>
               </div>
             </div>
