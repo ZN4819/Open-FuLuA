@@ -96,6 +96,8 @@ def generate_score_workbook(project_id: int) -> Path:
             unit_links[(code, unit)] = (sheet_name, *cells)
 
     _rebuild_overall_links(workbook["整体测评"], expected_units, unit_links)
+    for worksheet in workbook.worksheets:
+        worksheet.freeze_panes = None
     workbook.calculation.calcMode = "auto"
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
@@ -231,7 +233,6 @@ def _build_technical_sheet(
     _add_list_validation(worksheet, f"D5:F{current_row - 1}", ["√", "×", "/"])
     _add_list_validation(worksheet, f"G5:G{current_row - 1}", ["1", "0.5", "0.2"])
     _add_list_validation(worksheet, f"H5:H{current_row - 1}", ["1", "1.2"])
-    worksheet.freeze_panes = "A5"
     worksheet.print_area = f"A1:P{current_row - 1}"
     for column in ("N", "O", "P"):
         worksheet.column_dimensions[column].width = max(worksheet.column_dimensions[column].width or 0, 12)
@@ -305,7 +306,6 @@ def _build_management_sheet(
 
     last_column = get_column_letter(len(units) + 2)
     _add_list_validation(worksheet, f"C3:{last_column}{last_object_row}", ["1", "0.5", "0", "N/A"])
-    worksheet.freeze_panes = "C3"
     worksheet.print_area = f"A1:{last_column}{summary_start + 4}"
     return links
 
