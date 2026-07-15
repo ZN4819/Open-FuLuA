@@ -42,6 +42,16 @@ class ReportTemplateAssetTests(unittest.TestCase):
         self.assertEqual(additional_references.cardinality, "many")
         self.assertEqual(additional_references.source_kind, ["manual", "imported"])
         self.assertEqual(additional_references.export_slots, ["bookmark:report_additional_reference_standards"])
+        high_risk_judgement = next(
+            field for field in result.fields if field.field_id == "report.risk.high_risk_judgement"
+        )
+        self.assertEqual(high_risk_judgement.data_type, "derived")
+        self.assertEqual(high_risk_judgement.source_kind, ["derived"])
+        self.assertEqual(high_risk_judgement.source_evidence, ["confirmed_risk_snapshot"])
+        self.assertEqual(high_risk_judgement.format["rule"], "high_risk_count_gt_zero")
+        self.assertEqual(high_risk_judgement.format["present_text"], "判定系统存在高风险")
+        self.assertEqual(high_risk_judgement.format["absent_text"], "判定系统不存在高风险")
+        self.assertEqual(high_risk_judgement.format["incomplete_behavior"], "block_export")
 
     def test_rule_hints_cover_every_comment_without_approval_or_pii(self) -> None:
         result = validate_rule_hints(ASSETS / "rule_hints.json")

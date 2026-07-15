@@ -22,10 +22,10 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "7c47a9d81478be0ce6df417f9bd88262493fadbbb24f2a45e25d9d434de15a13"
+TRUSTED_ASSET_HASHES_SHA256 = "5ba8646d8f5a015c220e30e037c682279366c0670677ef2bba1a44f130e90755"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
-EXPECTED_SEMANTIC_TAG_COUNT = 21
+EXPECTED_SEMANTIC_TAG_COUNT = 22
 APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
 APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
 

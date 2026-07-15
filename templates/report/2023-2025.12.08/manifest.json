@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "550ee6f0b840bfe36103bdfb39864829629e117c2ed723a3e21dcc1e545c2221",
+  "runtime_template_sha256": "09559de0d04a3f44ead1c5d4585fee8db7dea38e60ec0f9874f6365c97ac2281",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -1671,9 +1671,13 @@
       {
         "tag": "report.result.conclusion",
         "expected_count": 1
+      },
+      {
+        "tag": "report.risk.high_risk_judgement",
+        "expected_count": 1
       }
     ],
-    "expected_total_count": 604,
+    "expected_total_count": 605,
     "field_export_slots": [
       "sdt:report.identity.number",
       "sdt:report.identity.date",
@@ -1710,6 +1714,7 @@
       "sdt:report.result.overall_score",
       "sdt:report.result.conclusion",
       "bookmark:rt_table_038",
+      "sdt:report.risk.high_risk_judgement",
       "bookmark:rt_table_039",
       "bookmark:rt_table_040",
       "bookmark:rt_table_041",

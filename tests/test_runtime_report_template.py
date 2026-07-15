@@ -128,13 +128,14 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             document = etree.fromstring(package.read("word/document.xml"))
         tags = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
         bookmarks = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'rt_table_')]/@w:name", namespaces=NS)
-        self.assertEqual(len(tags), 604)
+        self.assertEqual(len(tags), 605)
         self.assertEqual(len(tags), len(set(tags)))
         self.assertEqual(bookmarks, [f"rt_table_{index:03d}" for index in range(1, 56)])
         semantic = document.xpath("//w:sdtPr/w:tag[starts-with(@w:val, 'report.')]/@w:val", namespaces=NS)
-        self.assertEqual(len(semantic), 21)
+        self.assertEqual(len(semantic), 22)
         self.assertEqual(len(semantic), len(set(semantic)))
         self.assertNotIn("report.identity.version", semantic)
+        self.assertIn("report.risk.high_risk_judgement", semantic)
         visible_text = "".join(document.xpath("//w:t/text()", namespaces=NS))
         self.assertNotIn("报告版本", visible_text)
         self.assertIn("本报告是被测信息系统名称的商用密码应用安全性评估报告，报告模板为2023年版。", visible_text)
@@ -273,10 +274,15 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         risk_summary = body_paragraphs[357]
         risk_summary_text = "".join(risk_summary.xpath(".//w:t/text()", namespaces=NS))
         self.assertIn(
-            "根据《商用密码应用安全性评估高风险判定指引》判定系统是否存在高风险。"
+            "根据《商用密码应用安全性评估高风险判定指引》【高风险判定】。"
             "经风险分析，系统存在高风险【高风险项数量】项，中风险【中风险项数量】项，"
             "低风险【低风险项数量】项，具体见表61：",
             risk_summary_text,
+        )
+        self.assertNotIn("判定系统是否存在高风险", risk_summary_text)
+        self.assertEqual(
+            risk_summary.xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS),
+            ["report.risk.high_risk_judgement"],
         )
         self.assertNotRegex(risk_summary_text, r"[{}]|(?<![A-Za-z])X{1,20}(?![A-Za-z])")
         self.assertEqual(
