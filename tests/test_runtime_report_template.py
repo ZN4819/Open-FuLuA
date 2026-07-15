@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 import unittest
@@ -18,7 +19,10 @@ from scripts.build_runtime_report_template import _scrub_story
 RUNTIME = ROOT / "templates" / "report" / "2023-2025.12.08" / "runtime_template.docx"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
-NS = {"w": W, "w14": W14}
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+V = "urn:schemas-microsoft-com:vml"
+O = "urn:schemas-microsoft-com:office:office"
+NS = {"w": W, "w14": W14, "r": R, "v": V, "o": O}
 
 
 class RuntimeReportTemplateTests(unittest.TestCase):
@@ -47,7 +51,12 @@ class RuntimeReportTemplateTests(unittest.TestCase):
     def test_runtime_package_has_no_private_or_executable_parts(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
             names = set(package.namelist())
-            self.assertFalse(any(name.startswith(("customXml/", "word/glossary/", "word/embeddings/", "word/media/", "word/activeX/")) for name in names))
+            self.assertFalse(any(name.startswith(("customXml/", "word/glossary/", "word/embeddings/", "word/activeX/")) for name in names))
+            self.assertEqual(sorted(name for name in names if name.startswith("word/media/")), ["word/media/image1.emf"])
+            self.assertEqual(
+                hashlib.sha256(package.read("word/media/image1.emf")).hexdigest(),
+                "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86",
+            )
             self.assertFalse(any("comments" in name.lower() or "people" in name.lower() for name in names))
             payload = b"\n".join(package.read(name) for name in names if name.endswith((".xml", ".rels"))).decode("utf-8", errors="ignore")
             story_text = ""
@@ -119,11 +128,11 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             document = etree.fromstring(package.read("word/document.xml"))
         tags = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
         bookmarks = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'rt_table_')]/@w:name", namespaces=NS)
-        self.assertEqual(len(tags), 597)
+        self.assertEqual(len(tags), 604)
         self.assertEqual(len(tags), len(set(tags)))
         self.assertEqual(bookmarks, [f"rt_table_{index:03d}" for index in range(1, 56)])
         semantic = document.xpath("//w:sdtPr/w:tag[starts-with(@w:val, 'report.')]/@w:val", namespaces=NS)
-        self.assertEqual(len(semantic), 14)
+        self.assertEqual(len(semantic), 21)
         self.assertEqual(len(semantic), len(set(semantic)))
         self.assertNotIn("report.identity.version", semantic)
         visible_text = "".join(document.xpath("//w:t/text()", namespaces=NS))
@@ -207,6 +216,58 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             )
             self.assertTrue(italics)
             self.assertTrue(all(italic.get(f"{{{W}}}val") == "0" for italic in italics))
+        self.assertIn(
+            "中互金认证有限公司受【被测单位】委托，于【测评开始日期】至【测评结束日期】",
+            "".join(body_paragraphs[158].xpath(".//w:t/text()", namespaces=NS)),
+        )
+        expected_reference_standards = (
+            "GB/T 43206—2023《信息安全技术 信息系统密码应用测评要求》",
+            "GB/T 43207—2023《信息安全技术 信息系统密码应用设计指南》",
+            "GM/T 0116—2021《信息系统密码应用测评过程指南》",
+            "《信息系统密码应用高风险判定指引》",
+            "《商用密码应用安全性评估量化评估规则》",
+        )
+        self.assertEqual(
+            tuple("".join(body_paragraphs[index].xpath(".//w:t/text()", namespaces=NS)) for index in range(163, 168)),
+            expected_reference_standards,
+        )
+        for index in (168, 169):
+            self.assertEqual("".join(body_paragraphs[index].xpath(".//w:t/text()", namespaces=NS)), "")
+            self.assertFalse(body_paragraphs[index].xpath("./w:pPr/w:numPr", namespaces=NS))
+        self.assertTrue(
+            body_paragraphs[168].xpath(
+                ".//w:bookmarkStart[@w:name='report_additional_reference_standards']",
+                namespaces=NS,
+            )
+        )
+        workflow_picture = body_paragraphs[174].xpath(".//w:pict/v:shape/v:imagedata[@r:id='rId25']", namespaces=NS)
+        self.assertEqual(len(workflow_picture), 1)
+        self.assertFalse(body_paragraphs[174].xpath(".//w:object | .//o:OLEObject", namespaces=NS))
+        time_slots = {
+            178: ("测评准备阶段时间：", "report.assessment.preparation_period"),
+            183: ("方案编制阶段时间：", "report.assessment.plan_period"),
+            187: ("现场测评阶段时间：", "report.assessment.period"),
+            191: ("分析与报告编制阶段时间：", "report.assessment.report_period"),
+        }
+        for paragraph_index, (label, tag) in time_slots.items():
+            paragraph = body_paragraphs[paragraph_index]
+            self.assertEqual("".join(paragraph.xpath(".//w:t/text()", namespaces=NS)), label + "【开始日期】至【结束日期】")
+            self.assertEqual(paragraph.xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS), [tag])
+        distribution_text = "".join(body_paragraphs[193].xpath(".//w:t/text()", namespaces=NS))
+        self.assertEqual(
+            distribution_text,
+            "本报告一式【总份数】份，其中【密码管理部门份数】份提交密码管理部门，"
+            "【委托单位份数】份提交委托单位，【密评机构留存份数】份由密评机构留存。",
+        )
+        self.assertEqual(
+            body_paragraphs[193].xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS),
+            [
+                "report.distribution.total_copies",
+                "report.distribution.regulator_copies",
+                "report.distribution.client_copies",
+                "report.distribution.assessment_copies",
+            ],
+        )
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)

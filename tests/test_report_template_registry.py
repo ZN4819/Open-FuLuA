@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.api.report_templates import get_report_template, get_report_template_rule_hints
+from app.api.report_templates import get_report_template, get_report_template_fields, get_report_template_rule_hints
 from app.services.report_templates.registry import PACKAGE_ID, ReportTemplateUnavailable, report_template_registry
 
 
@@ -29,6 +29,16 @@ class ReportTemplateRegistryTests(unittest.TestCase):
         self.assertEqual(len(response["rules"]), 121)
         self.assertEqual({r["approval_status"] for r in response["rules"]}, {"pending"})
         self.assertNotIn('"author":', repr(response).lower())
+
+    def test_api_exposes_manual_additional_reference_standard_entry(self) -> None:
+        response = get_report_template_fields(PACKAGE_ID)
+        field = next(
+            item for item in response["fields"]
+            if item["field_id"] == "report.assessment.additional_reference_standards"
+        )
+        self.assertEqual(field["label"], "其他参考标准和规范")
+        self.assertEqual(field["cardinality"], "many")
+        self.assertEqual(field["source_kind"], ["manual", "imported"])
 
     def test_unknown_package_returns_404(self) -> None:
         with self.assertRaises(HTTPException) as raised:

@@ -36,6 +36,12 @@ class ReportTemplateAssetTests(unittest.TestCase):
             for slot in field.export_slots:
                 kind, target = slot.split(":", 1)
                 self.assertIn(target, bookmarks if kind == "bookmark" else tags, slot)
+        additional_references = next(
+            field for field in result.fields if field.field_id == "report.assessment.additional_reference_standards"
+        )
+        self.assertEqual(additional_references.cardinality, "many")
+        self.assertEqual(additional_references.source_kind, ["manual", "imported"])
+        self.assertEqual(additional_references.export_slots, ["bookmark:report_additional_reference_standards"])
 
     def test_rule_hints_cover_every_comment_without_approval_or_pii(self) -> None:
         result = validate_rule_hints(ASSETS / "rule_hints.json")

@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "7cf2f2137608f9f917c11e05da2458211532901b2ad18745348599ee7b1f549d",
+  "runtime_template_sha256": "be05781ea6c9b9137b77957ce121de4a32ee6f137517606df66bc96229004fec",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -33,6 +33,7 @@
     "word/header6.xml",
     "word/header7.xml",
     "word/header8.xml",
+    "word/media/image1.emf",
     "word/numbering.xml",
     "word/settings.xml",
     "word/styles.xml",
@@ -1628,7 +1629,35 @@
         "expected_count": 1
       },
       {
+        "tag": "report.assessment.preparation_period",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.assessment.plan_period",
+        "expected_count": 1
+      },
+      {
         "tag": "report.assessment.period",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.assessment.report_period",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.distribution.total_copies",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.distribution.regulator_copies",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.distribution.client_copies",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.distribution.assessment_copies",
         "expected_count": 1
       },
       {
@@ -1644,7 +1673,7 @@
         "expected_count": 1
       }
     ],
-    "expected_total_count": 597,
+    "expected_total_count": 604,
     "field_export_slots": [
       "sdt:report.identity.number",
       "sdt:report.identity.date",
@@ -1668,7 +1697,15 @@
       "bookmark:rt_table_013",
       "bookmark:rt_table_014",
       "bookmark:rt_table_015",
+      "bookmark:report_additional_reference_standards",
+      "sdt:report.assessment.preparation_period",
+      "sdt:report.assessment.plan_period",
       "sdt:report.assessment.period",
+      "sdt:report.assessment.report_period",
+      "sdt:report.distribution.total_copies",
+      "sdt:report.distribution.regulator_copies",
+      "sdt:report.distribution.client_copies",
+      "sdt:report.distribution.assessment_copies",
       "sdt:report.assessment.methods",
       "sdt:report.result.overall_score",
       "sdt:report.result.conclusion",
@@ -2035,6 +2072,7 @@
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",

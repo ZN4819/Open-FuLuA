@@ -20,11 +20,18 @@ except ImportError:  # 直接作为 CLI 脚本执行
 APPROVED_SOURCE_SHA256 = "b3957fd1da3bf19c31ac515fbdc6bf989fd7df033ca4d179c4b6e9567247fcf8"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+V = "urn:schemas-microsoft-com:vml"
+O = "urn:schemas-microsoft-com:office:office"
 PR = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
 DC = "http://purl.org/dc/elements/1.1/"
-NS = {"w": W, "w14": W14, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
+NS = {"w": W, "w14": W14, "r": R, "v": V, "o": O, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
+
+APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
+APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
+APPROVED_WORKFLOW_IMAGE_RELATIONSHIP_ID = "rId25"
 
 SDT_TYPE_NAMES = {
     "equation", "comboBox", "date", "docPartObj", "docPartList", "dropDownList",
@@ -46,7 +53,11 @@ FORBIDDEN_REL_SUFFIXES = (
 
 
 def _keep_part(name: str) -> bool:
-    return name in ALLOWED_EXACT_PARTS or bool(re.fullmatch(r"word/(header|footer)\d+\.xml", name))
+    return (
+        name in ALLOWED_EXACT_PARTS
+        or name == APPROVED_WORKFLOW_IMAGE_PART
+        or bool(re.fullmatch(r"word/(header|footer)\d+\.xml", name))
+    )
 
 
 def _xml(data: bytes) -> etree._Element:
@@ -61,7 +72,15 @@ def _clean_relationships(data: bytes) -> bytes:
     root = _xml(data)
     for rel in list(root):
         rel_type = rel.get("Type", "")
-        if rel.get("TargetMode") == "External" or rel_type.endswith(FORBIDDEN_REL_SUFFIXES):
+        approved_workflow_image = (
+            rel.get("Id") == APPROVED_WORKFLOW_IMAGE_RELATIONSHIP_ID
+            and rel_type.endswith("/image")
+            and rel.get("Target") == "media/image1.emf"
+            and rel.get("TargetMode") != "External"
+        )
+        if rel.get("TargetMode") == "External" or (
+            rel_type.endswith(FORBIDDEN_REL_SUFFIXES) and not approved_workflow_image
+        ):
             root.remove(rel)
     return _serialize(root)
 
@@ -165,6 +184,21 @@ def _scrub_story(root: etree._Element, body_paragraphs: list[etree._Element] | N
 
 def _clean_document(data: bytes) -> bytes:
     root = _xml(data)
+    # 源模板流程图是 Visio OLE 对象。仅保留其已批准、固定哈希的 EMF 静态预览，
+    # 将 w:object 降级为普通 VML 图片；OLEObject 节点和 embeddings 二进制仍删除。
+    for object_node in root.xpath(
+        f"//w:object[.//v:imagedata[@r:id='{APPROVED_WORKFLOW_IMAGE_RELATIONSHIP_ID}']]",
+        namespaces=NS,
+    ):
+        picture = etree.Element(f"{{{W}}}pict")
+        for child in object_node:
+            child_name = etree.QName(child)
+            if child_name.namespace == V and child_name.localname in {"shapetype", "shape"}:
+                clone = copy.deepcopy(child)
+                if child_name.localname == "shape":
+                    clone.attrib.pop(f"{{{O}}}ole", None)
+                picture.append(clone)
+        object_node.getparent().replace(object_node, picture)
     for node in root.xpath("//w:commentRangeStart | //w:commentRangeEnd | //w:commentReference | //w:object | //w:altChunk", namespaces=NS):
         parent = node.getparent()
         if parent is not None:
@@ -360,6 +394,35 @@ def _clean_document(data: bytes) -> bytes:
     for paragraph in body_paragraphs[67:154]:
         set_paragraph_nonitalic(paragraph)
 
+    # 第一章保留批准模板的正式描述；项目相关值使用明确中文占位项或语义槽位。
+    replace_paragraph_text(
+        body_paragraphs[158],
+        "中互金认证有限公司受【被测单位】委托，于【测评开始日期】至【测评结束日期】，依据"
+        "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的第三级别要求，对"
+        "【被测单位】的【被测系统】从物理和环境安全、网络和通信安全、设备和计算安全、应用和数据安全、"
+        "管理制度、人员管理、建设运行和应急处置等方面进行商用密码应用安全性评估，通过测评项目的实施，"
+        "根据被测信息系统当前的安全状况，给出测评结果并提出改进建议，以确保被测信息系统达到"
+        "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的要求，也为其信息资产安全和业务持续稳定运行提供保障。",
+    )
+    reference_standards = (
+        "GB/T 43206—2023《信息安全技术 信息系统密码应用测评要求》",
+        "GB/T 43207—2023《信息安全技术 信息系统密码应用设计指南》",
+        "GM/T 0116—2021《信息系统密码应用测评过程指南》",
+        "《信息系统密码应用高风险判定指引》",
+        "《商用密码应用安全性评估量化评估规则》",
+    )
+    for paragraph_index, standard in enumerate(reference_standards, start=163):
+        replace_paragraph_text(body_paragraphs[paragraph_index], standard)
+    for paragraph_index in (168, 169):
+        replace_paragraph_text(body_paragraphs[paragraph_index], "")
+        remove_paragraph_numbering(body_paragraphs[paragraph_index])
+    add_zero_bookmark(body_paragraphs[168], "report_additional_reference_standards")
+
+    replace_paragraph_text(body_paragraphs[178], "测评准备阶段时间：")
+    replace_paragraph_text(body_paragraphs[183], "方案编制阶段时间：")
+    replace_paragraph_text(body_paragraphs[187], "现场测评阶段时间：")
+    replace_paragraph_text(body_paragraphs[191], "分析与报告编制阶段时间：")
+
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
     replace_paragraph_text(body_paragraphs[28], "本报告是")
     replace_paragraph_text(body_paragraphs[34], "")
@@ -423,13 +486,26 @@ def _clean_document(data: bytes) -> bytes:
         "report.system.name": (table_cell_paragraph(2, 8, 1), "被测系统名称", ""),
         "report.system.overview": (table_cell_paragraph(3, 1, 1), "系统概述", ""),
         "report.system.network_architecture": (body_paragraphs[204], "网络架构说明", ""),
-        "report.assessment.period": (body_paragraphs[187], "现场测评时间", ""),
+        "report.assessment.preparation_period": (body_paragraphs[178], "测评准备阶段时间", "【开始日期】至【结束日期】"),
+        "report.assessment.plan_period": (body_paragraphs[183], "方案编制阶段时间", "【开始日期】至【结束日期】"),
+        "report.assessment.period": (body_paragraphs[187], "现场测评阶段时间", "【开始日期】至【结束日期】"),
+        "report.assessment.report_period": (body_paragraphs[191], "分析与报告编制阶段时间", "【开始日期】至【结束日期】"),
         "report.assessment.methods": (next((body_paragraphs[i + 1] for i, p in enumerate(body_paragraphs[:-1]) if "".join(p.xpath(".//w:t/text()", namespaces=NS)).strip() == "现场测评方法"), body_paragraphs[257]), "测评方法", ""),
         "report.result.overall_score": (table_cell_paragraph(3, 3, 3), "综合得分", ""),
         "report.result.conclusion": (table_cell_paragraph(3, 3, 1), "总体结论", ""),
     }
     for tag_value, (paragraph, alias_value, display_text) in semantic_slots.items():
         add_semantic_sdt(paragraph, tag_value, alias_value, display_text=display_text)
+
+    replace_paragraph_text(body_paragraphs[193], "本报告一式")
+    add_semantic_sdt(body_paragraphs[193], "report.distribution.total_copies", "报告总份数", display_text="【总份数】")
+    append_formatted_text(body_paragraphs[193], "份，其中")
+    add_semantic_sdt(body_paragraphs[193], "report.distribution.regulator_copies", "密码管理部门份数", display_text="【密码管理部门份数】")
+    append_formatted_text(body_paragraphs[193], "份提交密码管理部门，")
+    add_semantic_sdt(body_paragraphs[193], "report.distribution.client_copies", "委托单位份数", display_text="【委托单位份数】")
+    append_formatted_text(body_paragraphs[193], "份提交委托单位，")
+    add_semantic_sdt(body_paragraphs[193], "report.distribution.assessment_copies", "密评机构留存份数", display_text="【密评机构留存份数】")
+    append_formatted_text(body_paragraphs[193], "份由密评机构留存。")
 
     add_semantic_sdt(
         body_paragraphs[28],
@@ -500,6 +576,9 @@ def build(source: Path, output: Path) -> None:
         raise ValueError("SOURCE_FINGERPRINT_NOT_APPROVED")
     with zipfile.ZipFile(io.BytesIO(raw)) as package:
         source_parts = {info.filename: package.read(info) for info in package.infolist() if not info.is_dir()}
+    workflow_image = source_parts.get(APPROVED_WORKFLOW_IMAGE_PART)
+    if workflow_image is None or hashlib.sha256(workflow_image).hexdigest() != APPROVED_WORKFLOW_IMAGE_SHA256:
+        raise ValueError("WORKFLOW_IMAGE_FINGERPRINT_NOT_APPROVED")
     for name, data in source_parts.items():
         if name.startswith("word/") and name.endswith(".xml"):
             root = _xml(data)

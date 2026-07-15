@@ -22,9 +22,12 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "351f8d8e52380bd409cea6be722bb782b969285eb6e44e8dbf1d02fc287e90f4"
+TRUSTED_ASSET_HASHES_SHA256 = "260a2f05a2966c4cc153ebb4890c6efd88e082d639f59e0b2034b7c2df23c60c"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
+EXPECTED_SEMANTIC_TAG_COUNT = 21
+APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
+APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
 
 
 class ReportTemplateUnavailable(RuntimeError):
@@ -74,6 +77,12 @@ class ReportTemplateRegistry:
             for name in parts:
                 if re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {"word/footnotes.xml", "word/endnotes.xml"}:
                     story_roots.append(etree.fromstring(parts[name]))
+        media_parts = sorted(name for name in parts if name.startswith("word/media/"))
+        if (
+            media_parts != [APPROVED_WORKFLOW_IMAGE_PART]
+            or hashlib.sha256(parts[APPROVED_WORKFLOW_IMAGE_PART]).hexdigest() != APPROVED_WORKFLOW_IMAGE_SHA256
+        ):
+            raise ReportTemplateUnavailable("REPORT_TEMPLATE_WORKFLOW_IMAGE_MISMATCH", "runtime_template.docx")
         word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         office_rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
         rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -172,7 +181,7 @@ class ReportTemplateRegistry:
         semantic_contract = controls.get("semantic_scalar_tags", [])
         expected_semantic = {item.get("tag"): item.get("expected_count") for item in semantic_contract}
         slot_semantic = {slot.partition(":")[2] for slot in slots if slot.startswith("sdt:")}
-        if set(expected_semantic) != slot_semantic or len(expected_semantic) != 14 or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
+        if set(expected_semantic) != slot_semantic or len(expected_semantic) != EXPECTED_SEMANTIC_TAG_COUNT or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
             raise ReportTemplateUnavailable("REPORT_TEMPLATE_SEMANTIC_CONTROL_MISMATCH", "manifest.json")
         template_pattern = controls.get("template_tag_pattern")
         template_count = sum(bool(re.fullmatch(template_pattern, tag)) for tag in tag_values) if isinstance(template_pattern, str) else -1
