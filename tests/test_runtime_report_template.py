@@ -148,6 +148,32 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         self.assertEqual(indentation.get(f"{{{W}}}firstLine"), "420")
         for italic in summary_paragraph.xpath("./w:pPr/w:rPr/w:i | ./w:pPr/w:rPr/w:iCs | .//w:r/w:rPr/w:i | .//w:r/w:rPr/w:iCs", namespaces=NS):
             self.assertEqual(italic.get(f"{{{W}}}val"), "0")
+        body_paragraphs = document.xpath("/w:document/w:body/w:p", namespaces=NS)
+        self.assertIn("选取的测评指标总数为41项", "".join(body_paragraphs[48].xpath(".//w:t/text()", namespaces=NS)))
+        layers = (
+            "物理和环境安全",
+            "网络和通信安全",
+            "设备和计算安全",
+            "应用和数据安全",
+            "管理制度",
+            "人员管理",
+            "建设运行",
+            "应急处置",
+        )
+        expected_result = (
+            "测评结果：符合项【符合项数量】项，部分符合项【部分符合项数量】项，"
+            "不符合项【不符合项数量】项，不适用项【不适用项数量】项。"
+        )
+        for layer_index, layer_name in enumerate(layers):
+            layer_paragraph = body_paragraphs[49 + layer_index * 2]
+            result_paragraph = body_paragraphs[50 + layer_index * 2]
+            self.assertEqual("".join(layer_paragraph.xpath(".//w:t/text()", namespaces=NS)), f"在{layer_name}方面，【情况描述】。")
+            self.assertTrue(layer_paragraph.xpath("./w:pPr/w:numPr", namespaces=NS))
+            self.assertEqual("".join(result_paragraph.xpath(".//w:t/text()", namespaces=NS)), expected_result)
+        self.assertIn(
+            "通过对【被测系统】的物理和环境安全、网络和通信安全、设备和计算安全、应用和数据安全",
+            "".join(body_paragraphs[65].xpath(".//w:t/text()", namespaces=NS)),
+        )
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)

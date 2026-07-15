@@ -22,7 +22,7 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "db3efac29c92e3897fe4e88cadacee578d0cef0f1ea6460b04cd976926551949"
+TRUSTED_ASSET_HASHES_SHA256 = "d07c77079976945f67c00ed7a6771555066c3b1d6daf43b9e3269203a9fb4326"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
 

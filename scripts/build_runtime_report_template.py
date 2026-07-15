@@ -267,6 +267,40 @@ def _clean_document(data: bytes) -> bytes:
         cells = _iter_row_cells(rows[row_number])
         return cells[cell_number].xpath(".//w:p", namespaces=NS)[0]
 
+    # 恢复“总体评价”的原始 18 段结构：首段概述、8 组层面描述与测评结果、末段结论。
+    # 仅移除源模板中的客户化长示例，保留原句骨架并改用明确中文占位项。
+    replace_paragraph_text(
+        body_paragraphs[48],
+        "本次信息系统商用密码应用安全性评估依据GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》"
+        "的第三级别要求，选取的测评指标总数为41项，其中不适用项为【不适用项数量】项，特殊指标"
+        "【特殊指标数量】项。测评结果为：符合项【符合项数量】项，部分符合项【部分符合项数量】项，"
+        "不符合项【不符合项数量】项。其中，在部分符合和不符合项中：高风险项【高风险项数量】项，"
+        "中风险项【中风险项数量】项，低风险项【低风险项数量】项。",
+    )
+    evaluation_layers = (
+        "物理和环境安全",
+        "网络和通信安全",
+        "设备和计算安全",
+        "应用和数据安全",
+        "管理制度",
+        "人员管理",
+        "建设运行",
+        "应急处置",
+    )
+    evaluation_result_text = (
+        "测评结果：符合项【符合项数量】项，部分符合项【部分符合项数量】项，"
+        "不符合项【不符合项数量】项，不适用项【不适用项数量】项。"
+    )
+    for layer_index, layer_name in enumerate(evaluation_layers):
+        replace_paragraph_text(body_paragraphs[49 + layer_index * 2], f"在{layer_name}方面，【情况描述】。")
+        replace_paragraph_text(body_paragraphs[50 + layer_index * 2], evaluation_result_text)
+    replace_paragraph_text(
+        body_paragraphs[65],
+        "通过对【被测系统】的物理和环境安全、网络和通信安全、设备和计算安全、应用和数据安全、"
+        "管理制度、人员管理、建设运行和应急处置等方面的测评，该系统【符合/基本符合/不符合】"
+        "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的第三级别要求。",
+    )
+
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
     replace_paragraph_text(body_paragraphs[28], "本报告是")
     replace_paragraph_text(body_paragraphs[34], "")
