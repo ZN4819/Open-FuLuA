@@ -19,11 +19,12 @@ except ImportError:  # 直接作为 CLI 脚本执行
 
 APPROVED_SOURCE_SHA256 = "b3957fd1da3bf19c31ac515fbdc6bf989fd7df033ca4d179c4b6e9567247fcf8"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 PR = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
 DC = "http://purl.org/dc/elements/1.1/"
-NS = {"w": W, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
+NS = {"w": W, "w14": W14, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
 
 SDT_TYPE_NAMES = {
     "equation", "comboBox", "date", "docPartObj", "docPartList", "dropDownList",
@@ -81,6 +82,11 @@ def _clear_sdt_content(sdt: etree._Element) -> None:
         return
     properties = sdt.find(f"{{{W}}}sdtPr")
     if properties is not None:
+        if properties.find(f"{{{W14}}}checkbox") is not None:
+            # Word 复选框的可见状态由 sdtContent 中的 w:sym/w:t 承载。
+            # 清空这些节点会保留可点击状态却让方框在页面上消失，因此按源模板
+            # 原样保留复选框内容和选中状态；普通输入控件仍继续脱敏。
+            return
         # 正文文字清空后 Word/LibreOffice 仍会渲染占位符属性，必须同步移除。
         for name in ("showingPlcHdr", "placeholder"):
             for node in properties.findall(f"{{{W}}}{name}"):
@@ -267,6 +273,22 @@ def _clean_document(data: bytes) -> bytes:
     replace_paragraph_text(body_paragraphs[34], "")
     replace_paragraph_text(body_paragraphs[35], "")
     replace_paragraph_text(body_paragraphs[187], "现场测评阶段时间：")
+
+    # 业务确认允许固化的密评机构资料，仅恢复到基本信息表的指定单元格。
+    # 源模板其他位置以及客户数据仍受 _scrub_story 的脱敏规则约束。
+    fixed_assessment_organization = {
+        (29, 1): "中互金认证有限公司",
+        (30, 1): "天津自贸试验区（中心商务区）新华路3678号宝风大厦28层2802",
+        (30, 3): "300450",
+        (31, 2): "李文宝",
+        (31, 4): "商务经理",
+        (32, 2): "业务部",
+        (32, 4): "010-88720451",
+        (33, 2): "15201294794",
+        (33, 4): "liwb@secallab.com",
+    }
+    for (row_number, cell_number), value in fixed_assessment_organization.items():
+        replace_paragraph_text(table_cell_paragraph(2, row_number, cell_number), value)
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号", ""),

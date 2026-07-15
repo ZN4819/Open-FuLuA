@@ -17,7 +17,8 @@ from scripts.build_runtime_report_template import _scrub_story
 
 RUNTIME = ROOT / "templates" / "report" / "2023-2025.12.08" / "runtime_template.docx"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-NS = {"w": W}
+W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+NS = {"w": W, "w14": W14}
 
 
 class RuntimeReportTemplateTests(unittest.TestCase):
@@ -54,12 +55,23 @@ class RuntimeReportTemplateTests(unittest.TestCase):
                 if name == "word/document.xml" or re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {"word/footnotes.xml", "word/endnotes.xml"}:
                     story = etree.fromstring(package.read(name))
                     story_text += "".join(story.xpath("//w:t/text()", namespaces=NS))
-        for forbidden in ("中互金认证有限公司", "liwb@", "15201294794", "TargetMode=\"External\""):
+        for forbidden in ("TargetMode=\"External\"",):
             self.assertNotIn(forbidden, payload)
         self.assertNotIn("示例", story_text)
         self.assertNotRegex(story_text, r"\{[^{}]*\}|(?<![A-Za-z])X{1,20}(?![A-Za-z])")
         self.assertNotIn("RaRk", story_text)
-        self.assertNotIn("中互金认证有限公司", story_text)
+        for approved_fixed_value in (
+            "中互金认证有限公司",
+            "天津自贸试验区（中心商务区）新华路3678号宝风大厦28层2802",
+            "300450",
+            "李文宝",
+            "商务经理",
+            "业务部",
+            "010-88720451",
+            "15201294794",
+            "liwb@secallab.com",
+        ):
+            self.assertEqual(story_text.count(approved_fixed_value), 1)
         with zipfile.ZipFile(RUNTIME) as package:
             document = etree.fromstring(package.read("word/document.xml"))
         self.assertFalse(document.xpath("//w:showingPlcHdr | //w:placeholder", namespaces=NS))
@@ -74,6 +86,16 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             self.assertIsNotNone(first)
             self.assertEqual(first.get(f"{{{W}}}displayText", ""), " ")
             self.assertEqual(first.get(f"{{{W}}}value", ""), " ")
+
+    def test_all_checkbox_controls_keep_a_visible_state_glyph(self) -> None:
+        with zipfile.ZipFile(RUNTIME) as package:
+            document = etree.fromstring(package.read("word/document.xml"))
+        checkboxes = document.xpath("//w:sdt[w:sdtPr/w14:checkbox]", namespaces=NS)
+        self.assertEqual(len(checkboxes), 149)
+        for checkbox in checkboxes:
+            self.assertTrue(
+                checkbox.xpath("./w:sdtContent//w:sym | ./w:sdtContent//w:t[string-length(.) > 0]", namespaces=NS)
+            )
 
     def test_sdt_identity_elements_follow_word_schema_order(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
