@@ -5,7 +5,7 @@
 - `field_dictionary.json`：已冻结的 26 个业务字段契约，覆盖 164 个受治理参数、70 条 README 3.6 可机读规则和 92 个登记投影目标。字段级 `source_kind` 只约束该字段自身；字段组覆盖的子参数以对应规则契约中的 `authorities` 为准，同一子参数跨规则不得出现来源冲突，未治理参数、缺少规则追溯或未登记投影均拒绝加载。
 - `rule_hints.json`：121 条批注的脱敏追踪记录，全部保持 `pending` 且明确不阻断冻结；不含作者、时间、原文和绝对路径。
 - `narrative_templates.json`：不含客户默认值的可选正文草稿模板，套用后必须人工确认。
-- `runtime_template.docx`：经 OPC 白名单重建的脱敏母版。
+- `runtime_template.docx`：经 OPC 白名单重建的脱敏母版；正文、表格、页眉页脚、脚注、样式及图形文本均显式禁用斜体，数学公式保留原始格式。
 - `manifest.json`：17 个分节、55 张表、29 个语义标量槽位、612 个 OOXML 内容控件和禁用结构的稳定契约；正文总页数不使用 `NUMPAGES`。
 - `asset_hashes.json`：五个被引用运行时资产的 SHA-256 清单和 R0 冻结记录，其自身作为第六项受信资产，摘要固定在代码侧 registry；冻结记录同时绑定仓库内 Word 原生验收证据的 SHA-256。
 

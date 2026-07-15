@@ -21,13 +21,27 @@ APPROVED_SOURCE_SHA256 = "b3957fd1da3bf19c31ac515fbdc6bf989fd7df033ca4d179c4b6e9
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 V = "urn:schemas-microsoft-com:vml"
 O = "urn:schemas-microsoft-com:office:office"
 PR = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
 DC = "http://purl.org/dc/elements/1.1/"
-NS = {"w": W, "w14": W14, "r": R, "v": V, "o": O, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
+NS = {
+    "w": W,
+    "w14": W14,
+    "r": R,
+    "a": A,
+    "m": M,
+    "v": V,
+    "o": O,
+    "pr": PR,
+    "ct": CT,
+    "cp": CP,
+    "dc": DC,
+}
 
 APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
 APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
@@ -66,6 +80,37 @@ def _xml(data: bytes) -> etree._Element:
 
 def _serialize(root: etree._Element) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _disable_all_italics(data: bytes) -> bytes:
+    """显式关闭母版所有非公式故事、样式和图形文本中的斜体。"""
+    root = _xml(data)
+    changed = False
+    for italic in root.xpath(
+        f"//w:i[not(ancestor::*[namespace-uri()='{M}'])] | "
+        f"//w:iCs[not(ancestor::*[namespace-uri()='{M}'])]",
+        namespaces=NS,
+    ):
+        if italic.get(f"{{{W}}}val") != "0":
+            italic.set(f"{{{W}}}val", "0")
+            changed = True
+    for node in root.xpath(
+        f"//*[@i][not(ancestor::*[namespace-uri()='{M}'])]",
+        namespaces=NS,
+    ):
+        if etree.QName(node).namespace == A and node.get("i") != "0":
+            node.set("i", "0")
+            changed = True
+    for styled in root.xpath(
+        f"//*[@style][not(ancestor::*[namespace-uri()='{M}'])]",
+        namespaces=NS,
+    ):
+        value = styled.get("style", "")
+        normalized = re.sub(r"font-style\s*:\s*italic", "font-style:normal", value, flags=re.IGNORECASE)
+        if normalized != value:
+            styled.set("style", normalized)
+            changed = True
+    return _serialize(root) if changed else data
 
 
 def _clean_relationships(data: bytes) -> bytes:
@@ -800,6 +845,8 @@ def build(source: Path, output: Path) -> None:
             data = _clean_app(data)
         elif re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {"word/footnotes.xml", "word/endnotes.xml"}:
             data = _clean_story_part(data, name)
+        if name.startswith("word/") and name.endswith(".xml"):
+            data = _disable_all_italics(data)
         transformed[name] = data
 
     output.parent.mkdir(parents=True, exist_ok=True)

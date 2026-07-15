@@ -26,6 +26,7 @@ from app.services.report_templates.validator import (
 )
 from lxml import etree
 from scripts.verify_report_template_freeze import verify_asset_dir, verify_packaged_assets
+from scripts.build_report_asset_manifest import write_json_asset
 
 ASSETS = ROOT / "templates" / "report" / "2023-2025.12.08"
 
@@ -239,7 +240,7 @@ class ReportTemplateAssetTests(unittest.TestCase):
                 "table_count": 55,
                 "pending_rule_hint_count": 121,
                 "pending_rule_hints_blocking": False,
-                "word_acceptance_evidence_sha256": "e53071bb482295fdc8d7f56ab8cf04bacfeb8448ad98e58a82f84866f17dc4f9",
+                "word_acceptance_evidence_sha256": "9af7dfc44ce7bb19d30d42163ebebabceff4ee08d116026d9dcec8b286c0461b",
             },
         )
 
@@ -299,6 +300,15 @@ class ReportTemplateAssetTests(unittest.TestCase):
         word_acceptance_script = (ROOT / "scripts" / "test_word_report_template.ps1").read_text(encoding="utf-8")
         self.assertIn('-replace "`r`n", "`n"', word_acceptance_script)
         self.assertIn('$json + "`n"', word_acceptance_script)
+
+    def test_manifest_generator_writes_platform_independent_lf_json(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            output = Path(value) / "asset.json"
+            write_json_asset(output, {"value": "测试", "items": [1, 2]})
+            payload = output.read_bytes()
+        self.assertTrue(payload.endswith(b"\n"))
+        self.assertNotIn(b"\r\n", payload)
+        self.assertEqual(json.loads(payload), {"value": "测试", "items": [1, 2]})
 
     def test_freeze_verifier_compares_all_six_packaged_assets(self) -> None:
         source = verify_asset_dir(ASSETS, require_trust_root=True)

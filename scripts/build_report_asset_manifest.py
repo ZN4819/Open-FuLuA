@@ -45,6 +45,11 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def write_json_asset(path: Path, payload: object) -> None:
+    """Write deterministic UTF-8 JSON with LF line endings on every platform."""
+    path.write_bytes((json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
 def xml(data: bytes) -> etree._Element:
     return etree.fromstring(data, parser=etree.XMLParser(resolve_entities=False, no_network=True))
 
@@ -258,7 +263,7 @@ def main() -> int:
             "custom_xml", "customer_examples", "unreplaced_placeholders",
         ],
     }
-    (ASSET_DIR / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_asset(ASSET_DIR / "manifest.json", manifest)
     hashes = {
         "schema_version": "2.0",
         "package_id": manifest["package_id"],
@@ -280,7 +285,7 @@ def main() -> int:
             for name in ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
         },
     }
-    (ASSET_DIR / "asset_hashes.json").write_text(json.dumps(hashes, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_asset(ASSET_DIR / "asset_hashes.json", hashes)
     print(sha256(ASSET_DIR / "asset_hashes.json"))
     return 0
 

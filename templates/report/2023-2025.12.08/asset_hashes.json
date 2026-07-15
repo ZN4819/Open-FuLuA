@@ -12,12 +12,12 @@
     "table_count": 55,
     "pending_rule_hint_count": 121,
     "pending_rule_hints_blocking": false,
-    "word_acceptance_evidence_sha256": "e53071bb482295fdc8d7f56ab8cf04bacfeb8448ad98e58a82f84866f17dc4f9"
+    "word_acceptance_evidence_sha256": "9af7dfc44ce7bb19d30d42163ebebabceff4ee08d116026d9dcec8b286c0461b"
   },
   "assets": {
-    "runtime_template.docx": "efb18ac9c54c6f3ef8090a697c26a3aaf8de4ae2374b40fc62c820f0c486387b",
+    "runtime_template.docx": "2d98a9b61ea4eaf151732d2ad1f6c7ac510ab4e8826d9a9146824137e8b23903",
     "field_dictionary.json": "1c4c6fdeb9f6a1ecbe6825c73c73e55f5e582d468ec188a41628f0845888c808",
-    "manifest.json": "373537d4fa132a1c59745d23fa80efd4a018782df0aa735de94bb8b463ab10fb",
+    "manifest.json": "dc7f3dbdde0972af7638fcff6a312fec19de121f8e2627c4fa2707242f614bf8",
     "rule_hints.json": "a0d10206869ebfe66cfe508a755621475002b866a7cd78642adc01b69e82008f",
     "narrative_templates.json": "09daa11c3e5bce72ca7586ae27f235d515719b8384d987725315014d23c16689"
   }

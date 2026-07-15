@@ -31,7 +31,7 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "2c58c4d6b58192276a1fceb5c1b61819c1e6c6c00b89aa31e2349aadf07aa654"
+TRUSTED_ASSET_HASHES_SHA256 = "9017b86afd44a9ba05c55e3eb880d60b4dd6e45fbf87dd1b020bb5bc130d1484"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "SEQ", "REF", "PAGEREF", "STYLEREF")
 FORBIDDEN_FIELD_NAMES = ("NUMPAGES",)
