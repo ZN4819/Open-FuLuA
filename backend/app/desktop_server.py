@@ -70,7 +70,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--web-dist")
     parser.add_argument("--session-token")
-    parser.add_argument("--offline-recovery", choices=("integrity", "list", "restore"))
+    parser.add_argument(
+        "--offline-recovery",
+        choices=("integrity", "list", "restore", "prepare-schema-upgrade"),
+    )
     parser.add_argument("--backup-id")
     arguments = parser.parse_args()
     if arguments.offline_recovery:
@@ -95,10 +98,49 @@ def _offline_recovery(data_root: Path, action: str, backup_id: str | None) -> in
         _event("FULUA_OFFLINE_INTEGRITY", integrity=integrity, schema_version=schema_version)
         return 0 if integrity == "ok" else 2
 
-    from app.runtime import resolve_runtime_paths
-    from app.services.backups import list_backups, resolve_backup_id, restore_backup
+    from app.runtime import SCHEMA_VERSION, ensure_runtime_directories, resolve_runtime_paths
+    from app.services.backups import create_backup, list_backups, resolve_backup_id, restore_backup
 
     paths = resolve_runtime_paths()
+    if action == "prepare-schema-upgrade":
+        database_path = paths.database_path
+        if not database_path.is_file():
+            _event(
+                "FULUA_OFFLINE_SCHEMA_UPGRADE",
+                prepared=False,
+                source_schema="",
+                target_schema=SCHEMA_VERSION,
+            )
+            return 0
+        try:
+            uri = f"{database_path.resolve(strict=True).as_uri()}?mode=ro"
+            with sqlite3.connect(uri, uri=True) as connection:
+                rows = connection.execute("PRAGMA integrity_check").fetchall()
+                source_schema = str(connection.execute("PRAGMA user_version").fetchone()[0])
+        except (OSError, sqlite3.DatabaseError, TypeError):
+            _event("FULUA_OFFLINE_SCHEMA_UPGRADE", prepared=False, message="数据库无法读取")
+            return 2
+        if rows != [("ok",)]:
+            _event("FULUA_OFFLINE_SCHEMA_UPGRADE", prepared=False, message="数据库完整性检查失败")
+            return 2
+        if int(source_schema) >= int(SCHEMA_VERSION):
+            _event(
+                "FULUA_OFFLINE_SCHEMA_UPGRADE",
+                prepared=False,
+                source_schema=source_schema,
+                target_schema=SCHEMA_VERSION,
+            )
+            return 0
+        ensure_runtime_directories()
+        backup = create_backup(paths, "pre_upgrade")
+        _event(
+            "FULUA_OFFLINE_SCHEMA_UPGRADE",
+            prepared=True,
+            source_schema=source_schema,
+            target_schema=SCHEMA_VERSION,
+            backup_id=backup.path.name,
+        )
+        return 0
     if action == "list":
         _event(
             "FULUA_OFFLINE_BACKUPS",

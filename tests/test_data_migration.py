@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
 import tempfile
 import unittest
+import uuid
 from unittest.mock import patch
 from pathlib import Path
 
+from app import database
 from app.runtime import RuntimePaths
-from app.services.data_migration import migrate_legacy_data, preflight_migration
+from app.services.data_migration import (
+    migrate_legacy_data,
+    preflight_migration,
+    validate_database_and_evidence,
+)
 
 
 def _runtime_paths(root: Path) -> RuntimePaths:
@@ -52,6 +59,115 @@ def _create_source(root: Path, *, missing_image: bool = False) -> Path:
 
 
 class DataMigrationTests(unittest.TestCase):
+    def test_empty_schema_four_metadata_does_not_block_first_legacy_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = _create_source(root / "legacy")
+            paths = _runtime_paths(root / "desktop")
+            with patch.dict(
+                os.environ,
+                {
+                    "FULUA_DATA_DIR": str(paths.data_root),
+                    "FULUA_DATABASE_PATH": str(paths.database_path),
+                },
+            ):
+                database.init_db()
+
+            result = migrate_legacy_data(source, paths)
+
+            self.assertTrue(result.migrated)
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
+            finally:
+                connection.close()
+
+    def test_schema_four_invalid_project_binding_fails_integrity_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database_path = root / "app.db"
+            storage_path = root / "storage"
+            storage_path.mkdir()
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE projects (
+                        id INTEGER PRIMARY KEY,
+                        project_uuid TEXT,
+                        project_type TEXT,
+                        workflow_status TEXT,
+                        template_package_id TEXT,
+                        template_edition TEXT,
+                        template_revision TEXT,
+                        template_asset_set_hash TEXT,
+                        source_project_uuid TEXT,
+                        created_by_operation TEXT
+                    );
+                    CREATE TABLE evidence_images (id INTEGER PRIMARY KEY, file_path TEXT NOT NULL);
+                    INSERT INTO projects VALUES (
+                        1, 'not-a-uuid', 'appendix_a', 'draft',
+                        'forbidden-template', NULL, NULL, NULL, NULL, 'create'
+                    );
+                    PRAGMA user_version = 4;
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            valid, reason, projects, images, missing = validate_database_and_evidence(
+                database_path,
+                storage_path,
+            )
+
+            self.assertFalse(valid)
+            self.assertIn("完整性", reason)
+            self.assertEqual((projects, images, missing), (0, 0, ()))
+
+    def test_schema_four_forged_template_identity_fails_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database_path = root / "app.db"
+            storage_path = root / "storage"
+            storage_path.mkdir()
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.executescript(
+                    f"""
+                    CREATE TABLE projects (
+                        id INTEGER PRIMARY KEY,
+                        project_uuid TEXT,
+                        project_type TEXT,
+                        workflow_status TEXT,
+                        template_package_id TEXT,
+                        template_edition TEXT,
+                        template_revision TEXT,
+                        template_asset_set_hash TEXT,
+                        source_project_uuid TEXT,
+                        created_by_operation TEXT
+                    );
+                    CREATE TABLE evidence_images (id INTEGER PRIMARY KEY, file_path TEXT NOT NULL);
+                    INSERT INTO projects VALUES (
+                        1, '{uuid.uuid4()}', 'full_report', 'draft',
+                        'evil', '2023', '2025-12-08', '{"f" * 64}', NULL, 'create'
+                    );
+                    PRAGMA user_version = 4;
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            valid, reason, projects, images, missing = validate_database_and_evidence(
+                database_path,
+                storage_path,
+            )
+
+            self.assertFalse(valid)
+            self.assertIn("完整性", reason)
+            self.assertEqual((projects, images, missing), (0, 0, ()))
+
     def test_preflight_recognises_legacy_repository_and_reports_safe_statistics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = _create_source(Path(temp_dir) / "legacy")

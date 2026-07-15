@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 BACKEND_VERSION = "0.1.0"
 
 

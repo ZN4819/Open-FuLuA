@@ -7,8 +7,15 @@ import os
 from unittest.mock import patch
 from pathlib import Path
 
+from app import database
+from app.contracts import (
+    FULL_REPORT_TEMPLATE_EDITION,
+    FULL_REPORT_TEMPLATE_PACKAGE_ID,
+    FULL_REPORT_TEMPLATE_REVISION,
+)
 from app.runtime import RuntimePaths
 from app.services.backups import create_backup, list_backups, resolve_backup_id, restore_backup
+from app.services.projects import upgrade_project_copy
 
 
 def _runtime_paths(root: Path) -> RuntimePaths:
@@ -35,6 +42,50 @@ def _create_live_data(paths: RuntimePaths, name: str = "初始项目") -> None:
 
 
 class BackupTests(unittest.TestCase):
+    def test_schema_four_backup_restore_preserves_project_identity_and_upgrade_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            environment = {
+                "FULUA_DATA_DIR": str(paths.data_root),
+                "FULUA_DATABASE_PATH": str(paths.database_path),
+            }
+            with patch.dict(os.environ, environment):
+                database.init_db()
+                paths.storage_path.mkdir(parents=True, exist_ok=True)
+                source = database.create_project("备份源项目")
+                idempotency_key = "dc34cd61-570b-4bd5-baf5-74ced6aac674"
+                target = upgrade_project_copy(
+                    source["project_uuid"],
+                    name="备份完整报告",
+                    template_package_id=FULL_REPORT_TEMPLATE_PACKAGE_ID,
+                    template_edition=FULL_REPORT_TEMPLATE_EDITION,
+                    template_revision=FULL_REPORT_TEMPLATE_REVISION,
+                    idempotency_key=idempotency_key,
+                )
+                backup = create_backup(paths, "daily")
+                database.update_project(source["id"], "已修改")
+
+                result = restore_backup(paths, backup.path)
+
+                self.assertTrue(result.restored, result.reason)
+                restored_source = database.get_project_by_id(source["id"])
+                restored_target = database.get_project_by_id(target["id"])
+                self.assertEqual(restored_source["name"], "备份源项目")
+                self.assertEqual(restored_source["project_uuid"], source["project_uuid"])
+                self.assertEqual(restored_target["project_uuid"], target["project_uuid"])
+                self.assertEqual(restored_target["source_project_uuid"], source["project_uuid"])
+                self.assertEqual(restored_target["template_asset_set_hash"], target["template_asset_set_hash"])
+                with database.connect() as connection:
+                    operation = connection.execute(
+                        """
+                        SELECT status, target_project_id FROM project_upgrade_operations
+                        WHERE source_project_uuid = ? AND idempotency_key = ?
+                        """,
+                        (source["project_uuid"], idempotency_key),
+                    ).fetchone()
+                self.assertEqual(operation["status"], "completed")
+                self.assertEqual(operation["target_project_id"], target["id"])
+
     def test_create_backup_rejects_reparse_backup_root_without_returning_backup(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir)); _create_live_data(paths)

@@ -173,7 +173,8 @@ class DesktopPackagingContractTests(unittest.TestCase):
 
         self.assertIn("Add-Type -AssemblyName System.Net.Http", script)
         self.assertIn("System.Net.Http.HttpClient", script)
-        self.assertIn("GetStringAsync", script)
+        self.assertIn("GetByteArrayAsync", script)
+        self.assertIn("[System.Text.Encoding]::UTF8.GetString", script)
         self.assertIn("ConvertFrom-Json", script)
 
     def test_install_acceptance_uses_ascii_project_marker_for_powershell_compatibility(self) -> None:
@@ -184,7 +185,33 @@ class DesktopPackagingContractTests(unittest.TestCase):
     def test_install_acceptance_checks_reinstalled_projects_item_by_item(self) -> None:
         script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
 
-        self.assertIn("Where-Object { $_.name -eq $ProjectName }", script)
+        self.assertIn("Where-Object { $_.project_uuid -eq $expected.project_uuid }", script)
+        for field in (
+            "project_type",
+            "workflow_status",
+            "template_package_id",
+            "template_asset_set_hash",
+            "source_project_uuid",
+            "created_by_operation",
+        ):
+            self.assertIn(field, script)
+        self.assertIn("/upgrade-copy", script)
+        self.assertIn("idempotency_key", script)
+        self.assertIn("schema_version", script)
+
+    def test_install_acceptance_covers_schema_three_backup_migration_and_recovery(self) -> None:
+        script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")
+        fixture = (ROOT / "scripts" / "create_schema3_fixture.py").read_text(encoding="utf-8")
+
+        self.assertIn("New-SchemaThreeFixture", script)
+        self.assertIn("prepare-schema-upgrade", script)
+        self.assertIn("pre_upgrade-*", script)
+        self.assertIn("pending-upgrade.json", script)
+        self.assertIn("$Result.schema3_upgrade = $true", script)
+        self.assertIn("$Result.pre_upgrade_backup = $true", script)
+        self.assertIn("$Result.故障恢复 = $true", script)
+        self.assertIn("PRAGMA user_version = 3", fixture)
+        self.assertIn("projects_schema3", fixture)
 
     def test_install_acceptance_rejects_reparse_points_before_cleanup(self) -> None:
         script = (ROOT / "scripts" / "test_desktop_install.ps1").read_text(encoding="utf-8")

@@ -279,7 +279,12 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
             requested = _read_backup(safe_path)
             if requested is None:
                 raise ValueError("备份元数据无效")
-            sqlite_backup(requested.database_path, staging / "data" / "app.db")
+            staged_database = staging / "data" / "app.db"
+            staged_database.parent.mkdir(parents=True, exist_ok=True)
+            # 备份目录中的数据库已经是离线、无 WAL 的一致性快照；按字节复制
+            # 才能继续使用冻结的 SHA-256 验证。再次调用 SQLite backup API 可能
+            # 重写页头，使逻辑等价的数据库产生不同文件哈希。
+            shutil.copy2(requested.database_path, staged_database)
             _copy_storage(requested.storage_path, staging / "storage")
             _verify_staged_copy(requested, staging / "data" / "app.db", staging / "storage")
             valid, reason, _, _, missing = validate_database_and_evidence(staging / "data" / "app.db", staging / "storage")

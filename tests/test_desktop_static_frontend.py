@@ -221,7 +221,8 @@ const compiled = typescript.transpileModule(source, {
 }).outputText;
 function apiBase(environment) {
   const module = { exports: {} };
-  vm.runInNewContext(compiled, { module, exports: module.exports, environment });
+  const clientRequire = (specifier) => specifier.includes("projectContracts") ? {} : require(specifier);
+  vm.runInNewContext(compiled, { module, exports: module.exports, environment, require: clientRequire });
   return module.exports.API_BASE_URL;
 }
 for (const [environment, expected] of [

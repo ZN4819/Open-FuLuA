@@ -17,7 +17,7 @@ from typing import Any
 from lxml import etree
 
 from ...resource_paths import resolve_resource_path
-from ...runtime import SCHEMA_VERSION
+from ...contracts import FULL_REPORT_TEMPLATE_ASSET_SET_HASH, REPORT_TEMPLATE_DATA_SCHEMA_VERSION
 from .models import (
     EXPECTED_BUSINESS_FIELD_COUNT,
     EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
@@ -31,7 +31,7 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "9017b86afd44a9ba05c55e3eb880d60b4dd6e45fbf87dd1b020bb5bc130d1484"
+TRUSTED_ASSET_HASHES_SHA256 = FULL_REPORT_TEMPLATE_ASSET_SET_HASH
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "SEQ", "REF", "PAGEREF", "STYLEREF")
 FORBIDDEN_FIELD_NAMES = ("NUMPAGES",)
@@ -52,6 +52,16 @@ APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
 APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
 
 
+def trusted_asset_digest(asset: str, data: bytes) -> str:
+    # R0 冻结时 rule_hints.json 的可信摘要基于 CRLF 字节，而仓库随后
+    # 将其声明为 LF 文本。只对这个已知历史资产规范化换行，避免干净
+    # checkout 被误判为篡改；JSON 内容和冻结摘要本身均保持不变。
+    if asset == "rule_hints.json":
+        normalized = data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        return hashlib.sha256(normalized).hexdigest()
+    return hashlib.sha256(data).hexdigest()
+
+
 class ReportTemplateUnavailable(RuntimeError):
     def __init__(self, code: str, asset: str | None = None) -> None:
         super().__init__(code)
@@ -69,6 +79,7 @@ class ReportTemplatePackage:
     rule_contracts: tuple[dict[str, Any], ...]
     projection_catalog: tuple[str, ...]
     rule_hints: tuple[dict[str, Any], ...]
+    asset_set_hash: str
     runtime_template_bytes: bytes
 
     def safe_summary(self) -> dict[str, Any]:
@@ -114,7 +125,7 @@ class ReportTemplateRegistry:
         ns = {"w": word_ns, "r": office_rel_ns, "pr": rel_ns, "ct": content_type_ns}
 
         compatibility = manifest.get("data_schema_compatibility", {})
-        current_schema = int(SCHEMA_VERSION)
+        current_schema = int(REPORT_TEMPLATE_DATA_SCHEMA_VERSION)
         if not (compatibility.get("minimum") <= current_schema <= compatibility.get("maximum")):
             raise ReportTemplateUnavailable("REPORT_TEMPLATE_SCHEMA_INCOMPATIBLE", "manifest.json")
         if manifest.get("allowed_parts") != sorted(parts):
@@ -330,7 +341,7 @@ class ReportTemplateRegistry:
                     if path.parent != root:
                         raise ReportTemplateUnavailable("REPORT_TEMPLATE_PATH_UNTRUSTED", asset)
                     data = path.read_bytes()
-                    if hashlib.sha256(data).hexdigest() != hashes.get("assets", {}).get(asset):
+                    if trusted_asset_digest(asset, data) != hashes.get("assets", {}).get(asset):
                         raise ReportTemplateUnavailable("REPORT_TEMPLATE_HASH_MISMATCH", asset)
                     loaded[asset] = data
                 manifest = json.loads(loaded["manifest.json"])
@@ -353,6 +364,7 @@ class ReportTemplateRegistry:
                     tuple(item.model_dump(mode="json") for item in fields.rule_contracts),
                     tuple(fields.projection_catalog),
                     tuple(item.model_dump(mode="json") for item in rules.rules),
+                    TRUSTED_ASSET_HASHES_SHA256,
                     loaded["runtime_template.docx"],
                 )
                 self._failure = None

@@ -28,6 +28,7 @@ try {
 
     Push-Location (Join-Path $Root 'frontend')
     try {
+        Invoke-CheckedCommand -Description 'Frontend tests' -Command { npm test }
         Invoke-CheckedCommand -Description 'Frontend build' -Command { npm run build }
         Invoke-CheckedCommand -Description 'Frontend dependency audit' -Command { npm audit --audit-level=high }
     }

@@ -13,6 +13,7 @@ function dependencies(overrides: Partial<ConstructorParameters<typeof GuardedSta
   return {
     order,
     values: {
+      prepareSchemaUpgrade: async () => { order.push("prepare-schema"); },
       hasRecoveryMarker: async () => { order.push("markers"); return true; },
       offlineIntegrity: async () => { order.push("offline-integrity"); return { integrity: "ok", schema_version: "1" }; },
       startBackend: async () => { order.push("start-backend"); },
@@ -30,7 +31,7 @@ test("存在 marker 时离线完整性检查严格先于正常侧车启动", asy
   const setup = dependencies();
   const coordinator = new GuardedStartupCoordinator(gate, setup.values);
   assert.equal(await coordinator.enter(), true);
-  assert.deepEqual(setup.order, ["markers", "offline-integrity", "start-backend", "recover-sidecar", "updater"]);
+  assert.deepEqual(setup.order, ["prepare-schema", "markers", "offline-integrity", "start-backend", "recover-sidecar", "updater"]);
   assert.equal(gate.passed, true);
 });
 
@@ -41,7 +42,7 @@ test("离线完整性失败时不启动正常侧车和 updater", async () => {
   });
   const coordinator = new GuardedStartupCoordinator(gate, setup.values);
   assert.equal(await coordinator.enter(), false);
-  assert.deepEqual(setup.order, ["markers", "offline-integrity", "recover-offline", "diagnose"]);
+  assert.deepEqual(setup.order, ["prepare-schema", "markers", "offline-integrity", "recover-offline", "diagnose"]);
   assert.equal(gate.passed, false);
 });
 
@@ -58,7 +59,7 @@ test("marker 读取异常进入诊断且重试必须重新走完整闸门", asyn
   const coordinator = new GuardedStartupCoordinator(gate, setup.values);
   assert.equal(await coordinator.enter(), false);
   assert.equal(await coordinator.enter(), true);
-  assert.deepEqual(setup.order, ["markers", "diagnose", "markers", "offline-integrity", "start-backend", "recover-sidecar", "updater"]);
+  assert.deepEqual(setup.order, ["prepare-schema", "markers", "diagnose", "prepare-schema", "markers", "offline-integrity", "start-backend", "recover-sidecar", "updater"]);
 });
 
 test("日志或诊断会话退出保留 run marker，只有已过闸且侧车已停才允许清理", () => {
@@ -76,7 +77,7 @@ test("marker 场景正常侧车启动失败后进入一次受控离线恢复", a
   });
   const coordinator = new GuardedStartupCoordinator(gate, setup.values);
   assert.equal(await coordinator.enter(), true);
-  assert.deepEqual(setup.order, ["markers", "offline-integrity", "start-backend", "recover-offline", "updater"]);
+  assert.deepEqual(setup.order, ["prepare-schema", "markers", "offline-integrity", "start-backend", "recover-offline", "updater"]);
   assert.equal(gate.passed, true);
 });
 
@@ -88,7 +89,7 @@ test("marker 场景启动和离线恢复均失败时只诊断一次且不递归"
   });
   const coordinator = new GuardedStartupCoordinator(gate, setup.values);
   assert.equal(await coordinator.enter(), false);
-  assert.deepEqual(setup.order, ["markers", "offline-integrity", "start-backend", "recover-offline", "diagnose"]);
+  assert.deepEqual(setup.order, ["prepare-schema", "markers", "offline-integrity", "start-backend", "recover-offline", "diagnose"]);
   assert.equal(starts, 1); assert.equal(recoveries, 1); assert.equal(gate.passed, false);
 });
 
