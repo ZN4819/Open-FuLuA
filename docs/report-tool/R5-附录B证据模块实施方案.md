@@ -1,228 +1,323 @@
-# R5 附录 B 证据模块实施方案
+# R5：附录 B 证据模块实施方案
 
 > 状态：未实施。本文档为开发实施基线，不代表功能已交付。
 
 ## 1. 阶段定位
 
-R5 在完整报告项目中新增“附录 B 密评活动有效性证明记录”模块，将九类证明材料从散落文件和 Word 手工贴图改为项目内结构化管理，并在完整报告 DOCX 导出时按 2023 版、2025-12-08 修订模板的固定顺序生成附录 B。
+R5 在 R4 已冻结的完整报告装配接口上，实现“附录 B 密评活动有效性证明记录”的结构化管理和 DOCX 投影。R5 负责证明材料、现场记录、人员资格关联和图片证据，不重建 R2 的项目、单位、人员、阶段日期，也不重复 R3 的评分、风险、结论和正文生成。
 
-本阶段复杂度为高。难点不在图片上传，而在九类证据的元数据、条件适用性、顺序、跨项目隔离、Word 分页以及“缺失只警告”的一致契约。
-
-依赖：
-
-- 完整报告项目基础模型已引入 `project_type=appendix_a|full_report`。
-- 项目状态已引入 `workflow_status=draft|ready_for_review|confirmed`。
-- 运行时模板已登记 `template_edition=2023`、`template_revision=2025-12-08`。
-- 完整报告 DOCX 生成器能够定位附录 B 的九个模板槽位。
-- R5 不依赖 PDF 输出；阶段交付仍为 DOCX 和既有 XLSX。
-
-统一边界：Ra、Rk 只参与内部评分和 XLSX，不进入 Word；模板批注提炼出的规则在本阶段全部为警告，不得阻止保存、状态流转或导出。
-
-## 2. 经仓库验证的当前基线
-
-- `backend/app/runtime.py` 当前 `SCHEMA_VERSION = "3"`。
-- `projects` 仅有 `id/name/created_at/updated_at`，还没有项目类型、工作流状态和模板版本字段。
-- `evidence_images` 当前按 `project_id + section_code` 服务 A-1～A-8，保存图片路径、题注、alt、顺序、像素、DPI 和显示尺寸。
-- `backend/app/services/evidence.py` 已同时校验扩展名和 MIME，只允许 PNG/JPEG，并能读取图片尺寸及 DPI。
-- 现有 API 已支持单张/批量上传、替换文件、修改题注、删除和章节内重排；前端 `EvidencePanel.tsx` 已支持预览、排序和质量提示。
-- 当前证据图片与 `assessment_rows` 通过 `cross_references` 建立 A 表结果记录引用，不适合直接复用为附录 B 的证明材料模型。
-- 当前 DOCX 生成器只生成 A-1～A-8、8 个横向分节和 8 张表；没有完整报告或附录 B 拼装能力。
-- 基础报告模板和客户复核版都包含附录 B 的 9 张表；基础模板附录 B 位于独立横向分节，客户版存在分节合并漂移。
-- 基础模板附录 B 的内部批注描述了材料要求，但这些批注不能进入最终报告，也不能升级为阻断性校验。
-
-## 3. 目标与非目标
-
-### 3.1 目标
-
-- 对 `full_report` 项目提供九类附录 B 证据的独立管理页。
-- 每类证据支持结构化元数据、多张 PNG/JPEG、题注、排序、替换、删除和大图预览。
-- 所有图片必须经工具上传和管理；不接受文件系统路径、URL、粘贴的 base64 或直接编辑 DOCX 内图片。
-- 按模板顺序和条件规则生成附录 B；图片尽量一页一张，必要时横向适配，但不拉伸。
-- 缺少证据、元数据或题注只产生 warning；图片损坏、越权引用和文件不存在属于技术错误。
-- `draft|final` 两种 DOCX 导出均能生成附录 B；`final` 清除批注、占位符和内容控件。
-
-### 3.2 非目标
-
-- 不支持 PDF、TIFF、BMP、HEIC、DOCX、ZIP 或合同原文件上传。
-- 不做 OCR、自动识别金额、日期、签章或人员姓名。
-- 不连接外部网盘，不允许外链图片。
-- 不在本阶段实现电子签章真实性验证。
-- 不改变 A-1～A-8 证据图和交叉引用的现有语义。
-- 不让附录 B 缺失阻止最终 DOCX 导出。
-
-## 4. 九类证据契约
-
-固定枚举不得由客户端自由扩展：
-
-| 顺序 | `category_code` | 中文名称 | 结构化元数据 |
-|---:|---|---|---|
-| 1 | `engagement_proof` | 密评委托证明 | 文件类型、签订时间、委托单位、委托金额、系统密评单价 |
-| 2 | `travel_accommodation` | 差旅与住宿证明 | 入场时间、离场时间、责任单位、现场人员、本地测评标志 |
-| 3 | `onsite_process` | 现场测评过程证明 | 入离场时间、责任单位、地点、现场人员、材料子类型 |
-| 4 | `authorization_notice` | 授权书与风险告知书 | 授权书/风险告知书子类型、签署日期 |
-| 5 | `plan_review` | 测评方案评审与确认 | 方案名称、评审时间、评审/确认子类型 |
-| 6 | `report_review` | 密评报告评审记录 | 评审时间 |
-| 7 | `assessor_roster` | 密评人员资格情况 | 姓名、角色、考试通过时间；采用结构化人员行，不以图片替代名单 |
-| 8 | `assessor_exam_proof` | 密评人员成绩证明 | 关联人员 ID |
-| 9 | `grading_filing` | 系统定级匹配证明 | 等保备案名称、备案时间 |
-
-`onsite_process` 的图片子类型限定为 `sign_in|onsite_photo|handover_record|room_access_record`；`authorization_notice` 限定为 `authorization|risk_notice`；`plan_review` 限定为 `review|confirmation`。未知值返回 422，不静默归入“其他”。
-
-## 5. 架构及数据契约
-
-### 5.1 数据模型
-
-新增表：
+R5 的核心关系是：
 
 ```text
-report_evidence_categories
-  project_id, category_code, metadata_json, is_not_applicable,
-  not_applicable_reason, created_at, updated_at
-  UNIQUE(project_id, category_code)
-
-report_evidence_items
-  id, evidence_uuid, project_id, file_path, original_name, caption, alt_text,
-  pixel_width, pixel_height, dpi_x, dpi_y,
-  display_width_in, display_height_in, sha256,
-  created_at, updated_at
-
-report_evidence_usages
-  id, usage_uuid, project_id, evidence_item_id, category_code, subtype,
-  related_member_id, sort_order,
-  created_at, updated_at
+R2中央人员/组织/日期事实
+  + 附录B结构化记录
+  + 工具内PNG/JPEG证据
+  -> 关联一致性校验
+  -> R4 AppendixBProjection
+  -> 母版固定表B-1～表B-9
 ```
 
-约束：
+缺少证明材料、图片或题注按已确认边界只产生 warning；已经填写的数据若与项目人员、日期和备案事实冲突，或已引用图片损坏/越权，则属于 error。R5 不得用“缺材料只警告”掩盖已存在数据的矛盾。
 
-- `project_id` 必须指向 `project_type=full_report`。
-- 证据条目和用途表通过数据库外键与服务层双重校验项目归属；同一证据可通过多条 usage 在不同证明位置复用，禁止复制二进制制造重复证据。
-- `related_member_id` 复用 R2 的 `report_members`，不在附录B建立第二套人员事实源。
-- `file_path` 只能是 `storage/report_evidence/{project_id}/...` 下的相对路径。
-- 上传后计算 SHA-256；相同项目、类别、摘要相同只警告重复，不自动去重。
-- 九个类别在创建 full_report 项目时一次性初始化；迁移重复执行必须幂等。
-- `metadata_json` 的解析由类别专用 Pydantic 模型完成，数据库不接受任意未校验 JSON。
+## 2. 前置输入与非目标
 
-### 5.2 API 契约
+### 2.1 前置输入
+
+- R0：`report-2023-2025.12.08` 母版、表 B-1～表 B-9 锚点和编写提示。
+- R1/R2：`full_report` 项目、`report_organizations`、`report_members`、`report_phase_dates`、基本信息和字段关联矩阵。
+- R4：稳定 `AppendixBProjection` schema、九表渲染接口、图片/书签/题注 ID 分配器、draft/final 闸门和导出快照。
+- 现有图片服务：PNG/JPEG 文件签名、MIME、像素、DPI、显示尺寸和安全路径能力。
+
+### 2.2 非目标
+
+- 不支持 PDF、TIFF、BMP、HEIC、DOCX、XLSX、ZIP 或合同原文件上传。
+- 不做 OCR，不自动识别日期、金额、签章、人员或证件内容。
+- 不连接外部网盘、URL 或系统任意文件路径，不从 Word 回收图片。
+- 不建立第二套项目成员、审核人、批准人、单位或阶段日期事实源。
+- 不修改附录 A 图片、评分、题注和交叉引用语义，不涉及 Ra/Rk。
+- 不在 R5 重新实现 R2 业务校验或 R3 派生规则；仅调用已冻结服务并提供证据侧记录。
+
+## 3. 编号与九表契约
+
+为避免母版目录节号与表号混淆，本方案和 API 的 `category_code` 一律按母版**表号 B-1～B-9**定义：
+
+| 表号 | `category_code` | 母版名称 | 主要结构化内容 |
+| --- | --- | --- | --- |
+| B-1 | `engagement_proof` | 委托证明文件 | 文件类型、签订时间、有效委托单位、委托金额、系统密评单价 |
+| B-2 | `travel_accommodation` | 差旅住宿等票证 | 差旅起止、责任单位、现场人员、本地测评标志、覆盖的 B-3 记录 |
+| B-3 | `onsite_process` | 进场记录 | 进离场时间、责任单位、地点、现场人员及现场过程图片 |
+| B-4 | `authorization_notice` | 现场测评授权及风险告知 | 授权书、风险告知书及签署日期 |
+| B-5 | `plan_review` | 测评方案评审 | 方案名称、评审时间、评审/确认材料 |
+| B-6 | `report_review` | 密评报告评审 | 评审时间和评审材料 |
+| B-7 | `assessor_roster` | 密评人员资格情况 | 姓名、角色、密评人员考试通过时间，结构化人员行 |
+| B-8 | `assessor_exam_proof` | 密评人员考核成绩证明 | 关联人员及成绩证明图片 |
+| B-9 | `grading_filing` | 系统定级备案证明 | 备案系统名称、备案时间、是否与被测系统相同、差异说明 |
+
+母版目录中的“附录 B.4 密评人员资格证明”是第 4 个子节，包含表 B-7 和表 B-8；它不等同于表 B-4。下文提到“人员资格部分”时，均明确指表 B-7/B-8，避免实现时把审核人员写入表 B-4。
+
+九个类别固定初始化，客户端不得新增、删除、改名或改变顺序。B-3 图片子类型限定为 `sign_in|onsite_photo|handover_record|room_access_record`；B-4 限定为 `authorization|risk_notice`；B-5 限定为 `review|confirmation`。未知枚举返回 422。
+
+## 4. 人员、日期和单位关联
+
+### 4.1 B-1 委托单位
+
+- B-1 委托单位只读引用 R2“有效委托单位”：存在独立委托单位时使用委托单位，否则使用被测单位。
+- 项目不得在 B-1 单独维护另一个委托单位名称。
+- 签订时间、金额和单价属于证据记录；缺失只 warning，非法日期或金额格式返回字段错误。
+
+### 4.2 B-2 差旅与 B-3 现场记录
+
+- B-2、B-3 的人员必须从 R2 项目组成员中选择；跨项目、停用或非项目组人员拒绝保存。
+- 每条 B-2 差旅记录显式关联其覆盖的 B-3 现场记录，不能仅凭日期或姓名模糊匹配。
+- B-2 差旅起止日期可以比现场记录更宽，但必须覆盖对应 B-3 的进场和离场日期；未覆盖为 error。
+- 本地项目无差旅时，B-2 保留母版结构并由 R4 在内容单元格输出 `/`，不生成虚构票证；`is_local=true` 与已有差旅文件并存时提示并要求确认，但保留文件。
+- 一次现场测评时，R2 现场测评阶段起止日期等于该 B-3 记录的进场、离场日期。
+- 多次现场测评时，现场阶段开始日期取 B-3 最早进场日期，结束日期取最晚离场日期；各 B-3 记录独立保留并按日期、稳定 UUID 排序。
+- 当 B-3 记录存在时，它是现场阶段日期的派生来源，R5 调用 R2 同源日期服务更新 `report_phase_dates`，不新增平行字段。B-3 全空只产生证据 warning，不伪造日期；R2 自身的阶段日期完整性闸门仍独立生效。
+
+### 4.3 人员资格部分（目录 B.4，表 B-7/B-8）
+
+- 表 B-7 人员行只引用 `report_members`，不复制姓名和考试时间作为第二套可编辑数据。
+- 编制人正式导出时必填，必须为项目组组员、已通过密评人员考核且不得为项目负责人；角色固定显示“组员、密评报告编制人”。
+- 审核人、批准人允许为空。存在时角色分别显示“密评报告审核人”“密评报告批准人”，且必须有考试通过时间。
+- 编制人、审核人、批准人不得由同一人员兼任；同一审核或批准角色关联多人时为 error。
+- 若表 B-7 选择了审核人或批准人，R5 通过 R2 人员服务自动回填基本信息表对应人员；不得由前端同时写两处。
+- 表 B-8 的每份成绩证明必须关联表 B-7 中的具体人员；证明图片缺失只 warning，跨项目或不存在人员为 error。
+- “项目组至少两名已通过考核成员”等资格规则由 R2 统一校验，R5 展示和复用结果，不复制判断代码。
+
+### 4.4 B-5 方案评审与 B-6 报告评审
+
+- B-5 方案评审时间独立填写，必须早于现场测评阶段开始日期；等于或晚于现场开始日期为 error。
+- B-5 不得写入审核日期，B-6 也不得反向修改方案评审时间。
+- B-6 报告评审时间是基本信息表“审核日期”的唯一来源；B-6 为空时审核日期为空，正式导出允许为空。
+- 编制日期仍由 R2 固定为测评结束日期；批准日期独立选填，不从 B-5/B-6 派生。
+- 当 B-6 有值时，R2 已确认的“编制日期不晚于审核日期；审核日期不晚于批准日期（批准日期有值时）”必须通过，否则为 error。
+
+### 4.5 B-9 定级备案
+
+- 选择“备案系统与被测系统相同”时，备案系统名称自动使用 `system_name` 且只读。
+- 选择不同时，必须人工填写备案系统名称和差异说明；不允许自动猜测。
+- 未定级备案但 B-9 已存在内容时，提示并要求二次确认，数据仍保留并导出；不得清空未选分支数据。
+- B-9 只引用 R2 的备案状态和系统名称；备案时间及证明图片属于 B-9 证据记录。
+
+## 5. 图片证据边界
+
+- 所有图片必须通过 R5 API 上传并保存至 `storage/report_evidence/{project_uuid}/`；数据库只存相对路径。
+- 同时校验扩展名、MIME、文件签名和实际解码，只允许 PNG/JPEG；设置单文件大小、像素总量和解压炸弹上限。
+- 不接受 URL、base64 文本、任意本地路径、粘贴的 OOXML 图片关系或用户直接替换 DOCX 内图片。
+- 上传后记录 SHA-256、像素、DPI、显示尺寸、题注、alt 和原始文件名。相同项目同类别摘要重复只 warning，不自动去重。
+- 图片替换必须先验证新文件并原子切换，失败保留旧文件；批量上传任一失败时回滚本批新数据库行和新文件。
+- 缺少图片、材料或题注只 warning；数据库已引用但文件不存在、损坏、哈希不符、路径越界或跨项目复用为 error。
+- 不执行 OCR；人员、日期、备案和金额的权威值只来自结构化字段，不能从图片内容反推。
+- R4 渲染时保持宽高比，优先一页一图，超出可用区域时等比缩放；不拉伸、不裁切正文信息。每张图片使用稳定书签、SEQ 题注和必要 REF。
+- 表 B-7 名单必须为真实 Word 表格结构，不能用人员名单截图替代；表 B-8 才承载人员成绩证明图片。
+
+## 6. 数据模型、约束与迁移
+
+### 6.1 `report_evidence_categories`
+
+- 字段：`project_id`、`category_code`、`is_not_applicable`、`not_applicable_reason`、`warning_acknowledged_at`、时间戳。
+- 约束：`UNIQUE(project_id, category_code)`；项目必须为 `full_report`；固定九类；项目删除时级联删除。
+- 索引：`(project_id, category_code)`、`(project_id, is_not_applicable)`。
+
+### 6.2 `report_evidence_items`
+
+一条 item 可以是结构化事件/记录或图片，使用 `item_kind` 明确区分：
+
+- 核心字段：`item_uuid`、`project_id`、`category_code`、`parent_item_uuid`、`item_kind`、`subtype`、`title`、`starts_on`、`ends_on`、`organization_id`、`location`、`sort_order`、时间戳。
+- 图片字段：`file_path`、`original_name`、`caption`、`alt_text`、像素/DPI/显示尺寸、`sha256`；非图片记录这些字段为空。
+- 类别专用非关系字段可放入通过判别式 Pydantic schema 的 `metadata_json`；人员、日期、组织、父子记录和 B-2/B-3 覆盖关系不得仅藏在无约束 JSON 中。
+- 约束：`UNIQUE(project_id, item_uuid)`；父项必须同项目同类别；日期结束不早于开始；文件相对路径必须位于项目证据目录。
+- 索引：`(project_id, category_code, sort_order)`、`(project_id, item_kind)`、`(sha256)`。
+
+### 6.3 `report_evidence_usages`
+
+- 字段：`usage_uuid`、`project_id`、`evidence_item_uuid`、`usage_kind`、`related_member_id`、`related_item_uuid`、`slot_key`、`sort_order`。
+- 用途：关联 B-2/B-3 现场人员、B-2 覆盖 B-3、B-7/B-8 人员、图片所属记录和 R4 母版槽位。
+- 约束：所有外键必须同项目；同一 usage 只能选择与 `usage_kind` 相符的关联字段；复合唯一键防止重复人员或重复覆盖关系。
+- 索引：`(project_id, usage_kind)`、`(related_member_id)`、`(related_item_uuid)`。
+- 删除语义：删除 item 时级联删除 usage；删除成员若被当前证据引用则拒绝并提示先解除关系，不静默留下姓名副本。
+
+迁移顺序：创建一致性备份 → 新建三表、索引和外键 → 为现有 full_report 项目幂等初始化九类 → 校验行数和跨项目外键 → 启用 R5 feature flag。迁移不改 `evidence_images`、附录 A、评分或既有导出记录。
+
+## 7. API 与 UI 契约
+
+### 7.1 API
 
 ```text
 GET    /api/projects/{project_uuid}/report/appendix-b
 PUT    /api/projects/{project_uuid}/report/appendix-b/{category_code}
-POST   /api/projects/{project_uuid}/report/appendix-b/{category_code}/images
-PUT    /api/report-evidence/{evidence_uuid}
-POST   /api/report-evidence/{evidence_uuid}/file
-DELETE /api/report-evidence/{evidence_uuid}
-POST   /api/projects/{project_uuid}/report/appendix-b/{category_code}/reorder
+POST   /api/projects/{project_uuid}/report/appendix-b/{category_code}/items
+PUT    /api/report-evidence-items/{item_uuid}
+DELETE /api/report-evidence-items/{item_uuid}
+POST   /api/report-evidence-items/{item_uuid}/images
+POST   /api/report-evidence-items/{item_uuid}/file
+PUT    /api/projects/{project_uuid}/report/appendix-b/{category_code}/reorder
+POST   /api/projects/{project_uuid}/report/appendix-b/validations
 ```
 
-读取响应包含九类完整清单、结构化元数据、图片、关联的 `report_members`、warning 和完成计数。上传使用 multipart，仅允许 PNG/JPEG。非法图片返回 400；项目或类别不存在返回 404；项目类型不匹配返回 409；非法枚举或元数据返回 422。
+请求携带 `expected_project_revision`；并发变化返回 409。非法类别/子类型/人员/日期返回 422；跨项目资源统一 404；文件损坏返回 400。读取响应始终返回九类、结构化记录、人员引用、图片、warning、error 和完成度。
 
-warning 示例：`APPENDIX_B_CATEGORY_EMPTY`、`APPENDIX_B_METADATA_MISSING`、`APPENDIX_B_CAPTION_MISSING`、`APPENDIX_B_LOCAL_TRAVEL_OPTIONAL`。warning 不改变 HTTP 成功状态。
+warning 示例：
 
-### 5.3 UI 契约
+- `APPENDIX_B_CATEGORY_EMPTY`
+- `APPENDIX_B_IMAGE_MISSING`
+- `APPENDIX_B_CAPTION_MISSING`
+- `APPENDIX_B_LOCAL_TRAVEL_OPTIONAL`
+- `APPENDIX_B_UNFILED_DATA_PRESENT`
 
-- 完整报告项目导航新增“附录 B 证明材料”；`appendix_a` 项目不显示入口。
-- 页面按九类固定顺序显示折叠卡片，显示图片数、元数据完整度和 warning 数。
-- 每类卡片提供类别专用字段、批量上传、替换、删除、拖拽/按钮排序和大图预览。
-- 只显示 PNG/JPEG 选择器；前端限制是体验层，后端仍独立校验。
-- warning 使用黄色提示，不使用红色阻断样式；用户可在 warning 存在时保存、确认和导出。
-- 图片来源只显示“由工具管理”，不提供路径编辑框、URL 输入框或打开源 DOCX 编辑入口。
+error 示例：
 
-### 5.4 DOCX 输出契约
+- `APPENDIX_B_MEMBER_NOT_IN_TEAM`
+- `APPENDIX_B_TRAVEL_NOT_COVER_VISIT`
+- `APPENDIX_B_PLAN_REVIEW_DATE_INVALID`
+- `APPENDIX_B_REVIEW_DATE_ORDER_INVALID`
+- `APPENDIX_B_FILE_MISSING_OR_CORRUPT`
 
-- 使用 `template_edition=2023`、`template_revision=2025-12-08` 的脱敏运行时模板。
-- 附录 B 单独横向分节，九类表顺序固定。
-- 元数据写入对应单元格；未填保持空白，不输出 `XXX`、`20XX`、`贴图` 或 `{扫描件}`。
-- 图片从工具存储读取，保持宽高比；每张图片生成稳定书签、SEQ 题注和必要的 REF。
-- `export=draft` 可保留可编辑内容控件，但不保留模板批注；`export=final` 扁平化控件并清理所有批注。
-- Ra、Rk 不写入任何 Word XML。
+### 7.2 UI
 
-## 6. 可提交工作包
+- `full_report` 项目显示“附录 B 证明材料”；`appendix_a` 项目不显示入口。
+- 页面按表 B-1～B-9 固定顺序显示折叠卡片，并额外标识“人员资格部分（目录 B.4）”包含 B-7/B-8。
+- B-2/B-3 支持多次记录、项目组人员多选和显式覆盖关系；日期联动变化先展示影响再保存。
+- B-7 人员从中央人员库选择，姓名/角色/考试时间按规则只读或受控编辑，不允许重复手填。
+- B-9 同/不同系统切换遵守保留未选分支数据并提示的全局规则。
+- 图片支持批量上传、替换、删除、排序和大图预览；不提供路径、URL 或打开 Word 编辑入口。
+- warning 使用非阻断提示；error 明确定位到表号、记录、人员、日期或图片并阻止矛盾数据进入 final。
 
-### R5-WP1：数据库与类别模型
+## 8. R4 装配交接
 
-- 输入：九类枚举、项目类型统一契约、schema 3 基线。
-- 具体改动：新增三张表、索引、外键、Pydantic 模型和幂等 schema 迁移；full_report 项目初始化九类记录。
-- 失败行为：迁移事务失败则回滚并保持旧 schema 可启动；不创建半套类别。
-- 测试：全新库、schema 3 升级、重复升级、appendix_a 拒绝、级联删除、非法 JSON。
-- 验收：九类顺序稳定；旧项目和 A 数据无变化。
-- 建议提交：`R5-WP1: 建立附录B九类证据数据模型`。
+R5 向 R4 提供不可变 `AppendixBProjection`：
 
-### R5-WP2：安全文件服务与 API
+```text
+AppendixBProjection
+  project_revision
+  category_rows[B-1..B-9]
+  personnel_rows
+  evidence_images
+  field_source_ids
+  warnings
+  errors
+  projection_hash
+```
 
-- 输入：现有 `services/evidence.py` 的 PNG/JPEG 检查和图片元数据能力。
-- 具体改动：抽取可复用图片校验；实现附录 B CRUD、批量上传、替换、排序、摘要和项目归属检查。
-- 失败行为：批量上传任一失败时回滚本批数据库行和新文件；替换失败保留旧文件；越权统一返回 404。
-- 测试：伪扩展名、伪 MIME、损坏图片、路径穿越、跨项目 ID、重复文件、并发排序。
-- 验收：磁盘和数据库不留孤儿文件；仅 PNG/JPEG 可进入存储。
-- 建议提交：`R5-WP2: 实现附录B证据图片API`。
+- R4 只按九表锚点渲染，不查询 R5 数据库、不派生人员/日期或判断 B-2/B-3 覆盖。
+- 空字段保持空白，不输出 `XXX`、`20XX`、`贴图` 或外层花括号。本地无差旅按规则输出 `/`。
+- draft 可保留 manifest 允许的控件但不保留模板批注；final 按 R4 规则扁平化并清理批注。
+- 缺材料 warning 随导出任务保存但不阻断；projection 含 error、文件失效或项目 revision 不一致时 final 失败。
+- 图片只通过 R4 统一关系/书签/题注分配器写入同一 OOXML package，R5 不另建 DOCX 拼装器。
+- 导出快照记录证据 item UUID、用途、文件哈希和相对路径；不复制图片二进制到 JSON。
 
-### R5-WP3：九类 UI
+## 9. 失败行为
 
-- 输入：API 响应、现有 EvidencePanel 交互模式。
-- 具体改动：新增附录 B 页面、类别卡片、专用元数据表单、人员表格、图片上传和预览；提取通用图片卡片但不混淆 A/B 模型。
-- 失败行为：未保存元数据切换页面时提示；上传失败保留本地表单；读取失败不显示伪完成状态。
-- 测试：九类顺序、项目类型可见性、PNG/JPEG accept、warning 非阻断、键盘操作和移动端布局。
-- 验收：用户无需打开文件夹或 Word 即可完成全部证据管理。
-- 建议提交：`R5-WP3: 完成附录B证据管理页面`。
+- 九类初始化或迁移中任一步失败：事务整体回滚，不创建半套类别。
+- 批量图片上传失败：回滚本批新增记录和文件；替换失败保留旧文件。
+- 人员、组织或记录跨项目：拒绝请求且不泄露目标存在性。
+- B-2/B-3 日期、B-5/B-6 日期或人员角色冲突：保存返回结构化错误，不由前端自行“修正”。
+- 缺失材料/题注：保存成功并产生 warning，不把项目伪标为证据完整。
+- 已引用文件损坏、丢失、哈希不符或路径越界：导出 error，不跳过图片继续生成 final。
+- R4 接口版本或投影 hash 不匹配：禁用附录 B 装配，不降级为直接操作 DOCX。
 
-### R5-WP4：规则警告与状态联动
+## 10. 可提交工作包
 
-- 输入：模板批注提炼规则、workflow_status 契约。
-- 具体改动：新增 warning 计算器；项目进入 ready_for_review 或 confirmed 时刷新提示，但不因附录 B 缺失拒绝状态变更。
-- 失败行为：规则计算异常记录日志并返回通用 warning，不把项目误标为完整。
-- 测试：本地测评免差旅、人员成绩关联、九类全空、部分缺失、全部完整。
-- 验收：warning 数和目标类别稳定，可从 UI 直接定位。
-- 建议提交：`R5-WP4: 增加附录B非阻断规则提示`。
+### WP-R5.1：九表模型与幂等迁移
 
-### R5-WP5：完整报告 DOCX 拼装
+- **输入**：R2 项目/人员/组织模型、固定 B-1～B-9 契约。
+- **改动**：新增三张表、外键、索引、类别 schema 和九类初始化。
+- **失败**：迁移事务失败整体回滚；appendix_a 项目拒绝创建类别。
+- **测试**：全新库、旧库升级、重复升级、跨项目外键、级联/限制删除、非法 JSON。
+- **验收**：九类顺序和表号稳定，核心关系不依赖无约束 JSON。
+- **迁移/回滚**：升级前备份；回滚应用保留新表但禁止旧版本降级写入。
+- **交接**：向关联服务提供稳定 item/usage 仓储接口。
+- **建议提交**：`R5.1: 建立附录B九表证据模型`。
 
-- 输入：脱敏完整报告模板、九类数据、图片文件。
-- 具体改动：实现九类表填充、动态人员行、图片分页、题注和书签；加入 draft/final 行为；确保 Ra/Rk 缺席。
-- 失败行为：缺证据继续导出并返回 warning；文件损坏或数据库引用文件不存在时导出失败并给出类别和图片 ID。
-- 测试：空附录 B、九类完整、多图、一页一图、横图、长题注、重复导出、DOCX 重新解析、字段目标完整性。
-- 验收：Word 打开无修复提示；最终版无批注和示例占位符。
-- 建议提交：`R5-WP5: 生成完整报告附录B`。
+### WP-R5.2：人员与日期关联服务
 
-### R5-WP6：打包与阶段回归
+- **输入**：R2 字段矩阵、项目组、阶段日期和 B-1/B-2/B-3/B-5/B-6/B-7/B-9 记录。
+- **改动**：实现有效委托单位、差旅覆盖现场、现场日期派生、人员资格、审核日期和备案名称关联。
+- **失败**：跨项目人员、角色重复、日期次序、B-9 差异信息缺失时返回字段级错误。
+- **测试**：一次/多次现场、本地无差旅、宽覆盖、未覆盖、B-5 边界、B-6 空/有值、三角色互斥、B-9 同/不同/未备案。
+- **验收**：不产生平行人员或日期字段，所有值可追溯 R2 权威实体。
+- **迁移/回滚**：不改写旧项目；关闭 R5 后保留 R2 核心数据和证据记录。
+- **交接**：向 UI 和 AppendixBProjection 提供同一校验结果。
+- **建议提交**：`R5.2: 落实附录B人员日期与备案关联`。
 
-- 输入：桌面运行时、备份恢复、全量测试。
-- 具体改动：将新表纳入迁移完整性和备份审计；补充前后端与桌面打包契约测试。
-- 失败行为：打包资源缺失时构建失败，不降级生成空附录。
-- 测试：全量 `scripts/run_checks.ps1`、客户端安装态上传/导出/备份恢复。
-- 验收：旧 A 项目可正常打开、导出；full_report 附录 B 可用。
-- 建议提交：`R5-WP6: 完成附录B阶段验收`。
+### WP-R5.3：安全图片服务与 API
 
-## 7. 迁移与回滚
+- **输入**：现有 PNG/JPEG 校验能力、R5 记录模型。
+- **改动**：实现上传、替换、删除、排序、摘要、父记录和项目归属检查。
+- **失败**：伪扩展名/MIME、损坏图、路径穿越、跨项目、像素超限时拒绝且无孤儿文件。
+- **测试**：全部文件攻击向量、批量回滚、替换补偿、重复摘要、并发排序、相对路径解析。
+- **验收**：仅工具管理的 PNG/JPEG 可进入附录 B，文件和数据库始终一致。
+- **迁移/回滚**：不复用或迁移附录 A `evidence_images`；文件目录按项目隔离。
+- **交接**：向 R4 提供稳定图片 DTO、哈希和相对路径。
+- **建议提交**：`R5.3: 实现附录B安全图片证据API`。
 
-- 升级前使用现有 SQLite 一致性备份机制创建备份。
-- 迁移只新增表和索引，不改写 `evidence_images`、A 行或评分。
-- 回滚应用版本时旧版本忽略新表；数据库不得降版本写入。
-- 阶段内代码回滚可保留新表；再次升级时幂等复用。
-- 删除项目时先在事务内删除记录，再安全删除该项目附录 B 目录；路径必须解析并确认仍位于 data root。
+### WP-R5.4：九表证据工作台
 
-## 8. 风险与安全
+- **输入**：R5 API 和 R2 中央人员/日期服务。
+- **改动**：九类卡片、多次现场/差旅、人员选择、日期影响预览、B-9 分支、图片管理和 warning/error 导航。
+- **失败**：未保存切换提示；读取/上传失败保留本地编辑状态但不显示伪完成。
+- **测试**：项目类型可见性、九类顺序、B.4/B-4 编号提示、键盘、窄屏、并发 revision、warning 非阻断。
+- **验收**：用户无需打开目录或 Word 即可管理全部附录 B 数据和图片。
+- **迁移/回滚**：UI feature flag 可独立关闭，API 和历史数据保留。
+- **交接**：向 R4 集成工作包提供已确认投影样本。
+- **建议提交**：`R5.4: 完成附录B九表证据工作台`。
 
-- 证明材料可能含合同金额、手机号、签名、票据和人员信息，只存本地 data root，不上传远端。
-- API 文件读取必须通过记录 ID 和项目归属解析，禁止客户端提交任意路径。
-- 图片解码设置像素上限，防止压缩炸弹；上传大小限制与现有 DOCX 导入限制分开配置。
-- 诊断日志不打印图片内容、绝对客户路径或完整人员信息。
-- 删除和替换采用先数据库校验、后文件操作、失败补偿，避免跨项目删除。
-- 示例真实报告及其图片不得提交 Git。
+### WP-R5.5：R4 投影与 DOCX 集成
 
-## 9. 阶段验收闸门
+- **输入**：稳定 AppendixBProjection、R4 九表锚点和装配器。
+- **改动**：实现 B-1～B-9 行、人员表、图片分页、题注、书签、空值和本地 `/` 投影。
+- **失败**：缺材料继续并返回 warning；矛盾关系、文件损坏或引用断链使 final 失败。
+- **测试**：全空、部分、九类完整、多次现场、多图、横图、长题注、B-7 动态人员、B-8 人员关联、重复导出和 OOXML 回读。
+- **验收**：Word 打开无修复提示，final 无批注/示例占位符/Ra/Rk，固定九表结构无漂移。
+- **迁移/回滚**：只扩展 R4 插槽，不分叉装配器；可回退为空附录 B warning 模式。
+- **交接**：向 R6/R7 提供稳定证据快照和“图片不回收”边界。
+- **建议提交**：`R5.5: 将附录B证据接入完整报告装配`。
 
-- schema 迁移、重复迁移和恢复测试通过。
-- 九类枚举、顺序、条件字段与模板一致。
-- 仅 PNG/JPEG；路径穿越、越权和损坏图片测试通过。
-- 缺失证据只产生 warning，任何导出模式都不因此被阻止。
-- 完整报告 DOCX 的九类表、图片、题注和书签结构回归通过。
-- final DOCX 无批注、无示例占位符、无 Ra/Rk。
-- 旧 appendix_a 项目行为和 XLSX 导出无回归。
-- 桌面安装态完成一次上传、重排、替换、备份恢复和 DOCX 导出验收。
+### WP-R5.6：回归、备份和安装态验收
 
-## 10. 分支、提交与 PR
+- **输入**：R5 全部能力、桌面运行时和备份恢复机制。
+- **改动**：备份审计、打包资源、脱敏夹具、全量和安装态测试。
+- **失败**：备份缺表、安装包缺资源、恢复后引用断链或图片缺失时验收失败。
+- **测试**：`scripts/run_checks.ps1`、备份/恢复、安装态上传/重排/替换/导出、旧 appendix_a 回归。
+- **验收**：证据数据和文件可完整恢复，旧附录 A 与 XLSX 行为不变。
+- **迁移/回滚**：阶段回滚不删除证据目录和新表；恢复操作使用一致性备份。
+- **交接**：冻结 R6 迁移映射和 R7 roundtrip 不回收图片的接口约束。
+- **建议提交**：`R5.6: 完成附录B证据模块专项验收`。
 
-- 建议分支：`codex/r5-appendix-b-evidence`，从最新 `main` 创建。
-- 每个工作包独立提交，禁止把真实报告、上传图片、数据库、导出件或临时渲染产物加入提交。
-- PR 标题：`R5: 增加附录B九类证据管理与导出`。
-- PR 描述必须列出 schema 迁移、warning 非阻断、PNG/JPEG 限制、无 Ra/Rk Word 输出和安装态验收结果。
+## 11. 测试和阶段验收
+
+- schema：全新/升级/重复迁移、外键、索引、删除语义和恢复。
+- 关系：B-2/B-3 人员及覆盖、一次/多次现场日期、B-5/B-6 日期、人员三角色、B-9 同/不同/未备案。
+- 图片：PNG/JPEG、伪文件、损坏图、像素炸弹、路径穿越、跨项目、原子替换、孤儿清理。
+- warning/error：九类全空、部分缺失、题注缺失均非阻断；已填写矛盾和文件失效阻断 final。
+- DOCX：九表顺序、B-7 动态行、B-8 图片关联、长图分页、题注/书签、无占位符、无 Ra/Rk、Word 无修复提示。
+- 回归：附录 A 图片/引用、评分、DOCX、XLSX、旧项目、备份恢复和桌面安装态。
+
+阶段完成必须满足：
+
+- 九类固定枚举与母版表 B-1～B-9 一致，并明确解决目录 B.4 与表 B-4 的歧义。
+- B-2/B-3 项目组人员、差旅覆盖和现场日期派生满足 R0/R2 规则。
+- 人员资格部分、B-5、B-6 和 B-9 与中央人员、日期、系统/备案事实同源。
+- 附录 B 缺失只 warning；已存在矛盾和损坏/越权文件为 error。
+- 仅 PNG/JPEG，所有图片均由工具管理且可追溯哈希；不做 OCR，不回收 Word 图片。
+- R4 只消费 `AppendixBProjection`，R5 未复制 R2/R3 计算逻辑或另建 DOCX 生成器。
+- 全量检查、Word 原生回读、桌面安装态、备份恢复和独立代码审查通过。
+
+## 12. 回滚、安全与阶段交接
+
+- 升级前使用现有 SQLite 一致性备份；迁移只新增证据表、索引和项目内证据目录。
+- 删除项目时先验证绝对路径仍位于 data root，再按记录删除和文件补偿流程处理；不得根据客户端路径递归删除。
+- 回滚代码不删除新表和证据文件；旧版本忽略新表，不允许降级写入。
+- 证明材料可能含合同金额、手机号、签名、票据和人员信息，仅存本地 data root；日志不记录正文、图片、绝对客户路径或完整个人信息。
+- 下载和预览必须校验项目归属，使用不可预测文件名，防止路径穿越和跨项目枚举。
+- R5 向 R6 交付：九类迁移映射、人员/日期待确认问题格式和图片仅 PNG/JPEG 的导入边界。
+- R5 向 R7 交付：结构化字段可按快照比较，Word 新增/替换/删除图片一律不回收。
+
+## 13. 分支、提交与 PR
+
+- 从已合并 R4 的最新 `main` 创建 `codex/r5-appendix-b-evidence`。
+- 按 WP-R5.1～R5.6 独立提交，不提交真实报告、图片、数据库、导出件、临时渲染或日志。
+- PR 标题建议：`R5：实现附录B九表证据管理与人员日期关联`。
+- PR 描述必须附 schema 迁移、B-2/B-3 日期与人员向量、人员资格角色、B-5/B-6/B-9 关联、warning/error 边界、PNG/JPEG 安全测试、Word 装配和安装态验收结果。
+- 阶段完成后更新总方案状态，运行全量检查，推送远程并创建 Pull Request。
