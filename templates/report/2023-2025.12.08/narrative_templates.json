@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "templates": [
+    {"template_id":"narrative.system.overview","section_id":"system-overview","conclusion":"generic","text":"{system_name}用于{business_scope}，主要服务对象为{service_users}。本段内容应根据系统设计材料和现场核验结果确认。","variables":["system_name","business_scope","service_users"],"user_confirmation_required":true,"template_edition":"2023","template_revision":"2025-12-08"},
+    {"template_id":"narrative.assessment.scope","section_id":"assessment-scope","conclusion":"generic","text":"本次测评范围包括{object_summary}。测评边界和对象数量应与资产清单、网络拓扑及附录A保持一致。","variables":["object_summary"],"user_confirmation_required":true,"template_edition":"2023","template_revision":"2025-12-08"},
+    {"template_id":"narrative.finding.partially_conformant","section_id":"assessment-results","conclusion":"partially_conformant","text":"经核验，{assessment_object}在{metric_name}方面已采取{implemented_control}，但仍存在{gap_description}，因此判定为部分符合。","variables":["assessment_object","metric_name","implemented_control","gap_description"],"user_confirmation_required":true,"template_edition":"2023","template_revision":"2025-12-08"},
+    {"template_id":"narrative.finding.nonconformant","section_id":"assessment-results","conclusion":"nonconformant","text":"经核验，{assessment_object}未能提供{required_evidence}，且现场检查发现{observed_gap}，因此判定为不符合。","variables":["assessment_object","required_evidence","observed_gap"],"user_confirmation_required":true,"template_edition":"2023","template_revision":"2025-12-08"},
+    {"template_id":"narrative.risk.recommendation","section_id":"risk-analysis","conclusion":"generic","text":"建议针对{risk_subject}采取{recommended_measure}，并通过{verification_method}验证整改效果。具体措施应由报告负责人结合实际环境确认。","variables":["risk_subject","recommended_measure","verification_method"],"user_confirmation_required":true,"template_edition":"2023","template_revision":"2025-12-08"}
+  ]
+}
