@@ -25,7 +25,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
-const CURRENT_SCHEMA_VERSION = "3";
+const CURRENT_SCHEMA_VERSION = "4";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -131,7 +131,10 @@ async function restartSidecarAndReload(): Promise<void> {
   await loadBackendPage();
 }
 
-async function runOfflineRecovery(action: "integrity" | "list" | "restore", backupId?: string): Promise<Record<string, unknown> | undefined> {
+async function runOfflineRecovery(
+  action: "integrity" | "list" | "restore" | "prepare-schema-upgrade",
+  backupId?: string,
+): Promise<Record<string, unknown> | undefined> {
   if (backupId !== undefined && !/^[A-Za-z0-9._-]+$/.test(backupId)) return undefined;
   const controller = backend;
   try {
@@ -154,6 +157,37 @@ async function runOfflineRecovery(action: "integrity" | "list" | "restore", back
   } catch {
     return undefined;
   }
+}
+
+async function prepareSchemaUpgrade(): Promise<void> {
+  if (await recoveryMarkers.readPendingUpgrade()) return;
+  const event = await runOfflineRecovery("prepare-schema-upgrade");
+  if (event?.event !== "FULUA_OFFLINE_SCHEMA_UPGRADE" || typeof event.prepared !== "boolean") {
+    throw new Error("无法完成数据库升级前检查");
+  }
+  const sourceSchema = typeof event.source_schema === "string" ? event.source_schema : "";
+  const targetSchema = typeof event.target_schema === "string" ? event.target_schema : "";
+  if (targetSchema && targetSchema !== CURRENT_SCHEMA_VERSION) {
+    throw new Error("数据库升级目标版本与客户端不一致");
+  }
+  if (!event.prepared) {
+    if (sourceSchema && Number(sourceSchema) > Number(CURRENT_SCHEMA_VERSION)) {
+      throw new Error("本地数据库版本高于当前客户端");
+    }
+    return;
+  }
+  if (!sourceSchema || targetSchema !== CURRENT_SCHEMA_VERSION
+    || typeof event.backup_id !== "string" || !/^[A-Za-z0-9._-]+$/.test(event.backup_id)) {
+    throw new Error("数据库升级前备份结果无效");
+  }
+  await recoveryMarkers.writePendingUpgrade({
+    kind: "schema_migration",
+    fromVersion: app.getVersion(),
+    targetVersion: app.getVersion(),
+    fromSchemaVersion: sourceSchema,
+    createdAt: new Date().toISOString(),
+    backupId: event.backup_id,
+  });
 }
 
 async function offlineIntegrity(): Promise<{ integrity: string; schema_version: string } | undefined> {
@@ -235,6 +269,7 @@ function recoveryCoordinator(loadBusinessPage: () => Promise<void> = loadBackend
 
 function guardedStartupCoordinator(isFirstRun = false): GuardedStartupCoordinator {
   return new GuardedStartupCoordinator(recoverySessionGate, {
+    prepareSchemaUpgrade,
     hasRecoveryMarker: async () => {
       const runMarker = await recoveryMarkers.hasRunMarker();
       const pending = await recoveryMarkers.readPendingUpgrade();

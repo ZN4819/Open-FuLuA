@@ -66,6 +66,68 @@ class DesktopServerTests(unittest.TestCase):
             self.assertEqual(database_path.read_bytes(), before)
             self.assertEqual(database_path.stat().st_mtime_ns, before_mtime)
 
+    def test_prepare_schema_upgrade_creates_verified_schema_three_backup_before_start(self) -> None:
+        import sqlite3
+
+        from app.runtime import RuntimePaths
+        from tests.test_backups import _create_live_data
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            paths = RuntimePaths(
+                root,
+                root / "data" / "app.db",
+                root / "storage",
+                root / "logs",
+                root / "backups",
+                root / "migration",
+                "desktop",
+            )
+            _create_live_data(paths, "schema 3 项目")
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                connection.execute("PRAGMA user_version = 3")
+                connection.commit()
+            finally:
+                connection.close()
+
+            result = subprocess.run(
+                self._command(
+                    "--data-root",
+                    str(root),
+                    "--offline-recovery",
+                    "prepare-schema-upgrade",
+                ),
+                cwd=ROOT / "backend",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            event = json.loads(result.stdout.strip())
+            self.assertEqual(event["event"], "FULUA_OFFLINE_SCHEMA_UPGRADE")
+            self.assertTrue(event["prepared"])
+            self.assertEqual((event["source_schema"], event["target_schema"]), ("3", "4"))
+            backup = paths.backup_path / event["backup_id"]
+            self.assertTrue((backup / "metadata.json").is_file())
+            backup_db = sqlite3.connect(backup / "data" / "app.db")
+            try:
+                self.assertEqual(backup_db.execute("PRAGMA user_version").fetchone()[0], 3)
+                self.assertEqual(
+                    backup_db.execute("SELECT name FROM projects").fetchone()[0],
+                    "schema 3 项目",
+                )
+            finally:
+                backup_db.close()
+            live_db = sqlite3.connect(paths.database_path)
+            try:
+                self.assertEqual(live_db.execute("PRAGMA user_version").fetchone()[0], 3)
+            finally:
+                live_db.close()
+
     def test_offline_integrity_missing_database_fails_closed_without_creating_database(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "missing-root"

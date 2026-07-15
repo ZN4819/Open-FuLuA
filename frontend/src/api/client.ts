@@ -1,3 +1,11 @@
+import {
+  projectCreatePayload,
+  projectUpgradeCopyPayload,
+  type ProjectCreationOperation,
+  type ProjectType,
+  type WorkflowStatus
+} from "../projectContracts.ts";
+
 const runtimeEnv = import.meta.env ?? {};
 const rawExplicitApiBaseUrl = runtimeEnv.VITE_API_BASE_URL?.trim();
 const explicitApiBaseUrl = rawExplicitApiBaseUrl?.replace(/\/+$/, "") ?? "";
@@ -16,7 +24,16 @@ export type Section = {
 
 export type Project = {
   id: number;
+  project_uuid: string;
   name: string;
+  project_type: ProjectType;
+  workflow_status: WorkflowStatus;
+  template_package_id?: string | null;
+  template_edition?: string | null;
+  template_revision?: string | null;
+  template_asset_set_hash?: string | null;
+  source_project_uuid?: string | null;
+  created_by_operation: ProjectCreationOperation;
   created_at: string;
   updated_at: string;
   sections: Section[];
@@ -342,17 +359,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `请求失败：${response.status}`);
+    throw await responseApiError(response, `请求失败：${response.status}`);
   }
 
   return response.json() as Promise<T>;
 }
 
-export function createProject(name: string): Promise<Project> {
+export function createProject(name: string, projectType: ProjectType = "appendix_a"): Promise<Project> {
   return request<Project>("/api/projects", {
     method: "POST",
-    body: JSON.stringify({ name })
+    body: JSON.stringify(projectCreatePayload(name, projectType))
+  });
+}
+
+export function upgradeProjectCopy(
+  projectUuid: string,
+  name: string,
+  idempotencyKey: string
+): Promise<Project> {
+  return request<Project>(`/api/projects/${encodeURIComponent(projectUuid)}/upgrade-copy`, {
+    method: "POST",
+    body: JSON.stringify(projectUpgradeCopyPayload(name, idempotencyKey))
   });
 }
 
@@ -734,19 +761,70 @@ export function createProjectFromDocxImport(jobId: number, projectName?: string)
   });
 }
 async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
-  const text = await response.text();
+  return responseErrorDetails(await response.text(), fallback).message;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly projectUuid?: string;
+  readonly field?: string;
+  readonly details?: unknown;
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code?: string;
+      projectUuid?: string;
+      field?: string;
+      details?: unknown;
+    }
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options.status;
+    this.code = options.code;
+    this.projectUuid = options.projectUuid;
+    this.field = options.field;
+    this.details = options.details;
+  }
+}
+
+async function responseApiError(response: Response, fallback: string): Promise<ApiError> {
+  const parsed = responseErrorDetails(await response.text(), fallback);
+  return new ApiError(parsed.message, {
+    status: response.status,
+    code: parsed.code,
+    projectUuid: parsed.projectUuid,
+    field: parsed.field,
+    details: parsed.details
+  });
+}
+
+function responseErrorDetails(text: string, fallback: string): {
+  message: string;
+  code?: string;
+  projectUuid?: string;
+  field?: string;
+  details?: unknown;
+} {
   if (!text) {
-    return fallback;
+    return { message: fallback };
   }
   try {
     const payload = JSON.parse(text) as { detail?: unknown; message?: unknown };
     const detail = payload.detail ?? payload.message;
     if (typeof detail === "string" && detail.trim()) {
-      return detail;
+      return { message: detail };
     }
     if (detail && typeof detail === "object") {
       const structured = detail as {
+        code?: unknown;
         message?: unknown;
+        project_uuid?: unknown;
+        field?: unknown;
+        details?: unknown;
         issues?: Array<{ section_code?: string; unit?: string; object_name?: string; field?: string; message?: string }>;
       };
       const message = typeof structured.message === "string" ? structured.message.trim() : "";
@@ -758,13 +836,19 @@ async function responseErrorMessage(response: Response, fallback: string): Promi
         : [];
       if (message || issueMessages.length > 0) {
         const remainder = (structured.issues?.length ?? 0) - issueMessages.length;
-        return [message, ...issueMessages, remainder > 0 ? `另有 ${remainder} 项问题。` : ""].filter(Boolean).join("\n");
+        return {
+          message: [message, ...issueMessages, remainder > 0 ? `另有 ${remainder} 项问题。` : ""].filter(Boolean).join("\n"),
+          code: typeof structured.code === "string" ? structured.code : undefined,
+          projectUuid: typeof structured.project_uuid === "string" ? structured.project_uuid : undefined,
+          field: typeof structured.field === "string" ? structured.field : undefined,
+          details: structured.details
+        };
       }
     }
   } catch {
     // Plain-text error bodies can be shown directly.
   }
-  return text || fallback;
+  return { message: text || fallback };
 }
 function _fileNameFromDisposition(disposition: string | null): string | null {
   if (!disposition) {

@@ -74,26 +74,34 @@ def _create_project_from_payload(job_id: int, project_name: str, parsed_payload:
 
     try:
         with database.connect() as db:
-            project_cursor = db.execute(
-                "INSERT INTO projects (name, created_at, updated_at) VALUES (?, ?, ?)",
-                (project_name, timestamp, timestamp),
+            project = database._insert_project(
+                db,
+                name=project_name,
+                project_type="appendix_a",
+                workflow_status="draft",
+                template_package_id=None,
+                template_edition=None,
+                template_revision=None,
+                template_asset_set_hash=None,
+                source_project_uuid=None,
+                created_by_operation="migration_import",
             )
-            project_id = int(project_cursor.lastrowid)
+            project_id = int(project["id"])
 
             for code, default_title, default_table_title, sort_order in database.SECTION_SEED:
                 section_payload = sections_by_code.get(code, {})
                 db.execute(
                     """
-                    INSERT INTO appendix_sections
-                        (project_id, code, title, table_title, sort_order)
-                    VALUES (?, ?, ?, ?, ?)
+                    UPDATE appendix_sections
+                    SET title = ?, table_title = ?, sort_order = ?
+                    WHERE project_id = ? AND code = ?
                     """,
                     (
-                        project_id,
-                        code,
                         section_payload.get("title") or default_title,
                         section_payload.get("table_title") or default_table_title,
                         sort_order,
+                        project_id,
+                        code,
                     ),
                 )
 

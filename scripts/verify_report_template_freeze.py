@@ -16,6 +16,7 @@ from app.services.report_templates.registry import (  # noqa: E402
     EXPECTED_ASSETS,
     EXPECTED_FREEZE_RECORD,
     TRUSTED_ASSET_HASHES_SHA256,
+    trusted_asset_digest,
 )
 from app.services.report_templates.models import EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256  # noqa: E402
 
@@ -55,7 +56,8 @@ def verify_asset_dir(asset_dir: Path, *, require_trust_root: bool) -> dict[str, 
         candidate = root / name
         if _is_reparse_or_symlink(candidate) or candidate.resolve().parent != root:
             raise ValueError("REPORT_TEMPLATE_ASSET_PATH_UNTRUSTED")
-        digest = _sha256(candidate)
+        data = candidate.read_bytes()
+        digest = trusted_asset_digest(name, data)
         if name != "asset_hashes.json" and digest != manifest["assets"].get(name):
             raise ValueError("REPORT_TEMPLATE_ASSET_HASH_MISMATCH")
         result[name] = digest

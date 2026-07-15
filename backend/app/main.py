@@ -3,6 +3,8 @@ import hmac
 import os
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +40,38 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(RequestValidationError)
+async def stable_project_validation_error(request: Request, exc: RequestValidationError):
+    if not request.url.path.startswith(f"{settings.api_prefix}/projects"):
+        return await request_validation_exception_handler(request, exc)
+    error = exc.errors()[0] if exc.errors() else {}
+    location = tuple(error.get("loc", ()))
+    field = next(
+        (str(item) for item in reversed(location) if item not in {"body", "path", "query"}),
+        None,
+    )
+    code = {
+        "project_type": "PROJECT_TYPE_INVALID",
+        "idempotency_key": "PROJECT_UUID_INVALID",
+        "template_package_id": "UNSUPPORTED_TEMPLATE_IDENTITY",
+        "template_edition": "UNSUPPORTED_TEMPLATE_IDENTITY",
+        "template_revision": "UNSUPPORTED_TEMPLATE_IDENTITY",
+        "name": "PROJECT_NAME_INVALID",
+    }.get(field, "PROJECT_REQUEST_INVALID")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "code": code,
+                "message": "项目请求参数无效。",
+                "project_uuid": request.path_params.get("project_uuid"),
+                "field": field,
+                "details": {"validation_type": error.get("type", "unknown")},
+            }
+        },
+    )
+
+
 def is_business_write_request(method: str, path: str) -> bool:
     return (
         method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
@@ -63,10 +97,15 @@ async def reject_business_writes_during_maintenance(request: Request, call_next)
 
 @app.on_event("startup")
 def on_startup() -> None:
+    from .services.projects import recover_abandoned_upgrade_operations
+
     runtime_paths = ensure_runtime_directories()
     _bind_files_directory(runtime_paths.storage_path)
     logger.info("附录A编写工具以 %s 模式启动，数据根目录：%s", runtime_paths.mode, runtime_paths.data_root)
     init_db()
+    recovered = recover_abandoned_upgrade_operations()
+    if recovered:
+        logger.warning("已回收 %s 个上次异常中断的项目升级操作", recovered)
 
 
 def _bind_files_directory(storage_path) -> None:

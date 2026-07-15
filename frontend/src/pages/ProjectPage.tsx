@@ -21,6 +21,7 @@ import {
   uploadEvidenceImages,
   validateProject,
   uploadDocxImport,
+  upgradeProjectCopy,
   type AssessmentRowInput,
   type DocxImportJob,
   type EvidenceImage,
@@ -33,6 +34,15 @@ import {
   type ValidationIssue,
   type ValidationResponse
 } from "../api/client";
+import {
+  canUpgradeProject,
+  defaultProjectWorkspace,
+  FULL_REPORT_TEMPLATE_IDENTITY,
+  projectTypeLabel,
+  workflowStatusLabel,
+  type ProjectType,
+  type ProjectWorkspaceView
+} from "../projectContracts";
 import { AssessmentTable, type EvidenceImageFilterState, type SubsystemUiState } from "../components/AssessmentTable";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { scoreWorkbookExportBlockReason } from "../exporting";
@@ -342,7 +352,9 @@ function isUndoShortcutTarget(target: EventTarget | null) {
 
 export function ProjectPage() {
   const [projectName, setProjectName] = useState("附录A测评结果记录");
+  const [projectType, setProjectType] = useState<ProjectType>("appendix_a");
   const [project, setProject] = useState<Project | null>(null);
+  const [workspaceView, setWorkspaceView] = useState<ProjectWorkspaceView>("appendix_a");
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeCode, setActiveCode] = useState<string>();
   const [profile, setProfile] = useState<TemplateProfile | null>(null);
@@ -375,6 +387,10 @@ export function ProjectPage() {
   const [isProjectImportDialogOpen, setIsProjectImportDialogOpen] = useState(false);
   const [selectedImportTargetProjectId, setSelectedImportTargetProjectId] = useState("");
   const [isImportingSectionToProject, setIsImportingSectionToProject] = useState(false);
+  const [upgradeSourceProject, setUpgradeSourceProject] = useState<Project | null>(null);
+  const [upgradeProjectName, setUpgradeProjectName] = useState("");
+  const [upgradeIdempotencyKey, setUpgradeIdempotencyKey] = useState("");
+  const [isUpgradingProject, setIsUpgradingProject] = useState(false);
 
   const activeSection = useMemo(
     () => project?.sections.find((section) => section.code === activeCode),
@@ -516,6 +532,8 @@ export function ProjectPage() {
 
   function openProject(projectToOpen: Project) {
     setProject(projectToOpen);
+    const nextWorkspace = defaultProjectWorkspace(projectToOpen.project_type);
+    setWorkspaceView(nextWorkspace);
     setSectionDetails({});
     setDraftRows({});
     setSubsystemUiStateBySection({});
@@ -524,7 +542,19 @@ export function ProjectPage() {
     setValidation(undefined);
     setSaveMessage(undefined);
     setError(undefined);
-    setActiveCode(projectToOpen.sections[0]?.code);
+    setActiveCode(nextWorkspace === "appendix_a" ? projectToOpen.sections[0]?.code : undefined);
+  }
+
+  function handleWorkspaceViewChange(nextView: ProjectWorkspaceView) {
+    if (nextView === "report_home" && dirtySections.size > 0) {
+      setError("当前还有未保存的附录 A 章节，请先保存后再返回完整报告工作台。");
+      return;
+    }
+    setWorkspaceView(nextView);
+    setIsTemplateManagerOpen(false);
+    if (nextView === "appendix_a" && project && !activeCode) {
+      setActiveCode(project.sections[0]?.code);
+    }
   }
 
   async function handleOpenProject(projectId: number) {
@@ -559,12 +589,69 @@ export function ProjectPage() {
     }
   }
 
+  function handleOpenUpgradeDialog(sourceProject: Project) {
+    if (!canUpgradeProject(sourceProject.project_type)) {
+      setError("只有附录 A 项目可以复制升级为完整报告。");
+      return;
+    }
+    setUpgradeSourceProject(sourceProject);
+    setUpgradeProjectName(`${sourceProject.name}（完整报告）`);
+    setUpgradeIdempotencyKey(crypto.randomUUID());
+    setError(undefined);
+    setSaveMessage(undefined);
+  }
+
+  function handleCloseUpgradeDialog() {
+    if (isUpgradingProject) {
+      return;
+    }
+    setUpgradeSourceProject(null);
+    setUpgradeProjectName("");
+    setUpgradeIdempotencyKey("");
+    setError(undefined);
+  }
+
+  async function handleUpgradeProjectCopy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!upgradeSourceProject || !upgradeIdempotencyKey) {
+      return;
+    }
+    const name = upgradeProjectName.trim();
+    if (!name) {
+      setError("请输入新完整报告项目名称。");
+      return;
+    }
+
+    setIsUpgradingProject(true);
+    setError(undefined);
+    setSaveMessage(undefined);
+    try {
+      const created = await upgradeProjectCopy(
+        upgradeSourceProject.project_uuid,
+        name,
+        upgradeIdempotencyKey
+      );
+      setProjects((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setUpgradeSourceProject(null);
+      setUpgradeProjectName("");
+      setUpgradeIdempotencyKey("");
+      openProject(created);
+      setSaveMessage(`已从“${upgradeSourceProject.name}”复制创建完整报告项目。`);
+    } catch (err) {
+      // 保留名称与幂等键，用户重试时服务端可返回同一个复制结果。
+      setError(err instanceof Error ? err.message : "复制升级失败");
+    } finally {
+      setIsUpgradingProject(false);
+    }
+  }
+
   function handleBackToProjects() {
     if (dirtySections.size > 0) {
       setError("当前还有未保存的章节，请先保存后再返回项目列表。");
       return;
     }
     setProject(null);
+    setWorkspaceView("appendix_a");
     setActiveCode(undefined);
     setSectionDetails({});
     setDraftRows({});
@@ -654,7 +741,7 @@ export function ProjectPage() {
         setError("请输入项目名称。");
         return;
       }
-      const created = await createProject(name);
+      const created = await createProject(name, projectType);
       setProjects((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       openProject(created);
     } catch (err) {
@@ -1068,12 +1155,29 @@ export function ProjectPage() {
       title="附录A编写工具"
       sidebar={
         project ? (
-          <SectionNav
-            sections={project.sections}
-            activeCode={activeCode}
-            dirtyCodes={dirtySections}
-            onSelect={setActiveCode}
-          />
+          project.project_type === "full_report" ? (
+            <>
+              <FullReportWorkspaceNav
+                activeView={workspaceView}
+                onSelect={handleWorkspaceViewChange}
+              />
+              {workspaceView === "appendix_a" ? (
+                <SectionNav
+                  sections={project.sections}
+                  activeCode={activeCode}
+                  dirtyCodes={dirtySections}
+                  onSelect={setActiveCode}
+                />
+              ) : null}
+            </>
+          ) : (
+            <SectionNav
+              sections={project.sections}
+              activeCode={activeCode}
+              dirtyCodes={dirtySections}
+              onSelect={setActiveCode}
+            />
+          )
         ) : (
           <p className="empty-sidebar">创建项目后显示 A-1 至 A-8 章节。</p>
         )
@@ -1089,9 +1193,38 @@ export function ProjectPage() {
             <section className="home-create-panel">
               <div>
                 <p className="eyebrow">新建项目</p>
-                <h3>创建附录A项目</h3>
+                <h3>选择项目类型并创建</h3>
               </div>
               <form className="project-form" onSubmit={handleCreateProject}>
+                <fieldset className="project-type-options">
+                  <legend>项目类型</legend>
+                  <label className={projectType === "appendix_a" ? "project-type-option active" : "project-type-option"}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="appendix_a"
+                      checked={projectType === "appendix_a"}
+                      onChange={() => setProjectType("appendix_a")}
+                    />
+                    <span>
+                      <strong>仅编写附录 A</strong>
+                      <small>保持现有 A-1 至 A-8 工作流</small>
+                    </span>
+                  </label>
+                  <label className={projectType === "full_report" ? "project-type-option active" : "project-type-option"}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="full_report"
+                      checked={projectType === "full_report"}
+                      onChange={() => setProjectType("full_report")}
+                    />
+                    <span>
+                      <strong>生成完整报告</strong>
+                      <small>绑定 {FULL_REPORT_TEMPLATE_IDENTITY.template_revision} 冻结母版</small>
+                    </span>
+                  </label>
+                </fieldset>
                 <label htmlFor="projectName">项目名称</label>
                 <input
                   id="projectName"
@@ -1110,6 +1243,7 @@ export function ProjectPage() {
               <div>
                 <p className="eyebrow">导入项目</p>
                 <h3>导入 DOCX 创建项目</h3>
+                <p className="home-panel-hint">当前 DOCX 导入仅创建附录 A 项目，不会创建完整报告项目。</p>
               </div>
               <form className="import-form" onSubmit={handleUploadDocxImport}>
                 <label className="import-file-field" htmlFor="docxImportFile">
@@ -1161,6 +1295,17 @@ export function ProjectPage() {
                     <article className="project-list-item" key={savedProject.id}>
                       <div className="project-list-main">
                         <strong>{savedProject.name}</strong>
+                        <div className="project-card-badges" aria-label="项目类型与状态">
+                          <span className={`project-type-badge ${savedProject.project_type}`}>
+                            {projectTypeLabel(savedProject.project_type)}
+                          </span>
+                          <span className="workflow-status-badge">
+                            {workflowStatusLabel(savedProject.workflow_status)}
+                          </span>
+                          {savedProject.project_type === "full_report" && savedProject.template_revision ? (
+                            <span className="template-version-badge">母版 {savedProject.template_revision}</span>
+                          ) : null}
+                        </div>
                         <dl>
                           <div>
                             <dt>更新</dt>
@@ -1173,6 +1318,16 @@ export function ProjectPage() {
                         </dl>
                       </div>
                       <div className="project-list-actions">
+                        {canUpgradeProject(savedProject.project_type) ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleOpenUpgradeDialog(savedProject)}
+                            disabled={openingProjectId === savedProject.id || deletingProjectId === savedProject.id || isUpgradingProject}
+                          >
+                            复制为完整报告
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleOpenProject(savedProject.id)}
@@ -1195,9 +1350,63 @@ export function ProjectPage() {
               )}
             </section>
           </div>
+          {upgradeSourceProject ? (
+            <div className="project-upgrade-backdrop">
+              <form
+                className="project-upgrade-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="project-upgrade-title"
+                onSubmit={handleUpgradeProjectCopy}
+              >
+                <div className="project-import-heading">
+                  <p className="eyebrow">复制升级</p>
+                  <h3 id="project-upgrade-title">创建新的完整报告项目</h3>
+                </div>
+                <p className="project-import-hint">
+                  将复制“{upgradeSourceProject.name}”的附录 A 数据和图片。源项目不会被修改或隐藏。
+                </p>
+                <label className="project-import-field">
+                  <span>新项目名称</span>
+                  <input
+                    value={upgradeProjectName}
+                    onChange={(event) => setUpgradeProjectName(event.target.value)}
+                    maxLength={120}
+                    required
+                    disabled={isUpgradingProject}
+                  />
+                </label>
+                <p className="project-upgrade-template">
+                  冻结母版：{FULL_REPORT_TEMPLATE_IDENTITY.template_package_id}（{FULL_REPORT_TEMPLATE_IDENTITY.template_revision}）
+                </p>
+                {error ? <p className="error">{error}</p> : null}
+                <div className="project-import-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCloseUpgradeDialog}
+                    disabled={isUpgradingProject}
+                  >
+                    取消
+                  </button>
+                  <button type="submit" disabled={!upgradeProjectName.trim() || isUpgradingProject}>
+                    {isUpgradingProject ? "复制中..." : "确认复制升级"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
           {error ? <p className="error">{error}</p> : null}
           {saveMessage ? <p className="success">{saveMessage}</p> : null}
         </section>
+      ) : project.project_type === "full_report" && workspaceView === "report_home" ? (
+        <FullReportPlaceholder
+          project={project}
+          onBack={handleBackToProjects}
+          onOpenAppendix={() => handleWorkspaceViewChange("appendix_a")}
+          error={error}
+          message={saveMessage}
+        />
       ) : (
         <section className="panel wide-panel">
           <div className="project-header">
@@ -1205,6 +1414,10 @@ export function ProjectPage() {
               <p className="eyebrow">当前项目</p>
               <h2>{project.name}</h2>
               <div className="project-status-row">
+                <span className={`project-type-badge ${project.project_type}`}>
+                  {projectTypeLabel(project.project_type)}{project.project_type === "full_report" ? " · 附录 A 工作区" : ""}
+                </span>
+                <span className="workflow-status-badge">{workflowStatusLabel(project.workflow_status)}</span>
                 <span className={dirtyCount > 0 ? "dirty-chip" : "clean-chip"}>
                   {dirtyCount > 0 ? `${dirtyCount} 个章节未保存` : "全部已保存"}
                 </span>
@@ -1255,13 +1468,13 @@ export function ProjectPage() {
               <div className="action-group project-command-group project-command-group-export">
                 <span className="command-group-label">交付</span>
                 <button type="button" onClick={() => handleExport("editable")} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
-                  {isExporting === "editable" ? "生成中..." : "导出可编辑版"}
+                  {isExporting === "editable" ? "生成中..." : project.project_type === "full_report" ? "导出附录 A 可编辑版" : "导出可编辑版"}
                 </button>
                 <button type="button" onClick={() => handleExport("final")} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
-                  {isExporting === "final" ? "生成中..." : "导出最终版"}
+                  {isExporting === "final" ? "生成中..." : project.project_type === "full_report" ? "导出附录 A 最终版" : "导出最终版"}
                 </button>
                 <button type="button" onClick={handleExportXlsx} disabled={isExporting !== null || isExportingXlsx || isSavingAny}>
-                  {isExportingXlsx ? "生成中..." : "导出打分表"}
+                  {isExportingXlsx ? "生成中..." : project.project_type === "full_report" ? "导出附录 A 打分表" : "导出打分表"}
                 </button>
               </div>
             </div>
@@ -1389,6 +1602,88 @@ export function ProjectPage() {
         </section>
       )}
     </Layout>
+  );
+}
+
+type FullReportWorkspaceNavProps = {
+  activeView: ProjectWorkspaceView;
+  onSelect: (view: ProjectWorkspaceView) => void;
+};
+
+function FullReportWorkspaceNav({ activeView, onSelect }: FullReportWorkspaceNavProps) {
+  return (
+    <nav className="report-workspace-nav" aria-label="完整报告工作台导航">
+      <div className="section-nav-header">
+        <div>
+          <p className="eyebrow">项目工作台</p>
+          <strong>完整报告</strong>
+        </div>
+      </div>
+      <button
+        type="button"
+        className={activeView === "report_home" ? "report-workspace-button active" : "report-workspace-button"}
+        aria-current={activeView === "report_home" ? "page" : undefined}
+        onClick={() => onSelect("report_home")}
+      >
+        <strong>报告正文</strong>
+        <small>下一阶段提供</small>
+      </button>
+      <button
+        type="button"
+        className={activeView === "appendix_a" ? "report-workspace-button active" : "report-workspace-button"}
+        aria-current={activeView === "appendix_a" ? "page" : undefined}
+        onClick={() => onSelect("appendix_a")}
+      >
+        <strong>附录 A</strong>
+        <small>A-1 至 A-8 可用</small>
+      </button>
+    </nav>
+  );
+}
+
+type FullReportPlaceholderProps = {
+  project: Project;
+  onBack: () => void;
+  onOpenAppendix: () => void;
+  error?: string;
+  message?: string;
+};
+
+function FullReportPlaceholder({ project, onBack, onOpenAppendix, error, message }: FullReportPlaceholderProps) {
+  return (
+    <section className="panel wide-panel full-report-placeholder">
+      <div className="project-header">
+        <div className="project-header-main">
+          <p className="eyebrow">完整报告项目</p>
+          <h2>{project.name}</h2>
+          <div className="project-status-row">
+            <span className="project-type-badge full_report">{projectTypeLabel(project.project_type)}</span>
+            <span className="workflow-status-badge">{workflowStatusLabel(project.workflow_status)}</span>
+            <span className="template-version-badge">母版 {project.template_revision ?? "未绑定"}</span>
+          </div>
+        </div>
+        <div className="workspace-actions">
+          <button type="button" className="secondary-button" onClick={onBack}>返回项目列表</button>
+          <button type="button" onClick={onOpenAppendix}>进入附录 A</button>
+        </div>
+      </div>
+      {error ? <p className="error">{error}</p> : null}
+      {message ? <p className="success">{message}</p> : null}
+      <div className="placeholder-grid">
+        <div>
+          <strong>报告正文</strong>
+          <p>完整报告数据域和章节编辑将在下一阶段提供。本阶段不会生成虚假的完整报告内容。</p>
+        </div>
+        <div>
+          <strong>附录 A</strong>
+          <p>A-1 至 A-8 的结构化编写、评分、证据和现有附录 A 导出能力已经可用。</p>
+        </div>
+        <div>
+          <strong>冻结母版</strong>
+          <p>{project.template_package_id ?? FULL_REPORT_TEMPLATE_IDENTITY.template_package_id}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 

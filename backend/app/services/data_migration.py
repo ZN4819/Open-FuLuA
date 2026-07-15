@@ -14,6 +14,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.contracts import (
+    FULL_REPORT_TEMPLATE_ASSET_SET_HASH,
+    FULL_REPORT_TEMPLATE_EDITION,
+    FULL_REPORT_TEMPLATE_PACKAGE_ID,
+    FULL_REPORT_TEMPLATE_REVISION,
+)
 from app.runtime import BACKEND_VERSION, RuntimePaths
 
 
@@ -97,6 +103,84 @@ def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if "projects" not in tables or "evidence_images" not in tables:
             return "schema_invalid", 0, 0, ()
+        schema_version = int(db.execute("PRAGMA user_version").fetchone()[0])
+        if schema_version >= 4:
+            project_columns = {
+                row[1] for row in db.execute("PRAGMA table_info(projects)").fetchall()
+            }
+            required_columns = {
+                "project_uuid",
+                "project_type",
+                "workflow_status",
+                "template_package_id",
+                "template_edition",
+                "template_revision",
+                "template_asset_set_hash",
+                "source_project_uuid",
+                "created_by_operation",
+            }
+            if not required_columns <= project_columns:
+                return "schema_invalid", 0, 0, ()
+            invalid_projects = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*) FROM projects
+                    WHERE project_uuid IS NULL OR TRIM(project_uuid) = ''
+                       OR project_type NOT IN ('appendix_a', 'full_report')
+                       OR workflow_status NOT IN ('draft', 'ready_for_review', 'confirmed')
+                       OR created_by_operation NOT IN (
+                           'create', 'migration_import', 'roundtrip_import', 'upgrade_copy'
+                       )
+                       OR (project_type = 'appendix_a' AND (
+                           template_package_id IS NOT NULL OR template_edition IS NOT NULL OR
+                           template_revision IS NOT NULL OR template_asset_set_hash IS NOT NULL OR
+                           source_project_uuid IS NOT NULL
+                       ))
+                        OR (project_type = 'full_report' AND (
+                            template_package_id IS NULL OR
+                            template_package_id <> ? OR
+                            template_edition IS NULL OR
+                            template_edition <> ? OR
+                            template_revision IS NULL OR
+                            template_revision <> ? OR
+                            template_asset_set_hash IS NULL OR
+                            template_asset_set_hash <> ?
+                        ))
+                        OR (created_by_operation = 'upgrade_copy' AND (
+                            project_type <> 'full_report' OR
+                            source_project_uuid IS NULL OR TRIM(source_project_uuid) = ''
+                        ))
+                        OR (created_by_operation <> 'upgrade_copy' AND source_project_uuid IS NOT NULL)
+                    """
+                    ,
+                    (
+                        FULL_REPORT_TEMPLATE_PACKAGE_ID,
+                        FULL_REPORT_TEMPLATE_EDITION,
+                        FULL_REPORT_TEMPLATE_REVISION,
+                        FULL_REPORT_TEMPLATE_ASSET_SET_HASH,
+                    ),
+                ).fetchone()[0]
+            )
+            duplicate_uuids = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*) FROM (
+                        SELECT project_uuid FROM projects
+                        GROUP BY project_uuid HAVING COUNT(*) > 1
+                    )
+                    """
+                ).fetchone()[0]
+            )
+            try:
+                for row in db.execute("SELECT project_uuid, source_project_uuid FROM projects"):
+                    uuid.UUID(str(row[0]))
+                    if row[1] is not None:
+                        uuid.UUID(str(row[1]))
+            except (ValueError, TypeError, AttributeError):
+                return "schema_invalid", 0, 0, ()
+            foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchone()
+            if invalid_projects or duplicate_uuids or foreign_key_errors is not None:
+                return "schema_invalid", 0, 0, ()
         projects = int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0])
         rows = tuple(str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images"))
         return "ok", projects, len(rows), rows
@@ -177,7 +261,7 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
             db = sqlite3.connect(paths.database_path)
             try:
                 tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-                allowed = {"projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "record_templates", "record_template_slots", "section_subsystems", "sqlite_sequence"}
+                allowed = {"projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "record_templates", "record_template_slots", "section_subsystems", "app_metadata", "project_upgrade_operations", "sqlite_sequence"}
                 if not tables <= allowed or "projects" not in tables:
                     return True
                 for table in ("projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "section_subsystems"):

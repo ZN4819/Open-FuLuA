@@ -11,6 +11,15 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import settings
+from .contracts import (
+    FULL_REPORT_TEMPLATE_ASSET_SET_HASH,
+    FULL_REPORT_TEMPLATE_EDITION,
+    FULL_REPORT_TEMPLATE_PACKAGE_ID,
+    FULL_REPORT_TEMPLATE_REVISION,
+    PROJECT_CREATION_OPERATIONS,
+    PROJECT_TYPES,
+    WORKFLOW_STATUSES,
+)
 from .runtime import SCHEMA_VERSION
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
@@ -24,6 +33,10 @@ from .services.template_profile import load_template_profile
 
 
 FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
+PROJECT_UUID_NAMESPACE = uuid.uuid5(
+    uuid.NAMESPACE_URL,
+    "https://github.com/ZN4819/Open-FuLuA/projects",
+)
 
 
 SECTION_SEED = [
@@ -74,6 +87,9 @@ def connect() -> Iterator[sqlite3.Connection]:
     try:
         yield connection
         connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
@@ -90,6 +106,15 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                project_uuid TEXT NOT NULL,
+                project_type TEXT NOT NULL DEFAULT 'appendix_a',
+                workflow_status TEXT NOT NULL DEFAULT 'draft',
+                template_package_id TEXT,
+                template_edition TEXT,
+                template_revision TEXT,
+                template_asset_set_hash TEXT,
+                source_project_uuid TEXT,
+                created_by_operation TEXT NOT NULL DEFAULT 'create',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -335,37 +360,402 @@ def init_db() -> None:
             ON section_subsystems(project_id, section_code, sort_order)
             """
         )
+        _ensure_project_identity_schema(db, audit_existing=current_version >= 4)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
 
 
-def create_project(name: str) -> sqlite3.Row:
-    timestamp = utc_now()
+def create_project(
+    name: str,
+    *,
+    project_type: str = "appendix_a",
+    workflow_status: str = "draft",
+    template_package_id: str | None = None,
+    template_edition: str | None = None,
+    template_revision: str | None = None,
+    template_asset_set_hash: str | None = None,
+    source_project_uuid: str | None = None,
+    created_by_operation: str = "create",
+    project_uuid: str | None = None,
+) -> sqlite3.Row:
     with connect() as db:
-        cursor = db.execute(
-            "INSERT INTO projects (name, created_at, updated_at) VALUES (?, ?, ?)",
-            (name, timestamp, timestamp),
+        return _insert_project(
+            db,
+            name=name,
+            project_type=project_type,
+            workflow_status=workflow_status,
+            template_package_id=template_package_id,
+            template_edition=template_edition,
+            template_revision=template_revision,
+            template_asset_set_hash=template_asset_set_hash,
+            source_project_uuid=source_project_uuid,
+            created_by_operation=created_by_operation,
+            project_uuid=project_uuid,
         )
-        project_id = int(cursor.lastrowid)
-        db.executemany(
-            """
-            INSERT INTO appendix_sections
-                (project_id, code, title, table_title, sort_order)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            [
-                (project_id, code, title, table_title, sort_order)
-                for code, title, table_title, sort_order in SECTION_SEED
-            ],
-        )
-        return get_project_by_id(project_id, db)
 
 
 def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def _ensure_project_identity_schema(
+    db: sqlite3.Connection,
+    *,
+    audit_existing: bool,
+) -> None:
+    if audit_existing:
+        existing_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(projects)").fetchall()
+        }
+        required_columns = {
+            "project_uuid",
+            "project_type",
+            "workflow_status",
+            "template_package_id",
+            "template_edition",
+            "template_revision",
+            "template_asset_set_hash",
+            "source_project_uuid",
+            "created_by_operation",
+        }
+        if not required_columns <= existing_columns:
+            raise RuntimeError("PROJECT_IDENTITY_SCHEMA_INCOMPLETE")
+    _ensure_column(db, "projects", "project_uuid", "TEXT")
+    _ensure_column(db, "projects", "project_type", "TEXT NOT NULL DEFAULT 'appendix_a'")
+    _ensure_column(db, "projects", "workflow_status", "TEXT NOT NULL DEFAULT 'draft'")
+    _ensure_column(db, "projects", "template_package_id", "TEXT")
+    _ensure_column(db, "projects", "template_edition", "TEXT")
+    _ensure_column(db, "projects", "template_revision", "TEXT")
+    _ensure_column(db, "projects", "template_asset_set_hash", "TEXT")
+    _ensure_column(db, "projects", "source_project_uuid", "TEXT")
+    _ensure_column(db, "projects", "created_by_operation", "TEXT NOT NULL DEFAULT 'create'")
+
+    if audit_existing:
+        _audit_project_identity_rows(db)
+
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    metadata = db.execute(
+        "SELECT value FROM app_metadata WHERE key = 'database_instance_uuid'"
+    ).fetchone()
+    if metadata is None:
+        timestamp = utc_now()
+        instance_uuid = str(uuid.uuid4())
+        db.execute(
+            """
+            INSERT INTO app_metadata (key, value, created_at, updated_at)
+            VALUES ('database_instance_uuid', ?, ?, ?)
+            """,
+            (instance_uuid, timestamp, timestamp),
+        )
+    else:
+        instance_uuid = str(metadata["value"])
+
+    db.execute(
+        "UPDATE projects SET project_type = 'appendix_a' WHERE project_type IS NULL OR TRIM(project_type) = ''"
+    )
+    db.execute(
+        "UPDATE projects SET workflow_status = 'draft' WHERE workflow_status IS NULL OR TRIM(workflow_status) = ''"
+    )
+    db.execute(
+        "UPDATE projects SET created_by_operation = 'create' "
+        "WHERE created_by_operation IS NULL OR TRIM(created_by_operation) = ''"
+    )
+    for project in db.execute(
+        "SELECT id, project_uuid FROM projects ORDER BY id"
+    ).fetchall():
+        existing_uuid = str(project["project_uuid"] or "").strip()
+        if existing_uuid:
+            try:
+                uuid.UUID(existing_uuid)
+            except ValueError as exc:
+                raise RuntimeError("PROJECT_UUID_INVALID") from exc
+            continue
+        stable_uuid = str(
+            uuid.uuid5(PROJECT_UUID_NAMESPACE, f"{instance_uuid}:{int(project['id'])}")
+        )
+        db.execute(
+            "UPDATE projects SET project_uuid = ? WHERE id = ?",
+            (stable_uuid, int(project["id"])),
+        )
+
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_project_uuid ON projects(project_uuid)"
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_upgrade_operations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_project_uuid TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            target_project_id INTEGER,
+            status TEXT NOT NULL,
+            lease_id TEXT,
+            error_code TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(source_project_uuid, idempotency_key),
+            FOREIGN KEY(target_project_id) REFERENCES projects(id) ON DELETE SET NULL,
+            CHECK(status IN ('pending', 'completed', 'failed', 'failed_cleanup'))
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_project_upgrade_target "
+        "ON project_upgrade_operations(target_project_id)"
+    )
+    _ensure_column(db, "project_upgrade_operations", "lease_id", "TEXT")
+
+    for trigger_name in (
+        "projects_identity_insert_guard",
+        "projects_identity_update_guard",
+        "projects_identity_immutable_guard",
+    ):
+        db.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+    project_types = ", ".join(f"'{value}'" for value in PROJECT_TYPES)
+    workflow_statuses = ", ".join(f"'{value}'" for value in WORKFLOW_STATUSES)
+    creation_operations = ", ".join(f"'{value}'" for value in PROJECT_CREATION_OPERATIONS)
+    db.execute(
+        f"""
+        CREATE TRIGGER projects_identity_insert_guard
+        BEFORE INSERT ON projects
+        BEGIN
+            SELECT CASE
+                WHEN NEW.project_uuid IS NULL OR TRIM(NEW.project_uuid) = ''
+                THEN RAISE(ABORT, 'PROJECT_UUID_REQUIRED')
+            END;
+            SELECT CASE
+                WHEN NEW.project_type NOT IN ({project_types})
+                THEN RAISE(ABORT, 'PROJECT_TYPE_INVALID')
+            END;
+            SELECT CASE
+                WHEN NEW.workflow_status NOT IN ({workflow_statuses})
+                THEN RAISE(ABORT, 'WORKFLOW_STATUS_INVALID')
+            END;
+            SELECT CASE
+                WHEN NEW.created_by_operation NOT IN ({creation_operations})
+                THEN RAISE(ABORT, 'PROJECT_CREATION_OPERATION_INVALID')
+            END;
+            SELECT CASE
+                WHEN NEW.project_type = 'appendix_a' AND (
+                    NEW.template_package_id IS NOT NULL OR
+                    NEW.template_edition IS NOT NULL OR
+                    NEW.template_revision IS NOT NULL OR
+                    NEW.template_asset_set_hash IS NOT NULL OR
+                    NEW.source_project_uuid IS NOT NULL
+                )
+                THEN RAISE(ABORT, 'APPENDIX_A_TEMPLATE_BINDING_FORBIDDEN')
+            END;
+            SELECT CASE
+                WHEN NEW.project_type = 'full_report' AND (
+                    NEW.template_package_id IS NULL OR
+                    NEW.template_package_id <> '{FULL_REPORT_TEMPLATE_PACKAGE_ID}' OR
+                    NEW.template_edition IS NULL OR
+                    NEW.template_edition <> '{FULL_REPORT_TEMPLATE_EDITION}' OR
+                    NEW.template_revision IS NULL OR
+                    NEW.template_revision <> '{FULL_REPORT_TEMPLATE_REVISION}' OR
+                    NEW.template_asset_set_hash IS NULL OR
+                    NEW.template_asset_set_hash <> '{FULL_REPORT_TEMPLATE_ASSET_SET_HASH}'
+                )
+                THEN RAISE(ABORT, 'FULL_REPORT_TEMPLATE_BINDING_INVALID')
+            END;
+            SELECT CASE
+                WHEN NEW.created_by_operation = 'upgrade_copy' AND (
+                    NEW.project_type <> 'full_report' OR NEW.source_project_uuid IS NULL OR
+                    TRIM(NEW.source_project_uuid) = ''
+                )
+                THEN RAISE(ABORT, 'UPGRADE_SOURCE_REQUIRED')
+            END;
+            SELECT CASE
+                WHEN NEW.created_by_operation <> 'upgrade_copy' AND NEW.source_project_uuid IS NOT NULL
+                THEN RAISE(ABORT, 'UPGRADE_SOURCE_FORBIDDEN')
+            END;
+        END
+        """
+    )
+    db.execute(
+        f"""
+        CREATE TRIGGER projects_identity_update_guard
+        BEFORE UPDATE ON projects
+        BEGIN
+            SELECT CASE
+                WHEN NEW.project_type NOT IN ({project_types})
+                THEN RAISE(ABORT, 'PROJECT_TYPE_INVALID')
+            END;
+            SELECT CASE
+                WHEN NEW.workflow_status NOT IN ({workflow_statuses})
+                THEN RAISE(ABORT, 'WORKFLOW_STATUS_INVALID')
+            END;
+        END
+        """
+    )
+    db.execute(
+        """
+        CREATE TRIGGER projects_identity_immutable_guard
+        BEFORE UPDATE OF
+            project_uuid,
+            project_type,
+            template_package_id,
+            template_edition,
+            template_revision,
+            template_asset_set_hash,
+            source_project_uuid,
+            created_by_operation
+        ON projects
+        WHEN
+            OLD.project_uuid IS NOT NEW.project_uuid OR
+            OLD.project_type IS NOT NEW.project_type OR
+            OLD.template_package_id IS NOT NEW.template_package_id OR
+            OLD.template_edition IS NOT NEW.template_edition OR
+            OLD.template_revision IS NOT NEW.template_revision OR
+            OLD.template_asset_set_hash IS NOT NEW.template_asset_set_hash OR
+            OLD.source_project_uuid IS NOT NEW.source_project_uuid OR
+            OLD.created_by_operation IS NOT NEW.created_by_operation
+        BEGIN
+            SELECT RAISE(ABORT, 'PROJECT_IDENTITY_IMMUTABLE');
+        END
+        """
+    )
+
+    _audit_project_identity_rows(db)
+
+
+def _audit_project_identity_rows(db: sqlite3.Connection) -> None:
+    invalid = db.execute(
+        f"""
+        SELECT id, project_uuid
+        FROM projects
+        WHERE project_uuid IS NULL OR TRIM(project_uuid) = ''
+           OR project_type NOT IN ({", ".join(f"'{value}'" for value in PROJECT_TYPES)})
+           OR workflow_status NOT IN ({", ".join(f"'{value}'" for value in WORKFLOW_STATUSES)})
+           OR created_by_operation NOT IN ({", ".join(f"'{value}'" for value in PROJECT_CREATION_OPERATIONS)})
+           OR (project_type = 'appendix_a' AND (
+               template_package_id IS NOT NULL OR
+               template_edition IS NOT NULL OR
+               template_revision IS NOT NULL OR
+               template_asset_set_hash IS NOT NULL OR
+               source_project_uuid IS NOT NULL
+           ))
+           OR (project_type = 'full_report' AND (
+               template_package_id IS NULL OR
+               template_package_id <> '{FULL_REPORT_TEMPLATE_PACKAGE_ID}' OR
+               template_edition IS NULL OR
+               template_edition <> '{FULL_REPORT_TEMPLATE_EDITION}' OR
+               template_revision IS NULL OR
+               template_revision <> '{FULL_REPORT_TEMPLATE_REVISION}' OR
+               template_asset_set_hash IS NULL OR
+               template_asset_set_hash <> '{FULL_REPORT_TEMPLATE_ASSET_SET_HASH}'
+           ))
+           OR (created_by_operation = 'upgrade_copy' AND (
+               project_type <> 'full_report' OR
+               source_project_uuid IS NULL OR
+               TRIM(source_project_uuid) = ''
+           ))
+           OR (created_by_operation <> 'upgrade_copy' AND source_project_uuid IS NOT NULL)
+        LIMIT 1
+        """
+    ).fetchone()
+    if invalid is not None:
+        raise RuntimeError("PROJECT_IDENTITY_AUDIT_FAILED")
+
+    duplicate = db.execute(
+        """
+        SELECT project_uuid
+        FROM projects
+        GROUP BY project_uuid
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate is not None:
+        raise RuntimeError("PROJECT_UUID_DUPLICATE")
+
+    for row in db.execute("SELECT project_uuid, source_project_uuid FROM projects"):
+        for value in (row["project_uuid"], row["source_project_uuid"]):
+            if value is None:
+                continue
+            try:
+                uuid.UUID(str(value))
+            except ValueError as exc:
+                raise RuntimeError("PROJECT_UUID_INVALID") from exc
+
+
+def _insert_project(
+    db: sqlite3.Connection,
+    *,
+    name: str,
+    project_type: str,
+    workflow_status: str,
+    template_package_id: str | None,
+    template_edition: str | None,
+    template_revision: str | None,
+    template_asset_set_hash: str | None,
+    source_project_uuid: str | None,
+    created_by_operation: str,
+    project_uuid: str | None = None,
+) -> sqlite3.Row:
+    timestamp = utc_now()
+    project_uuid_value = project_uuid or str(uuid.uuid4())
+    cursor = db.execute(
+        """
+        INSERT INTO projects (
+            name,
+            project_uuid,
+            project_type,
+            workflow_status,
+            template_package_id,
+            template_edition,
+            template_revision,
+            template_asset_set_hash,
+            source_project_uuid,
+            created_by_operation,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            name,
+            project_uuid_value,
+            project_type,
+            workflow_status,
+            template_package_id,
+            template_edition,
+            template_revision,
+            template_asset_set_hash,
+            source_project_uuid,
+            created_by_operation,
+            timestamp,
+            timestamp,
+        ),
+    )
+    project_id = int(cursor.lastrowid)
+    db.executemany(
+        """
+        INSERT INTO appendix_sections
+            (project_id, code, title, table_title, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [
+            (project_id, code, title, table_title, sort_order)
+            for code, title, table_title, sort_order in SECTION_SEED
+        ],
+    )
+    project = get_project_by_id(project_id, db)
+    if project is None:
+        raise RuntimeError("PROJECT_CREATE_FAILED")
+    return project
 
 
 def _migrate_management_unit_scores(db: sqlite3.Connection) -> None:
@@ -1004,11 +1394,19 @@ def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> 
         return connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
 
 
+def get_project_by_uuid(project_uuid: str, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = "SELECT * FROM projects WHERE project_uuid = ?"
+    if db is not None:
+        return db.execute(query, (project_uuid,)).fetchone()
+    with connect() as connection:
+        return connection.execute(query, (project_uuid,)).fetchone()
+
+
 def list_projects() -> list[sqlite3.Row]:
     with connect() as connection:
         return connection.execute(
             """
-            SELECT id, name, created_at, updated_at
+            SELECT *
             FROM projects
             ORDER BY updated_at DESC, id DESC
             """
@@ -1027,13 +1425,30 @@ def update_project(project_id: int, name: str) -> sqlite3.Row | None:
         return get_project_by_id(project_id, db)
 
 
-def delete_project(project_id: int) -> sqlite3.Row | None:
+def update_project_workflow(project_uuid: str, workflow_status: str) -> sqlite3.Row | None:
     with connect() as db:
+        existing = get_project_by_uuid(project_uuid, db)
+        if existing is None:
+            return None
+        db.execute(
+            "UPDATE projects SET workflow_status = ?, updated_at = ? WHERE project_uuid = ?",
+            (workflow_status, utc_now(), project_uuid),
+        )
+        return get_project_by_uuid(project_uuid, db)
+
+
+def delete_project(
+    project_id: int,
+    db: sqlite3.Connection | None = None,
+) -> sqlite3.Row | None:
+    if db is not None:
         existing = get_project_by_id(project_id, db)
         if existing is None:
             return None
         db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         return existing
+    with connect() as connection:
+        return delete_project(project_id, connection)
 
 
 def list_sections(project_id: int) -> list[sqlite3.Row]:

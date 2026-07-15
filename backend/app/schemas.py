@@ -1,6 +1,13 @@
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from .contracts import (
+    FULL_REPORT_TEMPLATE_EDITION,
+    FULL_REPORT_TEMPLATE_PACKAGE_ID,
+    FULL_REPORT_TEMPLATE_REVISION,
+)
 
 
 class HealthResponse(BaseModel):
@@ -14,11 +21,29 @@ class HealthResponse(BaseModel):
 
 
 class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=120)
+    project_type: Literal["appendix_a", "full_report"] = "appendix_a"
+    template_package_id: str | None = Field(default=None, max_length=120)
+    template_edition: str | None = Field(default=None, max_length=40)
+    template_revision: str | None = Field(default=None, max_length=40)
 
 
 class ProjectUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=120)
+
+
+class ProjectUpgradeCopyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    template_package_id: Literal[FULL_REPORT_TEMPLATE_PACKAGE_ID]
+    template_edition: Literal[FULL_REPORT_TEMPLATE_EDITION]
+    template_revision: Literal[FULL_REPORT_TEMPLATE_REVISION]
+    idempotency_key: UUID
 
 
 class SectionRead(BaseModel):
@@ -32,7 +57,16 @@ class SectionRead(BaseModel):
 
 class ProjectRead(BaseModel):
     id: int
+    project_uuid: str
     name: str
+    project_type: Literal["appendix_a", "full_report"]
+    workflow_status: Literal["draft", "ready_for_review", "confirmed"]
+    template_package_id: str | None = None
+    template_edition: str | None = None
+    template_revision: str | None = None
+    template_asset_set_hash: str | None = None
+    source_project_uuid: str | None = None
+    created_by_operation: Literal["create", "migration_import", "roundtrip_import", "upgrade_copy"]
     created_at: str
     updated_at: str
     sections: list[SectionRead] = []

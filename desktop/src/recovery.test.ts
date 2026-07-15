@@ -175,6 +175,31 @@ test("正常升级后的 pending 在加载业务页前校验版本、schema 和�
   assert.equal(markers.pending, undefined);
 });
 
+test("同版本 schema 迁移标记在 schema 达标后清除并加载业务页", async () => {
+  const markers = new MemoryMarkers();
+  markers.pending = {
+    kind: "schema_migration",
+    fromVersion: "0.2.0",
+    targetVersion: "0.2.0",
+    fromSchemaVersion: "3",
+    createdAt: new Date().toISOString(),
+    backupId: "pre_upgrade-schema3",
+  };
+  const order: string[] = [];
+  const recovery = new RecoveryCoordinator(markers, {
+    checkIntegrity: async () => { order.push("integrity"); return { integrity: "ok", schema_version: "4" }; },
+    chooseCrashAction: async () => "restore",
+    loadBusinessPage: async () => { order.push("load"); },
+    restoreOffline: async () => false,
+    restartSidecar: async () => undefined,
+    showLogs: async () => undefined,
+  });
+
+  await recovery.openAfterStartup({ currentVersion: "0.2.0", schemaVersion: "4" });
+  assert.deepEqual(order, ["integrity", "load"]);
+  assert.equal(markers.pending, undefined);
+});
+
 test("不匹配或陈旧 pending 禁止加载且不得自动恢复", async () => {
   for (const pending of [
     { fromVersion: "0.1.0", targetVersion: "0.3.0", fromSchemaVersion: "1", createdAt: new Date().toISOString(), backupId: "pre_upgrade-safe" },
@@ -216,6 +241,15 @@ test("marker 仅 ENOENT 视为不存在，损坏 JSON、非法字段与 IO 错�
   await assert.rejects(store.hasRunMarker());
   await writeFile(path.join(root, "pending-upgrade.json"), JSON.stringify({ backupId: "../escape" }), "utf8");
   await assert.rejects(store.readPendingUpgrade());
+  await store.writePendingUpgrade({
+    kind: "schema_migration",
+    fromVersion: "0.2.0",
+    targetVersion: "0.2.0",
+    fromSchemaVersion: "3",
+    createdAt: new Date().toISOString(),
+    backupId: "pre_upgrade-schema3",
+  });
+  assert.equal((await store.readPendingUpgrade())?.kind, "schema_migration");
   const ioRoot = path.join(root, "io-root");
   await mkdir(ioRoot);
   await mkdir(path.join(ioRoot, "runtime.json"));

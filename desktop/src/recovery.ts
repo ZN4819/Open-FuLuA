@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 export interface PendingUpgradeMarker {
+  kind?: "app_upgrade" | "schema_migration";
   fromVersion: string;
   targetVersion: string;
   fromSchemaVersion: string;
@@ -89,13 +90,18 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
     const value: unknown = JSON.parse(text);
     if (!value || typeof value !== "object") throw new Error("待升级标记损坏");
     const marker = value as Record<string, unknown>;
-    if (!validVersion(marker.fromVersion) || !validVersion(marker.targetVersion) || marker.fromVersion === marker.targetVersion
+    const kind = marker.kind === undefined ? "app_upgrade" : marker.kind;
+    const sameVersionAllowed = kind === "schema_migration";
+    if ((kind !== "app_upgrade" && kind !== "schema_migration")
+      || !validVersion(marker.fromVersion) || !validVersion(marker.targetVersion)
+      || (!sameVersionAllowed && marker.fromVersion === marker.targetVersion)
       || !validSchemaVersion(marker.fromSchemaVersion)
       || typeof marker.createdAt !== "string" || !Number.isFinite(Date.parse(marker.createdAt))
       || typeof marker.backupId !== "string" || !validBackupId(marker.backupId)) {
       throw new Error("待升级标记字段无效");
     }
     return {
+      kind,
       fromVersion: marker.fromVersion,
       targetVersion: marker.targetVersion,
       fromSchemaVersion: marker.fromSchemaVersion,
@@ -105,8 +111,11 @@ export class JsonRecoveryMarkerStore implements RecoveryMarkerStore {
   }
 
   async writePendingUpgrade(marker: PendingUpgradeMarker): Promise<void> {
-    if (!validBackupId(marker.backupId) || !validVersion(marker.fromVersion) || !validVersion(marker.targetVersion)
-      || marker.fromVersion === marker.targetVersion || !validSchemaVersion(marker.fromSchemaVersion)
+    const kind = marker.kind ?? "app_upgrade";
+    if ((kind !== "app_upgrade" && kind !== "schema_migration")
+      || !validBackupId(marker.backupId) || !validVersion(marker.fromVersion) || !validVersion(marker.targetVersion)
+      || (kind !== "schema_migration" && marker.fromVersion === marker.targetVersion)
+      || !validSchemaVersion(marker.fromSchemaVersion)
       || !Number.isFinite(Date.parse(marker.createdAt))) {
       throw new Error("待升级标记无效");
     }
@@ -143,13 +152,19 @@ export class RecoveryCoordinator {
   private pendingMode(marker: PendingUpgradeMarker, context: StartupContext): "target" | "rollback" | undefined {
     const now = this.dependencies.now?.() ?? Date.now();
     const createdAt = Date.parse(marker.createdAt);
-    const valid = validVersion(marker.fromVersion)
+    const kind = marker.kind ?? "app_upgrade";
+    const valid = (kind === "app_upgrade" || kind === "schema_migration")
+      && validVersion(marker.fromVersion)
       && validVersion(marker.targetVersion)
-      && marker.fromVersion !== marker.targetVersion
+      && (kind === "schema_migration" || marker.fromVersion !== marker.targetVersion)
+      && validSchemaVersion(marker.fromSchemaVersion)
       && validBackupId(marker.backupId)
       && createdAt <= now + 5 * 60_000
       && createdAt >= now - 7 * 24 * 60 * 60_000;
     if (!valid) return undefined;
+    if (kind === "schema_migration") {
+      return marker.targetVersion === context.currentVersion ? "target" : undefined;
+    }
     if (marker.targetVersion === context.currentVersion) return "target";
     if (marker.fromVersion === context.currentVersion) return "rollback";
     return undefined;

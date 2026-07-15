@@ -10,6 +10,7 @@ export class RecoverySessionGate {
 }
 
 export interface GuardedStartupDependencies {
+  prepareSchemaUpgrade(): Promise<void>;
   hasRecoveryMarker(): Promise<boolean>;
   offlineIntegrity(): Promise<OfflineIntegrityResult | undefined>;
   startBackend(): Promise<void>;
@@ -26,6 +27,7 @@ export class GuardedStartupCoordinator {
     this.gate.reset();
     let hasMarker: boolean;
     try {
+      await this.dependencies.prepareSchemaUpgrade();
       hasMarker = await this.dependencies.hasRecoveryMarker();
     } catch (error) {
       await this.dependencies.diagnose(error);
