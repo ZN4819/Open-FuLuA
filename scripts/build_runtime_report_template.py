@@ -305,6 +305,27 @@ def _clean_document(data: bytes) -> bytes:
         "符合项【符合项数量】项，部分符合项【部分符合项数量】项，不符合项【不符合项数量】项，"
         "不适用项【不适用项数量】项。风险分析发现被测系统存在【风险问题】。",
     )
+    summary_paragraph = assessment_summary_paragraphs[1]
+    paragraph_properties = summary_paragraph.find(f"{{{W}}}pPr")
+    if paragraph_properties is None:
+        paragraph_properties = etree.Element(f"{{{W}}}pPr")
+        summary_paragraph.insert(0, paragraph_properties)
+    indentation = paragraph_properties.find(f"{{{W}}}ind")
+    if indentation is None:
+        indentation = etree.Element(f"{{{W}}}ind")
+        paragraph_mark_properties = paragraph_properties.find(f"{{{W}}}rPr")
+        insert_at = paragraph_properties.index(paragraph_mark_properties) if paragraph_mark_properties is not None else len(paragraph_properties)
+        paragraph_properties.insert(insert_at, indentation)
+    for attribute in ("hanging", "hangingChars"):
+        indentation.attrib.pop(f"{{{W}}}{attribute}", None)
+    indentation.set(f"{{{W}}}firstLineChars", "200")
+    indentation.set(f"{{{W}}}firstLine", "420")
+    for run_properties in summary_paragraph.xpath("./w:pPr/w:rPr | .//w:r/w:rPr", namespaces=NS):
+        for name in ("i", "iCs"):
+            for old in run_properties.findall(f"{{{W}}}{name}"):
+                run_properties.remove(old)
+            disabled = etree.SubElement(run_properties, f"{{{W}}}{name}")
+            disabled.set(f"{{{W}}}val", "0")
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号", ""),

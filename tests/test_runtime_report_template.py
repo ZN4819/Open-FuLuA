@@ -138,6 +138,16 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         )
         self.assertIn("评估已完成41项测评项的测评工作", visible_text)
         self.assertIn("风险分析发现被测系统存在【风险问题】。", visible_text)
+        summary_paragraph = document.xpath(
+            "/w:document/w:body/w:tbl[3]/w:tr[3]/w:tc[2]/w:p",
+            namespaces=NS,
+        )[0]
+        indentation = summary_paragraph.find(f"{{{W}}}pPr/{{{W}}}ind")
+        self.assertIsNotNone(indentation)
+        self.assertEqual(indentation.get(f"{{{W}}}firstLineChars"), "200")
+        self.assertEqual(indentation.get(f"{{{W}}}firstLine"), "420")
+        for italic in summary_paragraph.xpath("./w:pPr/w:rPr/w:i | ./w:pPr/w:rPr/w:iCs | .//w:r/w:rPr/w:i | .//w:r/w:rPr/w:iCs", namespaces=NS):
+            self.assertEqual(italic.get(f"{{{W}}}val"), "0")
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)
