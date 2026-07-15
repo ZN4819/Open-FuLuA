@@ -110,7 +110,7 @@ class DesktopServerTests(unittest.TestCase):
             event = json.loads(result.stdout.strip())
             self.assertEqual(event["event"], "FULUA_OFFLINE_SCHEMA_UPGRADE")
             self.assertTrue(event["prepared"])
-            self.assertEqual((event["source_schema"], event["target_schema"]), ("3", "4"))
+            self.assertEqual((event["source_schema"], event["target_schema"]), ("3", "5"))
             backup = paths.backup_path / event["backup_id"]
             self.assertTrue((backup / "metadata.json").is_file())
             backup_db = sqlite3.connect(backup / "data" / "app.db")

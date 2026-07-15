@@ -408,8 +408,8 @@ try {
     $FirstLaunch = Start-Process -FilePath $installedExecutable -WindowStyle Hidden -PassThru
     $firstServer = Wait-DesktopHealth -ExpectedDataRoot $ExpectedDataRoot
     $Result.health_checked = $true
-    if ([string]$firstServer.Health.schema_version -ne '4') {
-        throw "安装版后端 schema 版本不是 4：$($firstServer.Health.schema_version)"
+    if ([string]$firstServer.Health.schema_version -ne '5') {
+        throw "安装版后端 schema 版本不是 5：$($firstServer.Health.schema_version)"
     }
     $legacyProjects = @(Invoke-RestMethod -Uri "$($firstServer.BaseUri)/api/projects" -TimeoutSec 10 | Where-Object { $_.name -eq $LegacyProjectName })
     if ($legacyProjects.Count -ne 1 -or $legacyProjects[0].project_type -ne 'appendix_a') {

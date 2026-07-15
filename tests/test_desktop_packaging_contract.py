@@ -346,6 +346,14 @@ class DesktopPackagingContractTests(unittest.TestCase):
                 ("templates/report/2023-2025.12.08/rule_hints.json", "templates/report/2023-2025.12.08"),
                 ("templates/report/2023-2025.12.08/narrative_templates.json", "templates/report/2023-2025.12.08"),
                 ("templates/report/2023-2025.12.08/asset_hashes.json", "templates/report/2023-2025.12.08"),
+                (
+                    "templates/report/contracts/2023-2025.12.08/field_relation_matrix.v1.json",
+                    "templates/report/contracts/2023-2025.12.08",
+                ),
+                (
+                    "backend/app/report_core/manifests/report-2023-2025.12.08.json",
+                    "app/report_core/manifests",
+                ),
                 ("frontend/dist", "frontend"),
             ),
         )
