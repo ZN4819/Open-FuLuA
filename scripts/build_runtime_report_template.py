@@ -134,7 +134,6 @@ def _iter_row_cells(row: etree._Element) -> list[etree._Element]:
 def _scrub_story(root: etree._Element, body_paragraphs: list[etree._Element] | None = None) -> None:
     body_paragraphs = body_paragraphs or []
     sensitive_phrases = (
-        "中互金认证有限公司",
         "天津自贸试验区（中心商务区）新华路3678号宝风大厦28层2802",
         "李文宝",
         "商务经理",
@@ -289,6 +288,23 @@ def _clean_document(data: bytes) -> bytes:
     }
     for (row_number, cell_number), value in fixed_assessment_organization.items():
         replace_paragraph_text(table_cell_paragraph(2, row_number, cell_number), value)
+
+    # 评估结论页删除填写提示，仅保留原模板的正式“测评情况简介”描述。
+    # 原文中的 XX 改为明确的中文占位项，便于后续报告装配替换且避免歧义。
+    assessment_summary_cell = _iter_row_cells(tables[2].xpath("./w:tr", namespaces=NS)[2])[1]
+    assessment_summary_paragraphs = assessment_summary_cell.xpath("./w:p", namespaces=NS)
+    if len(assessment_summary_paragraphs) != 2:
+        raise ValueError("ASSESSMENT_SUMMARY_TEMPLATE_STRUCTURE_INVALID")
+    assessment_summary_cell.remove(assessment_summary_paragraphs[0])
+    replace_paragraph_text(
+        assessment_summary_paragraphs[1],
+        "受【被测单位】委托，中互金认证有限公司于【开始日期】至【结束日期】对【被测单位】的"
+        "【被测系统】进行了商用密码应用安全性评估，本次评估包含物理和环境、网络和通信、"
+        "设备和计算、应用和数据等密码技术应用要求部分和管理制度、人员管理、建设运行、"
+        "应急处置等密码应用管理要求部分的测评，评估已完成41项测评项的测评工作，其中"
+        "符合项【符合项数量】项，部分符合项【部分符合项数量】项，不符合项【不符合项数量】项，"
+        "不适用项【不适用项数量】项。风险分析发现被测系统存在【风险问题】。",
+    )
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号", ""),

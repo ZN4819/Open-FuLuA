@@ -60,18 +60,19 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         self.assertNotIn("示例", story_text)
         self.assertNotRegex(story_text, r"\{[^{}]*\}|(?<![A-Za-z])X{1,20}(?![A-Za-z])")
         self.assertNotIn("RaRk", story_text)
-        for approved_fixed_value in (
-            "中互金认证有限公司",
-            "天津自贸试验区（中心商务区）新华路3678号宝风大厦28层2802",
-            "300450",
-            "李文宝",
-            "商务经理",
-            "业务部",
-            "010-88720451",
-            "15201294794",
-            "liwb@secallab.com",
-        ):
-            self.assertEqual(story_text.count(approved_fixed_value), 1)
+        self.assertIn("中互金认证有限公司", story_text)
+        approved_fixed_values = {
+            "天津自贸试验区（中心商务区）新华路3678号宝风大厦28层2802": 1,
+            "300450": 1,
+            "李文宝": 1,
+            "商务经理": 1,
+            "业务部": 1,
+            "010-88720451": 1,
+            "15201294794": 1,
+            "liwb@secallab.com": 1,
+        }
+        for approved_fixed_value, expected_count in approved_fixed_values.items():
+            self.assertEqual(story_text.count(approved_fixed_value), expected_count)
         with zipfile.ZipFile(RUNTIME) as package:
             document = etree.fromstring(package.read("word/document.xml"))
         self.assertFalse(document.xpath("//w:showingPlcHdr | //w:placeholder", namespaces=NS))
@@ -130,6 +131,13 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         self.assertIn("本报告是被测信息系统名称的商用密码应用安全性评估报告，报告模板为2023年版。", visible_text)
         self.assertIn("测评机构名称", visible_text)
         self.assertIn("年   月   日", visible_text)
+        self.assertNotIn("（简要描述测评范围和主要内容。建议不超过200字。）", visible_text)
+        self.assertIn(
+            "受【被测单位】委托，中互金认证有限公司于【开始日期】至【结束日期】",
+            visible_text,
+        )
+        self.assertIn("评估已完成41项测评项的测评工作", visible_text)
+        self.assertIn("风险分析发现被测系统存在【风险问题】。", visible_text)
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)
