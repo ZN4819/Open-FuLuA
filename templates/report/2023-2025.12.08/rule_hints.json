@@ -10,7 +10,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_002",
@@ -21,7 +21,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_003",
@@ -32,7 +32,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_004",
@@ -43,7 +43,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_026",
@@ -65,7 +65,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_042",
@@ -76,7 +76,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_043",
@@ -98,7 +98,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_046",
@@ -120,7 +120,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_048",
@@ -131,7 +131,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_049",
@@ -142,7 +142,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_050",
@@ -164,7 +164,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_052",
@@ -197,7 +197,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_073",
@@ -208,7 +208,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_074",
@@ -219,7 +219,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_075",
@@ -230,7 +230,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_076",
@@ -252,7 +252,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_079",
@@ -263,7 +263,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_080",
@@ -274,7 +274,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_105",
@@ -285,7 +285,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_122",
@@ -296,7 +296,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_124",
@@ -307,7 +307,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_142",
@@ -318,7 +318,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_145",
@@ -340,7 +340,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_175",
@@ -351,7 +351,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_200",
@@ -362,7 +362,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_220",
@@ -373,7 +373,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_221",
@@ -395,7 +395,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_226",
@@ -417,7 +417,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_237",
@@ -428,7 +428,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_290",
@@ -439,7 +439,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_293",
@@ -450,7 +450,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_296",
@@ -461,7 +461,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_297",
@@ -472,7 +472,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_299",
@@ -483,7 +483,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_304",
@@ -494,7 +494,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_308",
@@ -505,7 +505,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_311",
@@ -516,7 +516,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_313",
@@ -527,7 +527,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_314",
@@ -560,7 +560,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_327",
@@ -582,7 +582,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_354",
@@ -593,7 +593,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_356",
@@ -604,7 +604,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_367",
@@ -615,7 +615,7 @@
       "sanitized_summary": "字段来源或证明材料提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_369",
@@ -626,7 +626,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_378",
@@ -637,7 +637,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_382",
@@ -648,7 +648,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_385",
@@ -659,7 +659,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_386",
@@ -670,7 +670,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_445",
@@ -681,7 +681,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_446",
@@ -692,7 +692,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_447",
@@ -703,7 +703,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_466",
@@ -714,7 +714,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_467",
@@ -725,7 +725,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_472",
@@ -736,7 +736,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_473",
@@ -747,7 +747,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_476",
@@ -758,7 +758,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_479",
@@ -769,7 +769,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_587",
@@ -780,7 +780,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_588",
@@ -791,7 +791,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_589",
@@ -802,7 +802,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_603",
@@ -813,7 +813,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_605",
@@ -824,7 +824,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_606",
@@ -846,7 +846,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_608",
@@ -857,7 +857,7 @@
       "sanitized_summary": "跨章节、表格或附件的一致性核对提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_610",
@@ -868,7 +868,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_613",
@@ -879,7 +879,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_619",
@@ -890,7 +890,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_620",
@@ -901,7 +901,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_621",
@@ -923,7 +923,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_623",
@@ -934,7 +934,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_624",
@@ -945,7 +945,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_627",
@@ -956,7 +956,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_628",
@@ -967,7 +967,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_629",
@@ -978,7 +978,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_630",
@@ -989,7 +989,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_632",
@@ -1000,7 +1000,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_633",
@@ -1011,7 +1011,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_634",
@@ -1022,7 +1022,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_635",
@@ -1033,7 +1033,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_636",
@@ -1044,7 +1044,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_637",
@@ -1055,7 +1055,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_638",
@@ -1066,7 +1066,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_640",
@@ -1077,7 +1077,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_642",
@@ -1088,7 +1088,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_643",
@@ -1099,7 +1099,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_644",
@@ -1110,7 +1110,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_647",
@@ -1121,7 +1121,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_650",
@@ -1132,7 +1132,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_651",
@@ -1143,7 +1143,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_654",
@@ -1165,7 +1165,7 @@
       "sanitized_summary": "版式或排版提示，待批准进入 manifest 前仅作为警告。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_657",
@@ -1176,7 +1176,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_660",
@@ -1187,7 +1187,7 @@
       "sanitized_summary": "条件显示或条件必填提示，待业务负责人确认。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_661",
@@ -1198,7 +1198,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_662",
@@ -1209,7 +1209,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_663",
@@ -1220,7 +1220,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_664",
@@ -1231,7 +1231,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_665",
@@ -1242,7 +1242,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_667",
@@ -1253,7 +1253,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_668",
@@ -1264,7 +1264,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_669",
@@ -1275,7 +1275,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_670",
@@ -1286,7 +1286,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_671",
@@ -1297,7 +1297,7 @@
       "sanitized_summary": "证据类型、图片或附件完整性提示。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "warning"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_673",
@@ -1319,7 +1319,7 @@
       "sanitized_summary": "报告编写方法或对象选择帮助。",
       "target_fields": [],
       "approval_status": "pending",
-      "runtime_behavior": "help"
+      "runtime_behavior": "none"
     },
     {
       "rule_id": "hint_676",

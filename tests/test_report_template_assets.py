@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from app.services.report_templates.validator import (
     validate_narrative_templates,
     validate_rule_hints,
 )
+from lxml import etree
 
 ASSETS = ROOT / "templates" / "report" / "2023-2025.12.08"
 
@@ -25,11 +27,21 @@ class ReportTemplateAssetTests(unittest.TestCase):
         result = validate_field_dictionary(ASSETS / "field_dictionary.json")
         self.assertGreaterEqual(len(result.fields), 18)
         self.assertTrue(all(not field.field_id.startswith(("paragraph", "table")) for field in result.fields))
+        with zipfile.ZipFile(ASSETS / "runtime_template.docx") as package:
+            document = etree.fromstring(package.read("word/document.xml"))
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        bookmarks = set(document.xpath("//w:bookmarkStart/@w:name", namespaces=ns))
+        tags = set(document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=ns))
+        for field in result.fields:
+            for slot in field.export_slots:
+                kind, target = slot.split(":", 1)
+                self.assertIn(target, bookmarks if kind == "bookmark" else tags, slot)
 
     def test_rule_hints_cover_every_comment_without_approval_or_pii(self) -> None:
         result = validate_rule_hints(ASSETS / "rule_hints.json")
         self.assertEqual(len(result.rules), 121)
         self.assertEqual({rule.approval_status for rule in result.rules}, {"pending"})
+        self.assertEqual({rule.runtime_behavior for rule in result.rules}, {"none"})
         counts = Counter(rule.category for rule in result.rules)
         self.assertEqual(
             counts,

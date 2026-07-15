@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.services.report_templates import analyze_report_template  # noqa: E402
+from _safe_output import ensure_distinct_paths  # noqa: E402
 
 
 def main() -> int:
@@ -23,6 +24,8 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.output:
+        ensure_distinct_paths(args.source, args.output)
     result = analyze_report_template(args.source, source_role=args.source_role)
     payload = json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
     if args.output:

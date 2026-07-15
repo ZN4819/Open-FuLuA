@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 import stat
 import zipfile
@@ -20,6 +21,7 @@ from .models import (
 )
 
 MAX_ENTRIES = 4096
+MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_PART_BYTES = 32 * 1024 * 1024
 MAX_XML_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_BYTES = 256 * 1024 * 1024
@@ -82,7 +84,7 @@ def _read_member(package: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
 
 
 def _parse_xml(data: bytes, part: str) -> etree._Element:
-    upper = data[:4096].upper()
+    upper = data.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise UnsafePackageError("XML_DTD_OR_ENTITY_FORBIDDEN")
     parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False, recover=False)
@@ -137,13 +139,18 @@ def _relationship_summary(parts: dict[str, bytes]) -> tuple[int, int, set[str], 
 
 def analyze_report_template(path: Path, *, source_role: str) -> ReportTemplateForensics:
     source = Path(path)
-    raw = source.read_bytes()
+    # 从已打开句柄最多读取预算 + 1 字节；即使路径在 stat 后被替换也不会无界入内存。
+    with source.open("rb") as stream:
+        raw = stream.read(MAX_ARCHIVE_BYTES + 1)
+    if len(raw) > MAX_ARCHIVE_BYTES:
+        raise UnsafePackageError("ZIP_ARCHIVE_LIMIT_EXCEEDED")
     parts: dict[str, bytes] = {}
     seen: set[str] = set()
     folded: set[str] = set()
     total_uncompressed = 0
     try:
-        with zipfile.ZipFile(source) as package:
+        # 哈希与静态分析严格使用同一份已限长字节，避免路径被切换后的 TOCTOU。
+        with zipfile.ZipFile(io.BytesIO(raw)) as package:
             infos = package.infolist()
             if len(infos) > MAX_ENTRIES:
                 raise UnsafePackageError("ZIP_ENTRY_LIMIT_EXCEEDED")
@@ -168,7 +175,11 @@ def analyze_report_template(path: Path, *, source_role: str) -> ReportTemplateFo
     sections = document.xpath("//w:sectPr", namespaces=NS)
     controls = document.xpath("//w:sdt", namespaces=NS)
     dropdowns = document.xpath("//w:sdtPr/w:dropDownList", namespaces=NS)
-    revisions = document.xpath("//w:ins | //w:del | //w:moveFrom | //w:moveTo", namespaces=NS)
+    revisions = []
+    for part_name, part_data in parts.items():
+        if part_name.startswith("word/") and part_name.endswith(".xml"):
+            part_root = document if part_name == "word/document.xml" else _parse_xml(part_data, part_name)
+            revisions.extend(part_root.xpath("//w:ins | //w:del | //w:moveFrom | //w:moveTo", namespaces=NS))
     comments = _parse_xml(parts["word/comments.xml"], "word/comments.xml") if "word/comments.xml" in parts else None
 
     names = set(parts)

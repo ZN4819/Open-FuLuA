@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from lxml import etree
+from _safe_output import ensure_distinct_paths
 
 APPROVED_SOURCE_SHA256 = "b3957fd1da3bf19c31ac515fbdc6bf989fd7df033ca4d179c4b6e9567247fcf8"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -95,7 +96,7 @@ def build(source: Path) -> dict[str, object]:
             "sanitized_summary": CATEGORY_SUMMARIES[category],
             "target_fields": [],
             "approval_status": "pending",
-            "runtime_behavior": "none" if category == "history" else ("help" if category == "authoring_help" else "warning"),
+            "runtime_behavior": "none",
         })
     return {"schema_version": "1.0", "rules": rules}
 
@@ -105,6 +106,7 @@ def main() -> int:
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
+    ensure_distinct_paths(args.source, args.output)
     payload = build(args.source)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

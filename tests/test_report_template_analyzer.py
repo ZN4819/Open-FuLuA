@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.services.report_templates.analyzer import UnsafePackageError, analyze_report_template
+from app.services.report_templates import analyzer as analyzer_module
 
 
 class ReportTemplateAnalyzerTests(unittest.TestCase):
@@ -25,8 +26,21 @@ class ReportTemplateAnalyzerTests(unittest.TestCase):
         document.add_paragraph("合成测试，不含客户数据")
         document.add_table(rows=2, cols=2)
         document.add_section()
+        document.sections[0].header.paragraphs[0].text = "合成页眉"
         document.save(path)
         return path
+
+    def test_rejects_oversized_archive_before_zip_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            path = Path(value) / "oversized.docx"
+            path.write_bytes(b"not-a-zip")
+            original_limit = analyzer_module.MAX_ARCHIVE_BYTES
+            analyzer_module.MAX_ARCHIVE_BYTES = 4
+            try:
+                with self.assertRaisesRegex(UnsafePackageError, "ZIP_ARCHIVE_LIMIT_EXCEEDED"):
+                    analyze_report_template(path, source_role="synthetic_fixture")
+            finally:
+                analyzer_module.MAX_ARCHIVE_BYTES = original_limit
 
     def test_analyzes_synthetic_docx_without_disclosing_path_or_text(self) -> None:
         with tempfile.TemporaryDirectory() as value:
@@ -67,6 +81,33 @@ class ReportTemplateAnalyzerTests(unittest.TestCase):
                     target.writestr(info, data)
             with self.assertRaisesRegex(UnsafePackageError, "XML_DTD_OR_ENTITY_FORBIDDEN"):
                 analyze_report_template(rewritten, source_role="synthetic_fixture")
+
+    def test_rejects_dtd_after_first_four_kilobytes(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            path = self._fixture(Path(value))
+            rewritten = Path(value) / "unsafe.docx"
+            with zipfile.ZipFile(path) as source, zipfile.ZipFile(rewritten, "w") as target:
+                for info in source.infolist():
+                    data = source.read(info)
+                    if info.filename == "word/document.xml":
+                        data = (b" " * 5000) + b'<!DOCTYPE x [<!ENTITY y "z">]><x>&y;</x>'
+                    target.writestr(info, data)
+            with self.assertRaisesRegex(UnsafePackageError, "XML_DTD_OR_ENTITY_FORBIDDEN"):
+                analyze_report_template(rewritten, source_role="synthetic_fixture")
+
+    def test_counts_revisions_in_header_story(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            path = self._fixture(Path(value))
+            rewritten = Path(value) / "header-revision.docx"
+            with zipfile.ZipFile(path) as source, zipfile.ZipFile(rewritten, "w") as target:
+                for info in source.infolist():
+                    data = source.read(info)
+                    if info.filename.startswith("word/header") and info.filename.endswith(".xml"):
+                        data = data.replace(b"<w:p>", b'<w:p><w:ins w:id="1"><w:r><w:t>x</w:t></w:r></w:ins>', 1)
+                    target.writestr(info, data)
+            result = analyze_report_template(rewritten, source_role="synthetic_fixture")
+            self.assertEqual(result.document.revision_count, 1)
+            self.assertIn("UNRESOLVED_REVISION_PRESENT", {issue.code for issue in result.issues})
 
     @unittest.skipUnless(BASE_TEMPLATE.exists(), "只在本地只读源模板存在时运行")
     def test_approved_base_template_matches_committed_forensics_baseline(self) -> None:

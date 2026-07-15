@@ -310,6 +310,12 @@ class DesktopPackagingContractTests(unittest.TestCase):
                 ("templates/appendix_a/template_profile.json", "templates/appendix_a"),
                 ("templates/appendix_a/record_templates.json", "templates/appendix_a"),
                 ("templates/scoring/scoring_template_v1.xlsx", "templates/scoring"),
+                ("templates/report/2023-2025.12.08/runtime_template.docx", "templates/report/2023-2025.12.08"),
+                ("templates/report/2023-2025.12.08/field_dictionary.json", "templates/report/2023-2025.12.08"),
+                ("templates/report/2023-2025.12.08/manifest.json", "templates/report/2023-2025.12.08"),
+                ("templates/report/2023-2025.12.08/rule_hints.json", "templates/report/2023-2025.12.08"),
+                ("templates/report/2023-2025.12.08/narrative_templates.json", "templates/report/2023-2025.12.08"),
+                ("templates/report/2023-2025.12.08/asset_hashes.json", "templates/report/2023-2025.12.08"),
                 ("frontend/dist", "frontend"),
             ),
         )

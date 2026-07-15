@@ -115,13 +115,16 @@ function Assert-InstalledProgramResources {
 
     $forbiddenDirectoryNames = @('storage', 'logs', 'backups', 'backup', 'migration', 'migrations', 'fixture', 'fixtures', 'import', 'imports', 'user')
     $forbiddenFilePatterns = @('*.sqlite', '*.sqlite3', '*.db', '*-wal', '*-shm', '*.docx', '~$*.docx')
-    $allowedProgramDocx = Join-Path $InstallRoot 'resources\backend\_internal\docx\templates\default.docx'
+    $allowedProgramDocx = @(
+        (Join-Path $InstallRoot 'resources\backend\_internal\docx\templates\default.docx'),
+        (Join-Path $InstallRoot 'resources\backend\_internal\templates\report\2023-2025.12.08\runtime_template.docx')
+    )
     foreach ($entry in @(Get-ChildItem -LiteralPath $InstallRoot -Force -Recurse)) {
         if ($entry.PSIsContainer -and $forbiddenDirectoryNames -contains $entry.Name.ToLowerInvariant()) {
             throw "安装目录包含禁止的用户或测试目录：$($entry.FullName)"
         }
         if (-not $entry.PSIsContainer) {
-            if ($entry.FullName -ieq $allowedProgramDocx) { continue }
+            if (@($allowedProgramDocx | Where-Object { $entry.FullName -ieq $_ }).Count -gt 0) { continue }
             foreach ($pattern in $forbiddenFilePatterns) {
                 if ($entry.Name -like $pattern) {
                     throw "安装目录包含禁止的用户数据或文档：$($entry.FullName)"
