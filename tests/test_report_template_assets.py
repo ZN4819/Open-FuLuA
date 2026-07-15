@@ -42,6 +42,15 @@ class ReportTemplateAssetTests(unittest.TestCase):
         self.assertEqual(additional_references.cardinality, "many")
         self.assertEqual(additional_references.source_kind, ["manual", "imported"])
         self.assertEqual(additional_references.export_slots, ["bookmark:report_additional_reference_standards"])
+        system_name = next(field for field in result.fields if field.field_id == "report.system.name")
+        self.assertEqual(
+            system_name.export_slots,
+            [
+                "sdt:report.cover.system_name",
+                "sdt:report.system.name",
+                "sdt:report.declaration.system_name",
+            ],
+        )
         high_risk_judgement = next(
             field for field in result.fields if field.field_id == "report.risk.high_risk_judgement"
         )

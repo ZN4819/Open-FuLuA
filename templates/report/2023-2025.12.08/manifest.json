@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "09559de0d04a3f44ead1c5d4585fee8db7dea38e60ec0f9874f6365c97ac2281",
+  "runtime_template_sha256": "45076c4aa9c5e16663c0d815f577ba60809ce94e1ed0d1dd74fce30accee56b2",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -1609,6 +1609,10 @@
         "expected_count": 1
       },
       {
+        "tag": "report.cover.system_name",
+        "expected_count": 1
+      },
+      {
         "tag": "report.system.name",
         "expected_count": 1
       },
@@ -1677,13 +1681,14 @@
         "expected_count": 1
       }
     ],
-    "expected_total_count": 605,
+    "expected_total_count": 606,
     "field_export_slots": [
       "sdt:report.identity.number",
       "sdt:report.identity.date",
       "sdt:report.organization.assessed_name",
       "sdt:report.organization.assessment_name",
       "sdt:report.declaration.assessment_name",
+      "sdt:report.cover.system_name",
       "sdt:report.system.name",
       "sdt:report.declaration.system_name",
       "sdt:report.system.security_level",

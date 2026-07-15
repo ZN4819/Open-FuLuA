@@ -553,6 +553,7 @@ def _clean_document(data: bytes) -> bytes:
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号", ""),
+        "report.cover.system_name": (body_paragraphs[3], "首页被测系统名称", "【被测系统名称】"),
         "report.identity.date": (body_paragraphs[35], "报告日期", "年   月   日"),
         "report.organization.assessed_name": (table_cell_paragraph(1, 0, 1), "被测单位名称", ""),
         "report.organization.assessment_name": (table_cell_paragraph(1, 1, 1), "测评机构名称", ""),

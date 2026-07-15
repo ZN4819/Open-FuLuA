@@ -128,16 +128,29 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             document = etree.fromstring(package.read("word/document.xml"))
         tags = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
         bookmarks = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'rt_table_')]/@w:name", namespaces=NS)
-        self.assertEqual(len(tags), 605)
+        self.assertEqual(len(tags), 606)
         self.assertEqual(len(tags), len(set(tags)))
         self.assertEqual(bookmarks, [f"rt_table_{index:03d}" for index in range(1, 56)])
         semantic = document.xpath("//w:sdtPr/w:tag[starts-with(@w:val, 'report.')]/@w:val", namespaces=NS)
-        self.assertEqual(len(semantic), 22)
+        self.assertEqual(len(semantic), 23)
         self.assertEqual(len(semantic), len(set(semantic)))
         self.assertNotIn("report.identity.version", semantic)
+        self.assertIn("report.cover.system_name", semantic)
         self.assertIn("report.risk.high_risk_judgement", semantic)
         visible_text = "".join(document.xpath("//w:t/text()", namespaces=NS))
         self.assertNotIn("报告版本", visible_text)
+        self.assertEqual(
+            "".join(document.xpath("/w:document/w:body/w:p[4]//w:t/text()", namespaces=NS)),
+            "【被测系统名称】",
+        )
+        self.assertEqual(
+            document.xpath("/w:document/w:body/w:p[4]//w:sdtPr/w:tag/@w:val", namespaces=NS),
+            ["report.cover.system_name"],
+        )
+        self.assertEqual(
+            "".join(document.xpath("/w:document/w:body/w:p[5]//w:t/text()", namespaces=NS)),
+            "商用密码应用安全性评估报告",
+        )
         self.assertIn("本报告是被测信息系统名称的商用密码应用安全性评估报告，报告模板为2023年版。", visible_text)
         self.assertIn("测评机构名称", visible_text)
         self.assertIn("年   月   日", visible_text)
