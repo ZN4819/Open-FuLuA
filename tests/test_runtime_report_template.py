@@ -178,6 +178,18 @@ class RuntimeReportTemplateTests(unittest.TestCase):
                 ["report_body_end"],
             )
             self.assertTrue(document.xpath("//w:instrText[contains(., 'TOC ')]", namespaces=NS))
+            all_instructions = []
+            for part_name in package.namelist():
+                if (
+                    part_name == "word/document.xml"
+                    or re.fullmatch(r"word/(header|footer)\d+\.xml", part_name)
+                    or part_name in {"word/footnotes.xml", "word/endnotes.xml"}
+                ):
+                    story = etree.fromstring(package.read(part_name))
+                    all_instructions.extend(
+                        story.xpath("//w:instrText/text() | //w:fldSimple/@w:instr", namespaces=NS)
+                    )
+            self.assertFalse(any("NUMPAGES" in instruction.upper() for instruction in all_instructions))
             for field_begin in document.xpath("//w:fldChar[@w:fldCharType='begin']", namespaces=NS):
                 self.assertEqual(field_begin.get(f"{{{W}}}dirty"), "true")
 
@@ -195,17 +207,32 @@ class RuntimeReportTemplateTests(unittest.TestCase):
     def test_every_control_and_table_has_a_stable_identifier(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
             document = etree.fromstring(package.read("word/document.xml"))
+            story_roots = [document]
+            for name in package.namelist():
+                if re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {
+                    "word/footnotes.xml",
+                    "word/endnotes.xml",
+                }:
+                    story_roots.append(etree.fromstring(package.read(name)))
         tags = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
+        all_tags = [
+            tag
+            for story in story_roots
+            for tag in story.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
+        ]
         bookmarks = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'rt_table_')]/@w:name", namespaces=NS)
         self.assertEqual(len(tags), 606)
         self.assertEqual(len(tags), len(set(tags)))
+        self.assertEqual(len(all_tags), 612)
+        self.assertEqual(len(all_tags), len(set(all_tags)))
         self.assertEqual(bookmarks, [f"rt_table_{index:03d}" for index in range(1, 56)])
-        semantic = document.xpath("//w:sdtPr/w:tag[starts-with(@w:val, 'report.')]/@w:val", namespaces=NS)
-        self.assertEqual(len(semantic), 23)
+        semantic = [tag for tag in all_tags if tag.startswith("report.")]
+        self.assertEqual(len(semantic), 29)
         self.assertEqual(len(semantic), len(set(semantic)))
         self.assertNotIn("report.identity.version", semantic)
         self.assertIn("report.cover.system_name", semantic)
         self.assertIn("report.risk.high_risk_judgement", semantic)
+
         visible_text = "".join(document.xpath("//w:t/text()", namespaces=NS))
         self.assertNotIn("报告版本", visible_text)
         self.assertEqual(
@@ -393,6 +420,15 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)
         self.assertEqual(len(ends), 55)
+
+    def test_word_native_acceptance_uses_exact_frozen_count(self) -> None:
+        script = (ROOT / "scripts" / "test_word_report_template.ps1").read_text(encoding="utf-8")
+        self.assertIn("$document.ContentControls.Count -ne 605", script)
+        self.assertIn("OpenNoRepairDialog", script)
+        self.assertIn("roundtrip_saved_and_reopened", script)
+        self.assertIn("runtime_template_sha256", script)
+        self.assertNotIn("$word.DisplayAlerts = 0", script)
+        self.assertNotIn("expected_at_least", script)
 
     def test_semantic_controls_write_into_the_actual_placeholder(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:

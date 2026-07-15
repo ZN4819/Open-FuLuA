@@ -15,6 +15,15 @@ from lxml import etree
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 from app.services.report_templates import analyze_report_template  # noqa: E402
+from app.services.report_templates.models import (  # noqa: E402
+    EXPECTED_BUSINESS_FIELD_COUNT,
+    EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
+    EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT,
+    EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT,
+    EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256,
+    EXPECTED_WORD_CONTENT_CONTROL_COUNT,
+    REQUIRED_README_RULE_REFS,
+)
 from app.services.report_templates.validator import (  # noqa: E402
     validate_field_dictionary,
     validate_narrative_templates,
@@ -22,12 +31,14 @@ from app.services.report_templates.validator import (  # noqa: E402
 )
 
 ASSET_DIR = ROOT / "templates" / "report" / "2023-2025.12.08"
+WORD_ACCEPTANCE_EVIDENCE = ROOT / "docs" / "report-tool" / "evidence" / "r0-word-acceptance.json"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PR = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 NS = {"w": W, "r": R, "pr": PR, "ct": CT}
-FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
+FIELD_NAMES = ("TOC", "PAGE", "SEQ", "REF", "PAGEREF", "STYLEREF")
+FORBIDDEN_FIELD_NAMES = ("NUMPAGES",)
 
 
 def sha256(path: Path) -> str:
@@ -55,12 +66,41 @@ def integer_attr(node: etree._Element | None, name: str, default: int = 0) -> in
     return int(node.get(f"{{{W}}}{name}", default))
 
 
+def reject_frozen_package_overwrite() -> None:
+    freeze_path = ASSET_DIR / "asset_hashes.json"
+    if not freeze_path.exists():
+        return
+    try:
+        current = json.loads(freeze_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("REPORT_TEMPLATE_PACKAGE_OUTPUT_UNTRUSTED") from exc
+    if current.get("freeze_record", {}).get("status") == "frozen":
+        raise ValueError(
+            "REPORT_TEMPLATE_PACKAGE_ALREADY_FROZEN: create a new package_id and output directory"
+        )
+    raise ValueError("REPORT_TEMPLATE_PACKAGE_OUTPUT_ALREADY_EXISTS")
+
+
 def main() -> int:
+    reject_frozen_package_overwrite()
     runtime = ASSET_DIR / "runtime_template.docx"
     fields = validate_field_dictionary(ASSET_DIR / "field_dictionary.json")
-    validate_rule_hints(ASSET_DIR / "rule_hints.json")
+    rules = validate_rule_hints(ASSET_DIR / "rule_hints.json")
     validate_narrative_templates(ASSET_DIR / "narrative_templates.json")
     analysis = analyze_report_template(runtime, source_role="synthetic_fixture")
+    word_evidence = json.loads(WORD_ACCEPTANCE_EVIDENCE.read_text(encoding="utf-8"))
+    if (
+        sha256(WORD_ACCEPTANCE_EVIDENCE) != EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256
+        or word_evidence.get("package_id") != "report-2023-2025.12.08"
+        or word_evidence.get("runtime_template_sha256") != sha256(runtime)
+        or word_evidence.get("open_method") != "OpenNoRepairDialog"
+        or word_evidence.get("display_alerts") != "all"
+        or word_evidence.get("roundtrip_saved_and_reopened") is not True
+        or word_evidence.get("section_count") != 17
+        or word_evidence.get("table_count") != 55
+        or word_evidence.get("content_control_count") != EXPECTED_WORD_CONTENT_CONTROL_COUNT
+    ):
+        raise ValueError("WORD_ACCEPTANCE_EVIDENCE_MISMATCH")
 
     with zipfile.ZipFile(runtime) as package:
         parts = {name: package.read(name) for name in package.namelist() if not name.endswith("/")}
@@ -157,6 +197,31 @@ def main() -> int:
         for root in story_roots
         for tag in root.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
     ]
+    all_field_instructions = [
+        instruction
+        for root in story_roots
+        for instruction in root.xpath("//w:instrText/text() | //w:fldSimple/@w:instr", namespaces=NS)
+    ]
+    if any(
+        re.search(rf"\b{name}\b", instruction.upper())
+        for name in FORBIDDEN_FIELD_NAMES
+        for instruction in all_field_instructions
+    ):
+        raise ValueError("FORBIDDEN_WORD_FIELD_PRESENT")
+    if len(fields.fields) != EXPECTED_BUSINESS_FIELD_COUNT:
+        raise ValueError("BUSINESS_FIELD_COUNT_MISMATCH")
+    if len(semantic_tags) != EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT or len(set(semantic_tags)) != len(semantic_tags):
+        raise ValueError("SEMANTIC_SCALAR_SLOT_COUNT_MISMATCH")
+    if len(story_tag_values) != EXPECTED_OOXML_CONTENT_CONTROL_COUNT:
+        raise ValueError("OOXML_CONTENT_CONTROL_COUNT_MISMATCH")
+    template_tag_pattern = r"^template\.control\.\d{4}$"
+    template_tag_count = sum(bool(re.fullmatch(template_tag_pattern, tag)) for tag in story_tag_values)
+    if template_tag_count != EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT:
+        raise ValueError("TEMPLATE_CONTENT_CONTROL_COUNT_MISMATCH")
+    if len(rules.rules) != 121 or len(REQUIRED_README_RULE_REFS) != 70:
+        raise ValueError("FREEZE_TRACEABILITY_COUNT_MISMATCH")
+    if analysis.document.section_count != 17 or analysis.document.table_count != 55:
+        raise ValueError("REPORT_TEMPLATE_STRUCTURE_COUNT_MISMATCH")
     manifest = {
         "schema_version": "1.0",
         "package_id": "report-2023-2025.12.08",
@@ -169,10 +234,10 @@ def main() -> int:
         "tables": table_records,
         "blocks": block_records,
         "controls": {
-            "template_tag_pattern": r"^template\.control\.\d{4}$",
-            "template_expected_count": len(story_tag_values) - len(semantic_tags),
+            "template_tag_pattern": template_tag_pattern,
+            "template_expected_count": EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT,
             "semantic_scalar_tags": [{"tag": tag, "expected_count": 1} for tag in semantic_tags],
-            "expected_total_count": len(story_tag_values),
+            "expected_total_count": EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
             "field_export_slots": slots,
         },
         "expected_fields": {name: field_counts[name] for name in FIELD_NAMES},
@@ -195,8 +260,21 @@ def main() -> int:
     }
     (ASSET_DIR / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     hashes = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "package_id": manifest["package_id"],
+        "freeze_record": {
+            "status": "frozen",
+            "business_field_count": EXPECTED_BUSINESS_FIELD_COUNT,
+            "readme_rule_count": len(REQUIRED_README_RULE_REFS),
+            "semantic_scalar_slot_count": EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT,
+            "ooxml_content_control_count": EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
+            "word_content_control_count": EXPECTED_WORD_CONTENT_CONTROL_COUNT,
+            "section_count": 17,
+            "table_count": 55,
+            "pending_rule_hint_count": 121,
+            "pending_rule_hints_blocking": False,
+            "word_acceptance_evidence_sha256": EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256,
+        },
         "assets": {
             name: sha256(ASSET_DIR / name)
             for name in ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")

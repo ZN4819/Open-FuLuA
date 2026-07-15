@@ -14,6 +14,9 @@ $BackendWork = Join-Path $ArtifactsRoot 'pyinstaller-work'
 $BackendSpec = Join-Path $Root 'backend\packaging\fulua_backend.spec'
 $ElectronOutput = Join-Path $ArtifactsRoot 'electron'
 $DesktopExecutable = Join-Path $ArtifactsRoot 'electron\win-unpacked\FuLuA.exe'
+$FreezeVerifier = Join-Path $Root 'scripts\verify_report_template_freeze.py'
+$BackendTemplateAssets = Join-Path $BackendDist 'fulua-backend\_internal\templates\report\2023-2025.12.08'
+$ElectronTemplateAssets = Join-Path $ElectronOutput 'win-unpacked\resources\backend\_internal\templates\report\2023-2025.12.08'
 . (Join-Path $PSScriptRoot 'build_output_guard.ps1')
 
 if (-not (Test-Path $BackendPython)) {
@@ -41,6 +44,11 @@ try {
         npm --prefix desktop run package:nsis
         if ($LASTEXITCODE -ne 0) { throw 'Electron NSIS packaging failed.' }
     }
+
+    & $BackendPython $FreezeVerifier --packaged-asset-dir $BackendTemplateAssets
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller report-template freeze verification failed.' }
+    & $BackendPython $FreezeVerifier --packaged-asset-dir $ElectronTemplateAssets
+    if ($LASTEXITCODE -ne 0) { throw 'Electron report-template freeze verification failed.' }
 
     if (-not (Test-Path $DesktopExecutable)) {
         throw "Desktop executable was not generated: $DesktopExecutable"

@@ -23,7 +23,14 @@ def get_report_template(package_id: str): return _package(package_id).safe_summa
 
 
 @router.get("/{package_id}/fields")
-def get_report_template_fields(package_id: str): return {"package_id": package_id, "fields": _package(package_id).fields}
+def get_report_template_fields(package_id: str):
+    package = _package(package_id)
+    return {
+        "package_id": package_id,
+        "fields": package.fields,
+        "rule_contracts": package.rule_contracts,
+        "projection_catalog": package.projection_catalog,
+    }
 
 
 @router.get("/{package_id}/rule-hints")
