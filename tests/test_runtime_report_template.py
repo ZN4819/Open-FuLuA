@@ -268,6 +268,39 @@ class RuntimeReportTemplateTests(unittest.TestCase):
                 "report.distribution.assessment_copies",
             ],
         )
+        risk_method_text = "".join(body_paragraphs[356].xpath(".//w:t/text()", namespaces=NS))
+        self.assertTrue(risk_method_text.startswith("具体地，根据威胁类型和威胁发生频率"))
+        risk_summary = body_paragraphs[357]
+        risk_summary_text = "".join(risk_summary.xpath(".//w:t/text()", namespaces=NS))
+        self.assertIn(
+            "根据《商用密码应用安全性评估高风险判定指引》判定系统是否存在高风险。"
+            "经风险分析，系统存在高风险【高风险项数量】项，中风险【中风险项数量】项，"
+            "低风险【低风险项数量】项，具体见表61：",
+            risk_summary_text,
+        )
+        self.assertNotRegex(risk_summary_text, r"[{}]|(?<![A-Za-z])X{1,20}(?![A-Za-z])")
+        self.assertEqual(
+            risk_summary.xpath(".//w:instrText[contains(., 'REF _Ref54276704')]/text()", namespaces=NS),
+            [" REF _Ref54276704 \\h  \\* MERGEFORMAT "],
+        )
+        conclusion = body_paragraphs[361]
+        conclusion_text = "".join(conclusion.xpath(".//w:t/text()", namespaces=NS))
+        self.assertEqual(
+            conclusion_text,
+            "通过对【被测单位】的【被测系统】的物理和环境安全、网络和通信安全、设备和计算安全、"
+            "应用和数据安全、管理制度、人员管理、建设运行和应急处置等方面的测评，该系统综合得分为"
+            "【综合得分】分，系统密码应用面临【风险等级】风险，【符合/基本符合/不符合】"
+            "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的第三级别要求。",
+        )
+        self.assertNotRegex(conclusion_text, r"[{}]|(?<![A-Za-z])X{1,20}(?![A-Za-z])")
+        self.assertEqual(conclusion.xpath(".//w:footnoteReference/@w:id", namespaces=NS), ["5"])
+        for paragraph in (risk_summary, conclusion):
+            italics = paragraph.xpath(
+                "./w:pPr/w:rPr/w:i | ./w:pPr/w:rPr/w:iCs | .//w:r/w:rPr/w:i | .//w:r/w:rPr/w:iCs",
+                namespaces=NS,
+            )
+            self.assertTrue(italics)
+            self.assertTrue(all(italic.get(f"{{{W}}}val") == "0" for italic in italics))
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)

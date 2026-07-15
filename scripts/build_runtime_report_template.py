@@ -296,6 +296,62 @@ def _clean_document(data: bytes) -> bytes:
         run = etree.SubElement(paragraph, f"{{{W}}}r")
         etree.SubElement(run, f"{{{W}}}t").text = value
 
+    def replace_paragraph_around_first_field(
+        paragraph: etree._Element,
+        prefix: str,
+        suffix: str,
+        field_display_parts: tuple[str, ...] = (),
+    ) -> None:
+        """替换字段前后正文，同时保留首个完整 Word 字段及其动态引用能力。"""
+        children = list(paragraph)
+        begin_index = next(
+            (
+                index
+                for index, child in enumerate(children)
+                if child.xpath("./w:fldChar[@w:fldCharType='begin']", namespaces=NS)
+            ),
+            None,
+        )
+        end_index = next(
+            (
+                index
+                for index, child in enumerate(children)
+                if begin_index is not None
+                and index >= begin_index
+                and child.xpath("./w:fldChar[@w:fldCharType='end']", namespaces=NS)
+            ),
+            None,
+        )
+        if begin_index is None or end_index is None:
+            raise ValueError("EXPECTED_PARAGRAPH_FIELD_MISSING")
+        field_nodes = [copy.deepcopy(child) for child in children[begin_index : end_index + 1]]
+        if field_display_parts:
+            field_wrapper = etree.Element("field")
+            for field_node in field_nodes:
+                field_wrapper.append(field_node)
+            separate_run = next(
+                node
+                for node in field_wrapper
+                if node.xpath("./w:fldChar[@w:fldCharType='separate']", namespaces=NS)
+            )
+            separate_index = field_wrapper.index(separate_run)
+            result_texts = field_wrapper.xpath(
+                f"./w:r[position() > {separate_index + 1}]/w:t",
+                namespaces=NS,
+            )
+            if len(result_texts) < len(field_display_parts):
+                raise ValueError("EXPECTED_FIELD_RESULT_CACHE_MISSING")
+            for text_node, display_part in zip(result_texts, field_display_parts, strict=False):
+                text_node.text = display_part
+        for child in list(paragraph):
+            if etree.QName(child).namespace == W and etree.QName(child).localname == "pPr":
+                continue
+            paragraph.remove(child)
+        append_formatted_text(paragraph, prefix)
+        for field_node in field_nodes:
+            paragraph.append(field_node)
+        append_formatted_text(paragraph, suffix)
+
     def set_paragraph_nonitalic(paragraph: etree._Element) -> None:
         """显式关闭段落标记和所有文本运行的中西文斜体。"""
         properties = paragraph.find(f"{{{W}}}pPr")
@@ -422,6 +478,23 @@ def _clean_document(data: bytes) -> bytes:
     replace_paragraph_text(body_paragraphs[183], "方案编制阶段时间：")
     replace_paragraph_text(body_paragraphs[187], "现场测评阶段时间：")
     replace_paragraph_text(body_paragraphs[191], "分析与报告编制阶段时间：")
+
+    replace_paragraph_around_first_field(
+        body_paragraphs[357],
+        "根据《商用密码应用安全性评估高风险判定指引》判定系统是否存在高风险。经风险分析，"
+        "系统存在高风险【高风险项数量】项，中风险【中风险项数量】项，低风险【低风险项数量】项，具体见",
+        "：",
+        ("表", "6", "1"),
+    )
+    set_paragraph_nonitalic(body_paragraphs[357])
+    replace_paragraph_text(
+        body_paragraphs[361],
+        "通过对【被测单位】的【被测系统】的物理和环境安全、网络和通信安全、设备和计算安全、"
+        "应用和数据安全、管理制度、人员管理、建设运行和应急处置等方面的测评，该系统综合得分为"
+        "【综合得分】分，系统密码应用面临【风险等级】风险，【符合/基本符合/不符合】"
+        "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的第三级别要求。",
+    )
+    set_paragraph_nonitalic(body_paragraphs[361])
 
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
     replace_paragraph_text(body_paragraphs[28], "本报告是")
