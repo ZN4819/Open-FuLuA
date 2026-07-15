@@ -54,6 +54,22 @@ class ReportTemplateAssetTests(unittest.TestCase):
     def test_narratives_require_confirmation_and_exclude_scoring_parameters(self) -> None:
         result = validate_narrative_templates(ASSETS / "narrative_templates.json")
         self.assertTrue(all(item.user_confirmation_required for item in result.templates))
+        issue_references = [item for item in result.templates if item.template_id.startswith("narrative.security_issue.")]
+        self.assertEqual(len(issue_references), 16)
+        self.assertEqual(
+            {item.section_id for item in issue_references},
+            {
+                "security-issues.physical",
+                "security-issues.network",
+                "security-issues.device",
+                "security-issues.application",
+                "security-issues.policy",
+                "security-issues.personnel",
+                "security-issues.construction",
+                "security-issues.emergency",
+            },
+        )
+        self.assertTrue(all("XX" not in item.text for item in issue_references))
 
     def test_duplicate_json_keys_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as value:

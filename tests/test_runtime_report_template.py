@@ -174,6 +174,39 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             "通过对【被测系统】的物理和环境安全、网络和通信安全、设备和计算安全、应用和数据安全",
             "".join(body_paragraphs[65].xpath(".//w:t/text()", namespaces=NS)),
         )
+        self.assertEqual(
+            "".join(body_paragraphs[67].xpath(".//w:t/text()", namespaces=NS)),
+            "本次信息系统商用密码应用安全性评估依据GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》"
+            "的第三级别要求，发现被测信息系统存在以下安全问题。建议被测信息系统根据实际情况和以下给出的建议进行整改。",
+        )
+        issue_layers = {
+            68: ((70, 73), (74, 76)),
+            76: ((78, 82), (83, 85)),
+            85: ((87, 92), (93, 98)),
+            98: ((100, 107), (108, 114)),
+            114: ((116, 122), (123, 129)),
+            129: ((131, 135), (136, 140)),
+            140: ((142, 145), (146, 149)),
+            149: ((151, 152), (153, 154)),
+        }
+        for heading_index, (problem_range, recommendation_range) in issue_layers.items():
+            self.assertTrue(body_paragraphs[heading_index].xpath("./w:pPr/w:numPr", namespaces=NS))
+            self.assertEqual("".join(body_paragraphs[heading_index + 1].xpath(".//w:t/text()", namespaces=NS)), "问题描述：")
+            for paragraph in body_paragraphs[problem_range[0]:problem_range[1]]:
+                self.assertEqual("".join(paragraph.xpath(".//w:t/text()", namespaces=NS)), "")
+                self.assertFalse(paragraph.xpath("./w:pPr/w:numPr", namespaces=NS))
+            recommendation_label_index = problem_range[1]
+            self.assertEqual("".join(body_paragraphs[recommendation_label_index].xpath(".//w:t/text()", namespaces=NS)), "改进建议：")
+            for paragraph in body_paragraphs[recommendation_range[0]:recommendation_range[1]]:
+                self.assertEqual("".join(paragraph.xpath(".//w:t/text()", namespaces=NS)), "")
+                self.assertFalse(paragraph.xpath("./w:pPr/w:numPr", namespaces=NS))
+        for paragraph in body_paragraphs[67:154]:
+            italics = paragraph.xpath(
+                "./w:pPr/w:rPr/w:i | ./w:pPr/w:rPr/w:iCs | .//w:r/w:rPr/w:i | .//w:r/w:rPr/w:iCs",
+                namespaces=NS,
+            )
+            self.assertTrue(italics)
+            self.assertTrue(all(italic.get(f"{{{W}}}val") == "0" for italic in italics))
         starts = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_start')]/@w:name", namespaces=NS)
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)

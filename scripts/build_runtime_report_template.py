@@ -262,6 +262,36 @@ def _clean_document(data: bytes) -> bytes:
         run = etree.SubElement(paragraph, f"{{{W}}}r")
         etree.SubElement(run, f"{{{W}}}t").text = value
 
+    def set_paragraph_nonitalic(paragraph: etree._Element) -> None:
+        """显式关闭段落标记和所有文本运行的中西文斜体。"""
+        properties = paragraph.find(f"{{{W}}}pPr")
+        if properties is None:
+            properties = etree.Element(f"{{{W}}}pPr")
+            paragraph.insert(0, properties)
+        paragraph_mark_properties = properties.find(f"{{{W}}}rPr")
+        if paragraph_mark_properties is None:
+            paragraph_mark_properties = etree.SubElement(properties, f"{{{W}}}rPr")
+        run_properties = [paragraph_mark_properties]
+        for run in paragraph.xpath(".//w:r", namespaces=NS):
+            run_property = run.find(f"{{{W}}}rPr")
+            if run_property is None:
+                run_property = etree.Element(f"{{{W}}}rPr")
+                run.insert(0, run_property)
+            run_properties.append(run_property)
+        for run_property in run_properties:
+            for name in ("i", "iCs"):
+                for old in run_property.findall(f"{{{W}}}{name}"):
+                    run_property.remove(old)
+                disabled = etree.SubElement(run_property, f"{{{W}}}{name}")
+                disabled.set(f"{{{W}}}val", "0")
+
+    def remove_paragraph_numbering(paragraph: etree._Element) -> None:
+        properties = paragraph.find(f"{{{W}}}pPr")
+        if properties is None:
+            return
+        for numbering in properties.findall(f"{{{W}}}numPr"):
+            properties.remove(numbering)
+
     def table_cell_paragraph(table_number: int, row_number: int, cell_number: int) -> etree._Element:
         rows = tables[table_number - 1].xpath("./w:tr", namespaces=NS)
         cells = _iter_row_cells(rows[row_number])
@@ -300,6 +330,35 @@ def _clean_document(data: bytes) -> bytes:
         "管理制度、人员管理、建设运行和应急处置等方面的测评，该系统【符合/基本符合/不符合】"
         "GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》的第三级别要求。",
     )
+
+    # “安全问题及改进建议”保留章节说明与八层面结构，但不把源模板示例写入空白报告。
+    # 问题与建议将在后续装配阶段按实际发现动态生成并编号，因此清除示例条目的
+    # 预置编号，避免空白母版出现只有“1）/2）/3）”的项目。源模板示例已提炼至
+    # narrative_templates.json，作为须人工确认的写作参考，而不是报告默认内容。
+    replace_paragraph_text(
+        body_paragraphs[67],
+        "本次信息系统商用密码应用安全性评估依据GB/T 39786—2021《信息安全技术 信息系统密码应用基本要求》"
+        "的第三级别要求，发现被测信息系统存在以下安全问题。建议被测信息系统根据实际情况和以下给出的建议进行整改。",
+    )
+    security_issue_item_ranges = (
+        (range(70, 73), range(74, 76)),
+        (range(78, 82), range(83, 85)),
+        (range(87, 92), range(93, 98)),
+        (range(100, 107), range(108, 114)),
+        (range(116, 122), range(123, 129)),
+        (range(131, 135), range(136, 140)),
+        (range(142, 145), range(146, 149)),
+        (range(151, 152), range(153, 154)),
+    )
+    for problem_range, recommendation_range in security_issue_item_ranges:
+        for paragraph_index in problem_range:
+            replace_paragraph_text(body_paragraphs[paragraph_index], "")
+            remove_paragraph_numbering(body_paragraphs[paragraph_index])
+        for paragraph_index in recommendation_range:
+            replace_paragraph_text(body_paragraphs[paragraph_index], "")
+            remove_paragraph_numbering(body_paragraphs[paragraph_index])
+    for paragraph in body_paragraphs[67:154]:
+        set_paragraph_nonitalic(paragraph)
 
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
     replace_paragraph_text(body_paragraphs[28], "本报告是")
@@ -354,12 +413,7 @@ def _clean_document(data: bytes) -> bytes:
         indentation.attrib.pop(f"{{{W}}}{attribute}", None)
     indentation.set(f"{{{W}}}firstLineChars", "200")
     indentation.set(f"{{{W}}}firstLine", "420")
-    for run_properties in summary_paragraph.xpath("./w:pPr/w:rPr | .//w:r/w:rPr", namespaces=NS):
-        for name in ("i", "iCs"):
-            for old in run_properties.findall(f"{{{W}}}{name}"):
-                run_properties.remove(old)
-            disabled = etree.SubElement(run_properties, f"{{{W}}}{name}")
-            disabled.set(f"{{{W}}}val", "0")
+    set_paragraph_nonitalic(summary_paragraph)
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号", ""),
