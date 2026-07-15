@@ -1,0 +1,9 @@
+# R0 frozen report assets are byte-for-byte trust anchors. Do not rewrite
+# their line endings during checkout, staging, or packaging.
+templates/report/2023-2025.12.08/asset_hashes.json text eol=lf
+templates/report/2023-2025.12.08/field_dictionary.json text eol=lf
+templates/report/2023-2025.12.08/manifest.json text eol=lf
+templates/report/2023-2025.12.08/narrative_templates.json text eol=lf
+templates/report/2023-2025.12.08/rule_hints.json text eol=lf
+templates/report/2023-2025.12.08/runtime_template.docx -text
+docs/report-tool/evidence/r0-word-acceptance.json text eol=lf

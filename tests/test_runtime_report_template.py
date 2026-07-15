@@ -14,15 +14,17 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.services.report_templates import analyze_report_template
 from scripts._safe_output import ensure_distinct_paths
-from scripts.build_runtime_report_template import _scrub_story
+from scripts.build_runtime_report_template import _disable_all_italics, _scrub_story
 
 RUNTIME = ROOT / "templates" / "report" / "2023-2025.12.08" / "runtime_template.docx"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 V = "urn:schemas-microsoft-com:vml"
 O = "urn:schemas-microsoft-com:office:office"
-NS = {"w": W, "w14": W14, "r": R, "v": V, "o": O}
+NS = {"w": W, "w14": W14, "r": R, "a": A, "m": M, "v": V, "o": O}
 
 
 class RuntimeReportTemplateTests(unittest.TestCase):
@@ -47,6 +49,84 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         from docx import Document
         reopened = Document(RUNTIME)
         self.assertEqual((len(reopened.tables), len(reopened.sections)), (55, 17))
+
+    def test_runtime_template_has_no_active_italic_formatting(self) -> None:
+        disabled_word_italics = 0
+        with zipfile.ZipFile(RUNTIME) as package:
+            for name in package.namelist():
+                if not name.startswith("word/") or not name.endswith(".xml"):
+                    continue
+                root = etree.fromstring(package.read(name))
+                word_italics = root.xpath(
+                    f"//w:i[not(ancestor::*[namespace-uri()='{M}'])] | "
+                    f"//w:iCs[not(ancestor::*[namespace-uri()='{M}'])]",
+                    namespaces=NS,
+                )
+                disabled_word_italics += len(word_italics)
+                self.assertTrue(
+                    all(node.get(f"{{{W}}}val") == "0" for node in word_italics),
+                    name,
+                )
+                drawing_italics = [
+                    node
+                    for node in root.xpath(
+                        f"//*[@i][not(ancestor::*[namespace-uri()='{M}'])]",
+                        namespaces=NS,
+                    )
+                    if etree.QName(node).namespace == A
+                ]
+                self.assertTrue(all(node.get("i") == "0" for node in drawing_italics), name)
+                for styled in root.xpath(
+                    f"//*[@style][not(ancestor::*[namespace-uri()='{M}'])]",
+                    namespaces=NS,
+                ):
+                    self.assertNotRegex(styled.get("style", ""), r"(?i)font-style\s*:\s*italic")
+        self.assertGreater(disabled_word_italics, 0)
+
+    def test_math_formula_italic_formatting_is_preserved(self) -> None:
+        source = (
+            f'<m:oMath xmlns:m="{M}" xmlns:w="{W}">'
+            '<m:r><w:rPr><w:i/><w:iCs/></w:rPr><m:t>i</m:t></m:r>'
+            '<m:r><m:rPr><m:sty m:val="bi"/></m:rPr><m:t>S</m:t></m:r>'
+            '<m:ctrlPr><w:rPr><w:i/><w:iCs/></w:rPr></m:ctrlPr>'
+            '</m:oMath>'
+        ).encode("utf-8")
+        root = etree.fromstring(_disable_all_italics(source))
+        self.assertEqual(
+            root.xpath("//m:r/m:rPr/m:sty/@m:val", namespaces=NS),
+            ["bi"],
+        )
+        self.assertEqual(len(root.xpath("//m:oMath//w:i", namespaces=NS)), 2)
+        self.assertEqual(len(root.xpath("//m:oMath//w:iCs", namespaces=NS)), 2)
+
+    def test_runtime_math_formula_formatting_matches_the_approved_source_baseline(self) -> None:
+        formatting_hash = hashlib.sha256()
+        formatting_node_count = 0
+        with zipfile.ZipFile(RUNTIME) as package:
+            for name in sorted(
+                part
+                for part in package.namelist()
+                if part.startswith("word/") and part.endswith(".xml")
+            ):
+                root = etree.fromstring(package.read(name))
+                for properties in root.xpath(
+                    "//m:oMath//m:rPr | //m:oMath//m:ctrlPr | //m:oMath//w:rPr",
+                    namespaces=NS,
+                ):
+                    formatting_hash.update(
+                        etree.tostring(
+                            properties,
+                            method="c14n",
+                            exclusive=True,
+                            with_comments=False,
+                        )
+                    )
+                    formatting_node_count += 1
+        self.assertEqual(formatting_node_count, 269)
+        self.assertEqual(
+            formatting_hash.hexdigest(),
+            "3915aaed1fac98c5e19fcee184af183ab8be1b736b35d06ec5b6a7db0d474e10",
+        )
 
     def test_runtime_package_has_no_private_or_executable_parts(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
@@ -178,6 +258,18 @@ class RuntimeReportTemplateTests(unittest.TestCase):
                 ["report_body_end"],
             )
             self.assertTrue(document.xpath("//w:instrText[contains(., 'TOC ')]", namespaces=NS))
+            all_instructions = []
+            for part_name in package.namelist():
+                if (
+                    part_name == "word/document.xml"
+                    or re.fullmatch(r"word/(header|footer)\d+\.xml", part_name)
+                    or part_name in {"word/footnotes.xml", "word/endnotes.xml"}
+                ):
+                    story = etree.fromstring(package.read(part_name))
+                    all_instructions.extend(
+                        story.xpath("//w:instrText/text() | //w:fldSimple/@w:instr", namespaces=NS)
+                    )
+            self.assertFalse(any("NUMPAGES" in instruction.upper() for instruction in all_instructions))
             for field_begin in document.xpath("//w:fldChar[@w:fldCharType='begin']", namespaces=NS):
                 self.assertEqual(field_begin.get(f"{{{W}}}dirty"), "true")
 
@@ -195,17 +287,32 @@ class RuntimeReportTemplateTests(unittest.TestCase):
     def test_every_control_and_table_has_a_stable_identifier(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
             document = etree.fromstring(package.read("word/document.xml"))
+            story_roots = [document]
+            for name in package.namelist():
+                if re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {
+                    "word/footnotes.xml",
+                    "word/endnotes.xml",
+                }:
+                    story_roots.append(etree.fromstring(package.read(name)))
         tags = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
+        all_tags = [
+            tag
+            for story in story_roots
+            for tag in story.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
+        ]
         bookmarks = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'rt_table_')]/@w:name", namespaces=NS)
         self.assertEqual(len(tags), 606)
         self.assertEqual(len(tags), len(set(tags)))
+        self.assertEqual(len(all_tags), 612)
+        self.assertEqual(len(all_tags), len(set(all_tags)))
         self.assertEqual(bookmarks, [f"rt_table_{index:03d}" for index in range(1, 56)])
-        semantic = document.xpath("//w:sdtPr/w:tag[starts-with(@w:val, 'report.')]/@w:val", namespaces=NS)
-        self.assertEqual(len(semantic), 23)
+        semantic = [tag for tag in all_tags if tag.startswith("report.")]
+        self.assertEqual(len(semantic), 29)
         self.assertEqual(len(semantic), len(set(semantic)))
         self.assertNotIn("report.identity.version", semantic)
         self.assertIn("report.cover.system_name", semantic)
         self.assertIn("report.risk.high_risk_judgement", semantic)
+
         visible_text = "".join(document.xpath("//w:t/text()", namespaces=NS))
         self.assertNotIn("报告版本", visible_text)
         self.assertEqual(
@@ -393,6 +500,15 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         ends = document.xpath("//w:bookmarkStart[starts-with(@w:name, 'block_table_') and contains(@w:name, '_end')]/@w:name", namespaces=NS)
         self.assertEqual(len(starts), 55)
         self.assertEqual(len(ends), 55)
+
+    def test_word_native_acceptance_uses_exact_frozen_count(self) -> None:
+        script = (ROOT / "scripts" / "test_word_report_template.ps1").read_text(encoding="utf-8")
+        self.assertIn("$document.ContentControls.Count -ne 605", script)
+        self.assertIn("OpenNoRepairDialog", script)
+        self.assertIn("roundtrip_saved_and_reopened", script)
+        self.assertIn("runtime_template_sha256", script)
+        self.assertNotIn("$word.DisplayAlerts = 0", script)
+        self.assertNotIn("expected_at_least", script)
 
     def test_semantic_controls_write_into_the_actual_placeholder(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:

@@ -114,6 +114,9 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("package:nsis", script)
         self.assertIn("Setup executable was not generated", script)
         self.assertIn("win-unpacked\\FuLuA.exe", script)
+        self.assertEqual(script.count("verify_report_template_freeze.py"), 1)
+        self.assertIn("--packaged-asset-dir $BackendTemplateAssets", script)
+        self.assertIn("--packaged-asset-dir $ElectronTemplateAssets", script)
         self.assertRegex(package["scripts"].get("package:nsis", ""), r"electron-builder.*--win\s+nsis\s+dir")
 
     def test_install_acceptance_script_is_safe_and_covers_uninstall_reinstall_data_retention(self) -> None:

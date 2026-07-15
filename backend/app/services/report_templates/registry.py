@@ -18,14 +18,36 @@ from lxml import etree
 
 from ...resource_paths import resolve_resource_path
 from ...runtime import SCHEMA_VERSION
+from .models import (
+    EXPECTED_BUSINESS_FIELD_COUNT,
+    EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
+    EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT,
+    EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT,
+    EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256,
+    EXPECTED_WORD_CONTENT_CONTROL_COUNT,
+    REQUIRED_README_RULE_REFS,
+)
 from .validator import validate_field_dictionary_bytes, validate_narrative_templates_bytes, validate_rule_hints_bytes
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "fa205dab08ce715ab03d8134faba41ceeed9d85bec06a7a25b08ba70e1d77046"
+TRUSTED_ASSET_HASHES_SHA256 = "9017b86afd44a9ba05c55e3eb880d60b4dd6e45fbf87dd1b020bb5bc130d1484"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
-FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
-EXPECTED_SEMANTIC_TAG_COUNT = 29
+FIELD_NAMES = ("TOC", "PAGE", "SEQ", "REF", "PAGEREF", "STYLEREF")
+FORBIDDEN_FIELD_NAMES = ("NUMPAGES",)
+EXPECTED_FREEZE_RECORD = {
+    "status": "frozen",
+    "business_field_count": EXPECTED_BUSINESS_FIELD_COUNT,
+    "readme_rule_count": len(REQUIRED_README_RULE_REFS),
+    "semantic_scalar_slot_count": EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT,
+    "ooxml_content_control_count": EXPECTED_OOXML_CONTENT_CONTROL_COUNT,
+    "word_content_control_count": EXPECTED_WORD_CONTENT_CONTROL_COUNT,
+    "section_count": 17,
+    "table_count": 55,
+    "pending_rule_hint_count": 121,
+    "pending_rule_hints_blocking": False,
+    "word_acceptance_evidence_sha256": EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256,
+}
 APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
 APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
 
@@ -44,6 +66,8 @@ class ReportTemplatePackage:
     status: str
     manifest: dict[str, Any]
     fields: tuple[dict[str, Any], ...]
+    rule_contracts: tuple[dict[str, Any], ...]
+    projection_catalog: tuple[str, ...]
     rule_hints: tuple[dict[str, Any], ...]
     runtime_template_bytes: bytes
 
@@ -185,11 +209,16 @@ class ReportTemplateRegistry:
         semantic_contract = controls.get("semantic_scalar_tags", [])
         expected_semantic = {item.get("tag"): item.get("expected_count") for item in semantic_contract}
         slot_semantic = {slot.partition(":")[2] for slot in slots if slot.startswith("sdt:")}
-        if set(expected_semantic) != slot_semantic or len(expected_semantic) != EXPECTED_SEMANTIC_TAG_COUNT or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
+        if set(expected_semantic) != slot_semantic or len(expected_semantic) != EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
             raise ReportTemplateUnavailable("REPORT_TEMPLATE_SEMANTIC_CONTROL_MISMATCH", "manifest.json")
         template_pattern = controls.get("template_tag_pattern")
         template_count = sum(bool(re.fullmatch(template_pattern, tag)) for tag in tag_values) if isinstance(template_pattern, str) else -1
-        if template_count != controls.get("template_expected_count") or len(tag_values) != controls.get("expected_total_count"):
+        if (
+            template_count != EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT
+            or controls.get("template_expected_count") != EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT
+            or len(tag_values) != EXPECTED_OOXML_CONTENT_CONTROL_COUNT
+            or controls.get("expected_total_count") != EXPECTED_OOXML_CONTENT_CONTROL_COUNT
+        ):
             raise ReportTemplateUnavailable("REPORT_TEMPLATE_CONTROL_COUNT_MISMATCH", "manifest.json")
 
         blocks = manifest.get("blocks", [])
@@ -220,6 +249,8 @@ class ReportTemplateRegistry:
         field_counts: Counter[str] = Counter()
         for root in story_roots:
             for instruction in root.xpath("//w:instrText/text() | //w:fldSimple/@w:instr", namespaces=ns):
+                if any(re.search(rf"\b{name}\b", instruction.upper()) for name in FORBIDDEN_FIELD_NAMES):
+                    raise ReportTemplateUnavailable("REPORT_TEMPLATE_FORBIDDEN_FIELD_PRESENT", "runtime_template.docx")
                 match = re.search(r"\b(" + "|".join(FIELD_NAMES) + r")\b", instruction.upper())
                 if match:
                     field_counts[match.group(1)] += 1
@@ -283,6 +314,13 @@ class ReportTemplateRegistry:
                 if hashlib.sha256(hash_bytes).hexdigest() != TRUSTED_ASSET_HASHES_SHA256:
                     raise ReportTemplateUnavailable("REPORT_TEMPLATE_TRUST_ROOT_MISMATCH", "asset_hashes.json")
                 hashes = json.loads(hash_bytes)
+                if (
+                    hashes.get("schema_version") != "2.0"
+                    or hashes.get("package_id") != PACKAGE_ID
+                    or hashes.get("freeze_record") != EXPECTED_FREEZE_RECORD
+                    or set(hashes.get("assets", {})) != set(EXPECTED_ASSETS)
+                ):
+                    raise ReportTemplateUnavailable("REPORT_TEMPLATE_FREEZE_RECORD_MISMATCH", "asset_hashes.json")
                 loaded: dict[str, bytes] = {}
                 for asset in EXPECTED_ASSETS:
                     candidate = root / asset
@@ -305,7 +343,18 @@ class ReportTemplateRegistry:
                 validate_narrative_templates_bytes(loaded["narrative_templates.json"])
                 slots = [slot for field in fields.fields for slot in field.export_slots]
                 self._validate_runtime_contract(loaded["runtime_template.docx"], manifest, slots)
-                self._package = ReportTemplatePackage(PACKAGE_ID, str(manifest["template_edition"]), str(manifest["template_revision"]), "available", manifest, tuple(i.model_dump(mode="json") for i in fields.fields), tuple(i.model_dump(mode="json") for i in rules.rules), loaded["runtime_template.docx"])
+                self._package = ReportTemplatePackage(
+                    PACKAGE_ID,
+                    str(manifest["template_edition"]),
+                    str(manifest["template_revision"]),
+                    "available",
+                    manifest,
+                    tuple(item.model_dump(mode="json") for item in fields.fields),
+                    tuple(item.model_dump(mode="json") for item in fields.rule_contracts),
+                    tuple(fields.projection_catalog),
+                    tuple(item.model_dump(mode="json") for item in rules.rules),
+                    loaded["runtime_template.docx"],
+                )
                 self._failure = None
                 return self._package
             except ReportTemplateUnavailable as exc:

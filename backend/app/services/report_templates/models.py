@@ -6,6 +6,113 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+EXPECTED_BUSINESS_FIELD_COUNT = 26
+EXPECTED_SEMANTIC_SCALAR_SLOT_COUNT = 29
+EXPECTED_OOXML_CONTENT_CONTROL_COUNT = 612
+EXPECTED_WORD_CONTENT_CONTROL_COUNT = 605
+EXPECTED_TEMPLATE_CONTENT_CONTROL_COUNT = 583
+EXPECTED_WORD_ACCEPTANCE_EVIDENCE_SHA256 = "9af7dfc44ce7bb19d30d42163ebebabceff4ee08d116026d9dcec8b286c0461b"
+README_RULE_COUNTS = {1: 10, 2: 11, 3: 16, 4: 11, 5: 8, 6: 14}
+REQUIRED_README_RULE_REFS = frozenset(
+    f"3.6.{section}.{index:02d}"
+    for section, count in README_RULE_COUNTS.items()
+    for index in range(1, count + 1)
+)
+REQUIRED_PROJECTION_CATALOG = frozenset({
+    "block:report.assessment_conclusion",
+    "block:report.assessment_conclusion.risk",
+    "block:report.assessment_conclusion.system_summary",
+    "block:report.assessment_summary",
+    "block:report.assessment_summary.risk",
+    "block:report.chapter7.conclusion",
+    "block:report.cover.organizations",
+    "block:report.distribution",
+    "block:report.improvement_suggestions",
+    "block:report.narrative.organization_references",
+    "block:report.overall_evaluation",
+    "block:report.overall_evaluation.objects",
+    "block:report.reference_standards",
+    "block:report.risk_analysis.summary",
+    "block:report.security_issues",
+    "block:report.special_indicators",
+    "block:report.template.assessment_organization",
+    "export:report.appendix_a",
+    "export:report.appendix_a.corrected_display",
+    "export:report.filename",
+    "export:report.snapshot",
+    "export:report.version",
+    "export:report.xlsx",
+    "export:report.xlsx.numeric_display",
+    "export:report.xlsx_management",
+    "export:report.xlsx_technical",
+    "field:report.approval.compiled_date",
+    "field:report.assessment.period",
+    "field:report.assessment.range",
+    "field:report.organization.effective_client_name",
+    "field:report.organization.operator_name",
+    "field:report.system.crypto_product_total",
+    "service:report.a4_application_subset_validation",
+    "service:report.algorithm_export_validation",
+    "service:report.algorithm_warning_validation",
+    "service:report.appendix_a_authority",
+    "service:report.approval_role_validation",
+    "service:report.basic_information_branch_validation",
+    "service:report.bidirectional_score_correction",
+    "service:report.correction_relation_cardinality",
+    "service:report.correction_relation_validation",
+    "service:report.correction_slash_handling",
+    "service:report.crypto_product_invariants",
+    "service:report.final_conclusion",
+    "service:report.indicator_conclusion_aggregation",
+    "service:report.narrative_confirmation",
+    "service:report.narrative_staleness",
+    "service:report.risk_count_invariants",
+    "service:report.team_qualification_validation",
+    "slot:report.header.report_number",
+    "slot:report.identity.date",
+    "slot:report.identity.number",
+    "slot:report.result.conclusion",
+    "slot:report.result.overall_score",
+    "slot:report.risk.high_risk_judgement",
+    "slot:report.system.name",
+    "table:report.appendix_a_management",
+    "table:report.appendix_a_technical",
+    "table:report.appendix_b2",
+    "table:report.appendix_b3",
+    "table:report.appendix_b4.compiler",
+    "table:report.appendix_b5",
+    "table:report.appendix_b6",
+    "table:report.appendix_b9",
+    "table:report.basic_information",
+    "table:report.basic_information.approval_dates",
+    "table:report.basic_information.cloud",
+    "table:report.basic_information.compiler",
+    "table:report.basic_information.critical_infrastructure",
+    "table:report.basic_information.crypto_plan",
+    "table:report.basic_information.level_assessment",
+    "table:report.basic_information.level_filing",
+    "table:report.basic_information.operation",
+    "table:report.basic_information.reviewers",
+    "table:report.basic_information.service_scope",
+    "table:report.chapter3_methods",
+    "table:report.chapter4",
+    "table:report.not_applicable_indicators",
+    "table:report.risk_analysis",
+    "table:report.risk_analysis.threats",
+    "table:report.table_2_3",
+    "table:report.table_3_4",
+    "table:report.table_3_5",
+    "table:report.table_3_6",
+    "table:report.table_3_7",
+    "table:report.table_4_1_to_4_11",
+    "table:report.table_4_5",
+    "table:report.table_4_6",
+    "table:report.table_4_7",
+    "table:report.table_5_1",
+    "table:report.table_5_2",
+    "table:report.threat_catalog",
+})
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -81,7 +188,25 @@ class ReportField(StrictModel):
     data_domain: str = Field(pattern=r"^[a-z][a-z0-9_]{2,63}$")
     cardinality: Literal["one", "many"]
     required_when: Condition
-    source_kind: list[Literal["manual", "imported", "derived", "appendix_a"]] = Field(min_length=1, max_length=4)
+    source_kind: Literal["manual", "imported", "derived", "template_constant"]
+    accepted_input_kinds: list[Literal["manual", "imported"]] = Field(default_factory=list, max_length=2)
+    editable: bool
+    missing_behavior: Literal[
+        "allow_empty",
+        "allow_draft_block_final",
+        "derive_or_block_final",
+        "render_empty_structure",
+        "template_package_unavailable",
+    ]
+    conflict_behavior: Literal[
+        "preserve_and_warn",
+        "recompute_from_authority",
+        "reject",
+        "require_confirmation",
+        "template_package_unavailable",
+    ]
+    governed_parameter_ids: list[str] = Field(min_length=1, max_length=100)
+    readme_rule_refs: list[str] = Field(min_length=1, max_length=70)
     source_evidence: list[str] = Field(default_factory=list, max_length=20)
     format: dict[str, Any] = Field(default_factory=dict)
     sensitivity: Literal["public", "internal", "sensitive"]
@@ -91,9 +216,41 @@ class ReportField(StrictModel):
     template_revision: Literal["2025-12-08"] = "2025-12-08"
 
 
+class RuleAuthority(StrictModel):
+    authority_id: str = Field(pattern=r"^[a-z][a-z0-9_.]{2,127}$")
+    source_kind: Literal["manual", "imported", "derived", "template_constant"]
+    accepted_input_kinds: list[Literal["manual", "imported"]] = Field(default_factory=list, max_length=2)
+    editable: bool
+
+
+class ReadmeRuleContract(StrictModel):
+    rule_ref: str = Field(pattern=r"^3\.6\.[1-6]\.[0-9]{2}$")
+    authorities: list[RuleAuthority] = Field(min_length=1, max_length=12)
+    projection_ids: list[str] = Field(min_length=1, max_length=20)
+    missing_behavior: Literal[
+        "allow_empty",
+        "allow_draft_block_final",
+        "derive_or_block_final",
+        "render_empty_structure",
+        "template_package_unavailable",
+    ]
+    conflict_behavior: Literal[
+        "preserve_and_warn",
+        "recompute_from_authority",
+        "reject",
+        "require_confirmation",
+        "template_package_unavailable",
+    ]
+    implementation_owner: Literal["R2", "R3", "R4", "R5"]
+
+
 class FieldDictionary(StrictModel):
-    schema_version: Literal["1.0"] = "1.0"
-    fields: list[ReportField] = Field(min_length=1, max_length=1000)
+    schema_version: Literal["2.0"] = "2.0"
+    package_id: Literal["report-2023-2025.12.08"]
+    contract_status: Literal["frozen"]
+    rule_contracts: list[ReadmeRuleContract] = Field(min_length=70, max_length=70)
+    projection_catalog: list[str] = Field(min_length=92, max_length=92)
+    fields: list[ReportField] = Field(min_length=26, max_length=26)
 
 
 class RuleHint(StrictModel):

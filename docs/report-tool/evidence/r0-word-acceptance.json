@@ -1,0 +1,13 @@
+{
+    "schema_version":  "1.0",
+    "package_id":  "report-2023-2025.12.08",
+    "runtime_template_sha256":  "2d98a9b61ea4eaf151732d2ad1f6c7ac510ab4e8826d9a9146824137e8b23903",
+    "word_version":  "16.0",
+    "open_method":  "OpenNoRepairDialog",
+    "display_alerts":  "all",
+    "roundtrip_saved_and_reopened":  true,
+    "section_count":  17,
+    "table_count":  55,
+    "content_control_count":  605,
+    "page_count":  82
+}
