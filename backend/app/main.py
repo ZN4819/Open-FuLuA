@@ -13,6 +13,7 @@ from .api.exports import router as exports_router
 from .api.projects import router as projects_router
 from .api.record_template_slots import router as record_template_slots_router
 from .api.record_templates import router as record_templates_router
+from .api.report_templates import router as report_templates_router
 from .api.render_jobs import router as render_jobs_router
 from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
@@ -91,6 +92,7 @@ def health() -> HealthResponse:
 
 app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(record_templates_router, prefix=settings.api_prefix)
+app.include_router(report_templates_router, prefix=settings.api_prefix)
 app.include_router(record_template_slots_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)

@@ -697,4 +697,4 @@ POST   /api/projects/{project_id}/exports/docx?mode=final
 - Ra、Rk 继续只进入数据库和 XLSX，不进入 Word。
 - 正式输出为 DOCX 和 XLSX，首版不内置 PDF；附录B首版只接收 PNG/JPEG。
 
-本节及专题方案均为尚未实施的后续规划。在对应阶段通过测试、提交、推送并合并前，不得将规划能力描述为现有功能。
+R0“模板治理与运行时母版”已于 2026-07-15 完成技术实施，形成脱敏母版、字段字典、121 条待审批规则提示、manifest、哈希信任根和只读 registry/API。R1 至 R8 仍为后续规划；R0 完成不代表当前产品已经具备完整报告生成能力。
