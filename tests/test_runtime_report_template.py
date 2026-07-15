@@ -72,8 +72,24 @@ class RuntimeReportTemplateTests(unittest.TestCase):
         for dropdown in document.xpath("//w:dropDownList", namespaces=NS):
             first = dropdown.find(f"{{{W}}}listItem")
             self.assertIsNotNone(first)
-            self.assertEqual(first.get(f"{{{W}}}displayText", ""), "")
-            self.assertEqual(first.get(f"{{{W}}}value", ""), "")
+            self.assertEqual(first.get(f"{{{W}}}displayText", ""), " ")
+            self.assertEqual(first.get(f"{{{W}}}value", ""), " ")
+
+    def test_sdt_identity_elements_follow_word_schema_order(self) -> None:
+        with zipfile.ZipFile(RUNTIME) as package:
+            document = etree.fromstring(package.read("word/document.xml"))
+        for properties in document.xpath("//w:sdtPr[w:tag and w:alias]", namespaces=NS):
+            children = [etree.QName(child).localname for child in properties]
+            self.assertLess(children.index("alias"), children.index("tag"))
+            type_positions = [
+                index
+                for index, child in enumerate(properties)
+                if etree.QName(child).namespace != W
+                or etree.QName(child).localname
+                in ("comboBox", "date", "docPartObj", "docPartList", "dropDownList", "picture", "richText", "text")
+            ]
+            if type_positions:
+                self.assertLess(children.index("tag"), min(type_positions))
 
     def test_every_control_and_table_has_a_stable_identifier(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:

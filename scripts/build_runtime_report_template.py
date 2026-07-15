@@ -24,6 +24,11 @@ CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
 DC = "http://purl.org/dc/elements/1.1/"
 NS = {"w": W, "pr": PR, "ct": CT, "cp": CP, "dc": DC}
 
+SDT_TYPE_NAMES = {
+    "equation", "comboBox", "date", "docPartObj", "docPartList", "dropDownList",
+    "picture", "richText", "text", "citation", "group", "bibliography",
+}
+
 ALLOWED_EXACT_PARTS = {
     "[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/_rels/document.xml.rels",
     "word/footnotes.xml", "word/endnotes.xml", "word/theme/theme1.xml", "word/settings.xml",
@@ -83,14 +88,36 @@ def _clear_sdt_content(sdt: etree._Element) -> None:
             display = item.get(f"{{{W}}}displayText", "")
             value = item.get(f"{{{W}}}value", "")
             if display == "选择一项。" or value == "选择一项。":
-                # 保留一个真正的空选项作为首项。若直接删除，LibreOffice 会把
-                # 下一项（通常是“√”）当作当前值渲染，形成虚假的预填结论。
-                item.set(f"{{{W}}}displayText", "")
-                item.set(f"{{{W}}}value", "")
+                # Word 拒绝 displayText/value 同时为空的下拉项。使用单个空格
+                # 保留视觉空白首项，同时确保 DOCX 可由 Word 无修复提示打开。
+                item.set(f"{{{W}}}displayText", " ")
+                item.set(f"{{{W}}}value", " ")
     for text in sdt.xpath(".//w:t", namespaces=NS):
         text.text = ""
     for checked in sdt.xpath(".//w:checked", namespaces=NS):
         checked.set(f"{{{W}}}val", "0")
+
+
+def _set_sdt_identity(properties: etree._Element, tag_value: str, alias_value: str) -> None:
+    """按 CT_SdtPr 规定的子元素顺序写入 alias 和 tag。"""
+    for name in ("tag", "alias", "dataBinding"):
+        for old in properties.findall(f"{{{W}}}{name}"):
+            properties.remove(old)
+
+    alias = etree.Element(f"{{{W}}}alias")
+    alias.set(f"{{{W}}}val", alias_value)
+    alias_index = 1 if len(properties) and etree.QName(properties[0]).localname == "rPr" else 0
+    properties.insert(alias_index, alias)
+
+    tag = etree.Element(f"{{{W}}}tag")
+    tag.set(f"{{{W}}}val", tag_value)
+    type_index = len(properties)
+    for child_index, child in enumerate(properties):
+        child_name = etree.QName(child)
+        if child_name.namespace != W or child_name.localname in SDT_TYPE_NAMES:
+            type_index = child_index
+            break
+    properties.insert(type_index, tag)
 
 
 def _iter_row_cells(row: etree._Element) -> list[etree._Element]:
@@ -139,15 +166,11 @@ def _clean_document(data: bytes) -> bytes:
     for sdt_index, sdt in enumerate(root.xpath("//w:sdt", namespaces=NS), start=1):
         properties = sdt.find(f"{{{W}}}sdtPr")
         if properties is not None:
-            for name in ("tag", "alias", "dataBinding"):
-                for old in properties.findall(f"{{{W}}}{name}"):
-                    properties.remove(old)
-            tag = etree.Element(f"{{{W}}}tag")
-            tag.set(f"{{{W}}}val", f"template.control.{sdt_index:04d}")
-            properties.insert(0, tag)
-            alias = etree.Element(f"{{{W}}}alias")
-            alias.set(f"{{{W}}}val", f"运行时控件 {sdt_index:04d}")
-            properties.insert(1, alias)
+            _set_sdt_identity(
+                properties,
+                f"template.control.{sdt_index:04d}",
+                f"运行时控件 {sdt_index:04d}",
+            )
         _clear_sdt_content(sdt)
 
     body_paragraphs = root.xpath("/w:document/w:body/w:p", namespaces=NS)
@@ -194,10 +217,7 @@ def _clean_document(data: bytes) -> bytes:
     def add_semantic_sdt(paragraph: etree._Element, tag_value: str, alias_value: str, position: int | None = None) -> etree._Element:
         sdt = etree.Element(f"{{{W}}}sdt")
         properties = etree.SubElement(sdt, f"{{{W}}}sdtPr")
-        tag = etree.SubElement(properties, f"{{{W}}}tag")
-        tag.set(f"{{{W}}}val", tag_value)
-        alias = etree.SubElement(properties, f"{{{W}}}alias")
-        alias.set(f"{{{W}}}val", alias_value)
+        _set_sdt_identity(properties, tag_value, alias_value)
         content = etree.SubElement(sdt, f"{{{W}}}sdtContent")
         run = etree.SubElement(content, f"{{{W}}}r")
         etree.SubElement(run, f"{{{W}}}t").text = ""

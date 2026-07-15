@@ -408,7 +408,7 @@ uploaded
 
 - 新增隔离存储、ZIP 安全检查和 OOXML 部件检查。
 - 扫描宏、OLE、外链、未接受修订、重复标签和结构变化。
-- 对 Word、WPS、LibreOffice 常见重写差异建立兼容解析，但不放宽业务边界。
+- 只对 Microsoft Word 保存产生的受控重写差异建立兼容解析，不把 WPS 或 LibreOffice 重写结果作为受支持回收输入。
 
 **失败行为**
 
@@ -560,7 +560,7 @@ uploaded
 
 **输入**
 
-- Word、WPS、LibreOffice 保存的脱敏测试文档。
+- Microsoft Word 不同受支持版本保存的脱敏测试文档。
 
 **具体改动**
 
@@ -631,7 +631,7 @@ uploaded
 - [ ] 原子事务失败时没有部分写入。
 - [ ] 写回后评分和汇总由后端重算。
 - [ ] 每次提交都有 before/after hash 和可追溯审计。
-- [ ] 异常 Word、丢失 custom XML、WPS/LibreOffice 重写不会触发位置猜测。
+- [ ] 异常 Word 或丢失 custom XML 不会触发位置猜测；WPS/LibreOffice 重写文件明确拒绝回收。
 - [ ] 桌面端端到端闭环和独立代码审查通过。
 
 ## 17. 建议分支、提交与 PR

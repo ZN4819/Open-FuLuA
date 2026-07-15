@@ -52,7 +52,7 @@ import_mode     = migration | roundtrip
 - 55 张表中既有固定规范表，也有动态资产表、对象表、汇总表、风险表、附录 A 表和附录 B 证据表。
 - 客户项目证明动态行数可能远超基础模板，例如 A-2 可达到 167 行、网络对象表可达到 34 行。
 - 当前评分后端已权威计算技术和管理分数；XLSX 导出已有完整校验。
-- 当前预览服务已有 Word 或 LibreOffice 临时渲染基础，但完整报告的正式交付物仅为 DOCX；临时渲染只用于可选视觉 QA。
+- 完整报告 DOCX 的结构分析、字段刷新、分页和交付验收只使用 Microsoft Word。既有 LibreOffice 预览能力不作为完整报告工具的判断依据。
 
 ## 4. 目标与非目标
 
@@ -241,14 +241,14 @@ validate_appendix_a_block(document_package)
 4. 更新所有 story ranges、目录、正文、页眉、页脚和文本框字段。
 5. 重新分页并保存 DOCX。
 6. 关闭文档和进程后回读 DOCX。
-7. 如本机存在可用 Word 或 LibreOffice，可生成临时 PDF/PNG 进行内部视觉 QA；该中间产物不公开、不归档，也不影响 DOCX 导出成功状态。
+7. 使用 Microsoft Word 原生导出临时 PDF/PNG 进行内部视觉 QA；该中间产物不公开、不归档，也不影响 DOCX 导出成功状态。
 
 ### 7.2 异常处理
 
 - Word 自动化超时必须结束且只结束本任务创建的进程。
 - Word 弹出对话框、文件被占用、保护视图、修复提示或 COM 断开均视为失败。
 - draft 可保留结构通过但未完成分页的结果，并明确标识。
-- final 不允许以 LibreOffice 或未刷新缓存替代 Word 验收，除非将来另行批准等价渲染器基线。
+- final 不允许以 LibreOffice、WPS 或未刷新缓存替代 Word 验收。
 
 ## 8. 快照基座
 
