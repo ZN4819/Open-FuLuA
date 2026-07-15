@@ -146,8 +146,8 @@ def main() -> int:
             key=lambda item: item["part_name"],
         ),
     }
-    semantic_tags = [field.field_id for field in fields.fields if field.cardinality == "one"]
     slots = [slot for field in fields.fields for slot in field.export_slots]
+    semantic_tags = [slot.partition(":")[2] for slot in slots if slot.startswith("sdt:")]
     manifest = {
         "schema_version": "1.0",
         "package_id": "report-2023-2025.12.08",

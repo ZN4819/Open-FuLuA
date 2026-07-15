@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import io
 import re
@@ -214,18 +215,37 @@ def _clean_document(data: bytes) -> bytes:
         add_zero_bookmark(paragraphs[0], f"block_table_{table_index:03d}_start")
         add_zero_bookmark(paragraphs[-1], f"block_table_{table_index:03d}_end")
 
-    def add_semantic_sdt(paragraph: etree._Element, tag_value: str, alias_value: str, position: int | None = None) -> etree._Element:
+    def add_semantic_sdt(
+        paragraph: etree._Element,
+        tag_value: str,
+        alias_value: str,
+        position: int | None = None,
+        display_text: str = "",
+    ) -> etree._Element:
         sdt = etree.Element(f"{{{W}}}sdt")
         properties = etree.SubElement(sdt, f"{{{W}}}sdtPr")
         _set_sdt_identity(properties, tag_value, alias_value)
         content = etree.SubElement(sdt, f"{{{W}}}sdtContent")
         run = etree.SubElement(content, f"{{{W}}}r")
-        etree.SubElement(run, f"{{{W}}}t").text = ""
+        reference_properties = paragraph.xpath(".//w:r/w:rPr", namespaces=NS)
+        if reference_properties:
+            run.append(copy.deepcopy(reference_properties[0]))
+        text = etree.SubElement(run, f"{{{W}}}t")
+        text.text = display_text
+        if display_text != display_text.strip() or "  " in display_text:
+            text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
         if position is None:
             paragraph.append(sdt)
         else:
             paragraph.insert(position, sdt)
         return sdt
+
+    def append_formatted_text(paragraph: etree._Element, value: str) -> None:
+        run = etree.SubElement(paragraph, f"{{{W}}}r")
+        reference_properties = paragraph.xpath(".//w:r/w:rPr", namespaces=NS)
+        if reference_properties:
+            run.append(copy.deepcopy(reference_properties[0]))
+        etree.SubElement(run, f"{{{W}}}t").text = value
 
     def replace_paragraph_text(paragraph: etree._Element, value: str) -> None:
         texts = paragraph.xpath(".//w:t", namespaces=NS)
@@ -243,24 +263,40 @@ def _clean_document(data: bytes) -> bytes:
         return cells[cell_number].xpath(".//w:p", namespaces=NS)[0]
 
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
+    replace_paragraph_text(body_paragraphs[28], "本报告是")
+    replace_paragraph_text(body_paragraphs[34], "")
     replace_paragraph_text(body_paragraphs[35], "")
     replace_paragraph_text(body_paragraphs[187], "现场测评阶段时间：")
 
     semantic_slots = {
-        "report.identity.number": (body_paragraphs[0], "报告编号"),
-        "report.identity.date": (body_paragraphs[35], "报告日期"),
-        "report.organization.assessed_name": (table_cell_paragraph(1, 0, 1), "被测单位名称"),
-        "report.organization.assessment_name": (table_cell_paragraph(1, 1, 1), "测评机构名称"),
-        "report.system.name": (table_cell_paragraph(2, 8, 1), "被测系统名称"),
-        "report.system.overview": (table_cell_paragraph(3, 1, 1), "系统概述"),
-        "report.system.network_architecture": (body_paragraphs[204], "网络架构说明"),
-        "report.assessment.period": (body_paragraphs[187], "现场测评时间"),
-        "report.assessment.methods": (next((body_paragraphs[i + 1] for i, p in enumerate(body_paragraphs[:-1]) if "".join(p.xpath(".//w:t/text()", namespaces=NS)).strip() == "现场测评方法"), body_paragraphs[257]), "测评方法"),
-        "report.result.overall_score": (table_cell_paragraph(3, 3, 3), "综合得分"),
-        "report.result.conclusion": (table_cell_paragraph(3, 3, 1), "总体结论"),
+        "report.identity.number": (body_paragraphs[0], "报告编号", ""),
+        "report.identity.date": (body_paragraphs[35], "报告日期", "年   月   日"),
+        "report.organization.assessed_name": (table_cell_paragraph(1, 0, 1), "被测单位名称", ""),
+        "report.organization.assessment_name": (table_cell_paragraph(1, 1, 1), "测评机构名称", ""),
+        "report.system.name": (table_cell_paragraph(2, 8, 1), "被测系统名称", ""),
+        "report.system.overview": (table_cell_paragraph(3, 1, 1), "系统概述", ""),
+        "report.system.network_architecture": (body_paragraphs[204], "网络架构说明", ""),
+        "report.assessment.period": (body_paragraphs[187], "现场测评时间", ""),
+        "report.assessment.methods": (next((body_paragraphs[i + 1] for i, p in enumerate(body_paragraphs[:-1]) if "".join(p.xpath(".//w:t/text()", namespaces=NS)).strip() == "现场测评方法"), body_paragraphs[257]), "测评方法", ""),
+        "report.result.overall_score": (table_cell_paragraph(3, 3, 3), "综合得分", ""),
+        "report.result.conclusion": (table_cell_paragraph(3, 3, 1), "总体结论", ""),
     }
-    for tag_value, (paragraph, alias_value) in semantic_slots.items():
-        add_semantic_sdt(paragraph, tag_value, alias_value)
+    for tag_value, (paragraph, alias_value, display_text) in semantic_slots.items():
+        add_semantic_sdt(paragraph, tag_value, alias_value, display_text=display_text)
+
+    add_semantic_sdt(
+        body_paragraphs[28],
+        "report.declaration.system_name",
+        "声明页被测系统名称",
+        display_text="被测信息系统名称",
+    )
+    append_formatted_text(body_paragraphs[28], "的商用密码应用安全性评估报告，报告模板为2023年版。")
+    add_semantic_sdt(
+        body_paragraphs[34],
+        "report.declaration.assessment_name",
+        "声明页测评机构名称",
+        display_text="测评机构名称",
+    )
 
     security_paragraph = table_cell_paragraph(2, 10, 1)
     security_texts = security_paragraph.xpath(".//w:t", namespaces=NS)

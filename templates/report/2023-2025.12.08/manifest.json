@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "63958f52bee88e2927d0747d06727f7fa75565e8eba3e4b356a3a1b365c08f44",
+  "runtime_template_sha256": "a525cb33a5318af240d79567d5c500d5defd6e296288837e4b860855e254d33b",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -487,7 +487,7 @@
       "table_anchor": "rt_table_001",
       "owner_block": "block.report_table_001",
       "header_signature": "b05e53465a44b60ad297888f168c0843f3d8c9caddb9851584af36ec5e532fa6",
-      "signature": "7f6754f3481cc1bd19adf9ab0d72f988f436b8cd872ea2e6ab016bc3d1cda8ee",
+      "signature": "75a362611b644cdd1cfb8263ff088efe01d684b2df3e1ab1b0825dfa06c02ac3",
       "dynamic_rows": {
         "strategy": "fixed",
         "header_rows": 0,
@@ -501,7 +501,7 @@
       "table_anchor": "rt_table_002",
       "owner_block": "block.report_table_002",
       "header_signature": "e7f65e84945b0e724a8eeb48fe0925e42324cca39d4a71f12e3aaf5cedee4057",
-      "signature": "a937eef73b248c15c05d6eb97397325b3c24c4036b40268feec411fd0291892e",
+      "signature": "1fcb7730ed2ab15b2278e686335f579bbecefdd4f1aa22fae34ffbde4a0a204c",
       "dynamic_rows": {
         "strategy": "fixed",
         "header_rows": 0,
@@ -515,7 +515,7 @@
       "table_anchor": "rt_table_003",
       "owner_block": "block.report_table_003",
       "header_signature": "9a878b22fc16b1a1a95c54eb02a67b83f72f209fb39b0714da59f1fa25bb07a5",
-      "signature": "20ca2c8fdb4f8bf58a6ced2704e721eb09f0e0751006e933ebe8c23cf2772c92",
+      "signature": "4f2d3a3ca0d347a8c6d56cf099c59e2c73a51b119aa4aa62925a7871945d68db",
       "dynamic_rows": {
         "strategy": "fixed",
         "header_rows": 0,
@@ -1604,7 +1604,15 @@
         "expected_count": 1
       },
       {
+        "tag": "report.declaration.assessment_name",
+        "expected_count": 1
+      },
+      {
         "tag": "report.system.name",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.declaration.system_name",
         "expected_count": 1
       },
       {
@@ -1636,13 +1644,15 @@
         "expected_count": 1
       }
     ],
-    "expected_total_count": 595,
+    "expected_total_count": 597,
     "field_export_slots": [
       "sdt:report.identity.number",
       "sdt:report.identity.date",
       "sdt:report.organization.assessed_name",
       "sdt:report.organization.assessment_name",
+      "sdt:report.declaration.assessment_name",
       "sdt:report.system.name",
+      "sdt:report.declaration.system_name",
       "sdt:report.system.security_level",
       "sdt:report.system.overview",
       "sdt:report.system.network_architecture",

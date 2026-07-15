@@ -22,7 +22,7 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "4fe9d7aca5a3ab6a35fd041dc8c86193cac430dbec08f5d1b7b124d8fb391cc6"
+TRUSTED_ASSET_HASHES_SHA256 = "b596850d8ee61a67f038df5e1e14520a5afa408e321a0e419c708593777c50af"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
 
@@ -172,7 +172,7 @@ class ReportTemplateRegistry:
         semantic_contract = controls.get("semantic_scalar_tags", [])
         expected_semantic = {item.get("tag"): item.get("expected_count") for item in semantic_contract}
         slot_semantic = {slot.partition(":")[2] for slot in slots if slot.startswith("sdt:")}
-        if set(expected_semantic) != slot_semantic or len(expected_semantic) != 12 or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
+        if set(expected_semantic) != slot_semantic or len(expected_semantic) != 14 or any(tag_values.count(tag) != count for tag, count in expected_semantic.items()):
             raise ReportTemplateUnavailable("REPORT_TEMPLATE_SEMANTIC_CONTROL_MISMATCH", "manifest.json")
         template_pattern = controls.get("template_tag_pattern")
         template_count = sum(bool(re.fullmatch(template_pattern, tag)) for tag in tag_values) if isinstance(template_pattern, str) else -1

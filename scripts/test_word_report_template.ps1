@@ -38,8 +38,8 @@ try {
     if ($document.Tables.Count -ne 55) {
         throw "WORD_TABLE_COUNT_MISMATCH: expected=55 actual=$($document.Tables.Count)"
     }
-    if ($document.ContentControls.Count -lt 594) {
-        throw "WORD_CONTENT_CONTROL_COUNT_MISMATCH: expected_at_least=594 actual=$($document.ContentControls.Count)"
+    if ($document.ContentControls.Count -lt 596) {
+        throw "WORD_CONTENT_CONTROL_COUNT_MISMATCH: expected_at_least=596 actual=$($document.ContentControls.Count)"
     }
 
     Write-Host "PASS: Word opened the runtime template without repair prompts."
