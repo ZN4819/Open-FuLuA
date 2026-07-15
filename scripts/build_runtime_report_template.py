@@ -243,13 +243,11 @@ def _clean_document(data: bytes) -> bytes:
         return cells[cell_number].xpath(".//w:p", namespaces=NS)[0]
 
     replace_paragraph_text(body_paragraphs[0], "报告编号：")
-    replace_paragraph_text(body_paragraphs[1], "报告版本：")
     replace_paragraph_text(body_paragraphs[35], "")
     replace_paragraph_text(body_paragraphs[187], "现场测评阶段时间：")
 
     semantic_slots = {
         "report.identity.number": (body_paragraphs[0], "报告编号"),
-        "report.identity.version": (body_paragraphs[1], "报告版本"),
         "report.identity.date": (body_paragraphs[35], "报告日期"),
         "report.organization.assessed_name": (table_cell_paragraph(1, 0, 1), "被测单位名称"),
         "report.organization.assessment_name": (table_cell_paragraph(1, 1, 1), "测评机构名称"),

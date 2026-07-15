@@ -2,9 +2,9 @@
   "schema_version": "1.0",
   "package_id": "report-2023-2025.12.08",
   "assets": {
-    "runtime_template.docx": "e7031851f9f794bcad885ebe0c8d862eea062ab63457142d9575d9215fc2232b",
-    "field_dictionary.json": "ba65661162a8241e3e2d475dd6046f3f5bb0bf9fb4f2721b2a5b8b1f7e47f875",
-    "manifest.json": "ee487bd4357483cf9d952327fc0ae5b1dc665344833e70f97ba73e3984ae688c",
+    "runtime_template.docx": "63958f52bee88e2927d0747d06727f7fa75565e8eba3e4b356a3a1b365c08f44",
+    "field_dictionary.json": "822e86bd3258f253975a1491a7dd92ea95cec7fdcfb48c6f5ebc85055ed9c068",
+    "manifest.json": "1a4a8ce8b9eacec6b7fe9ce87f17bf06e53a6b19be49268cd7ef892b7ba71fbf",
     "rule_hints.json": "a0d10206869ebfe66cfe508a755621475002b866a7cd78642adc01b69e82008f",
     "narrative_templates.json": "53ba8514b0c9a37efd5b5a5c065bb0ed647f2e8cc5ac1b4998e2d8750948c022"
   }

@@ -25,7 +25,7 @@ ASSETS = ROOT / "templates" / "report" / "2023-2025.12.08"
 class ReportTemplateAssetTests(unittest.TestCase):
     def test_field_dictionary_has_unique_stable_ids_and_slots(self) -> None:
         result = validate_field_dictionary(ASSETS / "field_dictionary.json")
-        self.assertGreaterEqual(len(result.fields), 18)
+        self.assertGreaterEqual(len(result.fields), 17)
         self.assertTrue(all(not field.field_id.startswith(("paragraph", "table")) for field in result.fields))
         with zipfile.ZipFile(ASSETS / "runtime_template.docx") as package:
             document = etree.fromstring(package.read("word/document.xml"))

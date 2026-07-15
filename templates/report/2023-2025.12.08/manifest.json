@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "e7031851f9f794bcad885ebe0c8d862eea062ab63457142d9575d9215fc2232b",
+  "runtime_template_sha256": "63958f52bee88e2927d0747d06727f7fa75565e8eba3e4b356a3a1b365c08f44",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -1592,10 +1592,6 @@
         "expected_count": 1
       },
       {
-        "tag": "report.identity.version",
-        "expected_count": 1
-      },
-      {
         "tag": "report.identity.date",
         "expected_count": 1
       },
@@ -1640,10 +1636,9 @@
         "expected_count": 1
       }
     ],
-    "expected_total_count": 596,
+    "expected_total_count": 595,
     "field_export_slots": [
       "sdt:report.identity.number",
-      "sdt:report.identity.version",
       "sdt:report.identity.date",
       "sdt:report.organization.assessed_name",
       "sdt:report.organization.assessment_name",
