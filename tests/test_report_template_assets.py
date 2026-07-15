@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -29,9 +30,20 @@ class ReportTemplateAssetTests(unittest.TestCase):
         self.assertTrue(all(not field.field_id.startswith(("paragraph", "table")) for field in result.fields))
         with zipfile.ZipFile(ASSETS / "runtime_template.docx") as package:
             document = etree.fromstring(package.read("word/document.xml"))
+            story_roots = [document]
+            for name in package.namelist():
+                if re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {
+                    "word/footnotes.xml",
+                    "word/endnotes.xml",
+                }:
+                    story_roots.append(etree.fromstring(package.read(name)))
         ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
         bookmarks = set(document.xpath("//w:bookmarkStart/@w:name", namespaces=ns))
-        tags = set(document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=ns))
+        tags = {
+            tag
+            for root in story_roots
+            for tag in root.xpath("//w:sdtPr/w:tag/@w:val", namespaces=ns)
+        }
         for field in result.fields:
             for slot in field.export_slots:
                 kind, target = slot.split(":", 1)
@@ -49,6 +61,9 @@ class ReportTemplateAssetTests(unittest.TestCase):
                 "sdt:report.cover.system_name",
                 "sdt:report.system.name",
                 "sdt:report.declaration.system_name",
+                "sdt:report.header.system_name.1",
+                "sdt:report.header.system_name.2",
+                "sdt:report.header.system_name.3",
             ],
         )
         high_risk_judgement = next(

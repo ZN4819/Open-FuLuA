@@ -243,6 +243,8 @@ validate_appendix_a_block(document_package)
 6. 关闭文档和进程后回读 DOCX。
 7. 使用 Microsoft Word 原生导出临时 PDF/PNG 进行内部视觉 QA；该中间产物不公开、不归档，也不影响 DOCX 导出成功状态。
 
+R0 提供的 `scripts/update_word_report_fields.ps1` 是该刷新顺序的可执行基线：输入文件与输出文件必须分离，依次更新全部 story ranges、TOC、图表目录、正文与页眉页脚字段，重新分页后再更新目录页码并保存。R4 服务化时应复用同一顺序并补齐超时、进程隔离和结构回读，不能退化为只调用正文 `Fields.Update()`。
+
 ### 7.2 异常处理
 
 - Word 自动化超时必须结束且只结束本任务创建的进程。

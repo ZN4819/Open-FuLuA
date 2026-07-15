@@ -22,10 +22,10 @@ from .validator import validate_field_dictionary_bytes, validate_narrative_templ
 
 PACKAGE_ID = "report-2023-2025.12.08"
 PACKAGE_RELATIVE_PATH = ("templates", "report", "2023-2025.12.08")
-TRUSTED_ASSET_HASHES_SHA256 = "3692ef9ad2e4338863865d0054f129593f6629219114e93b201ba400ff40200b"
+TRUSTED_ASSET_HASHES_SHA256 = "fa205dab08ce715ab03d8134faba41ceeed9d85bec06a7a25b08ba70e1d77046"
 EXPECTED_ASSETS = ("runtime_template.docx", "field_dictionary.json", "manifest.json", "rule_hints.json", "narrative_templates.json")
 FIELD_NAMES = ("TOC", "PAGE", "NUMPAGES", "SEQ", "REF", "PAGEREF", "STYLEREF")
-EXPECTED_SEMANTIC_TAG_COUNT = 23
+EXPECTED_SEMANTIC_TAG_COUNT = 29
 APPROVED_WORKFLOW_IMAGE_PART = "word/media/image1.emf"
 APPROVED_WORKFLOW_IMAGE_SHA256 = "008976a91115718e266c4dffcf3985fe92d2ee00063eac1fc42be592100d2a86"
 
@@ -167,7 +167,11 @@ class ReportTemplateRegistry:
                 raise ReportTemplateUnavailable("REPORT_TEMPLATE_TABLE_CONTRACT_MISMATCH", "manifest.json")
 
         bookmarks = set(document.xpath("//w:bookmarkStart/@w:name", namespaces=ns))
-        tag_values = document.xpath("//w:sdtPr/w:tag/@w:val", namespaces=ns)
+        tag_values = [
+            tag
+            for root in story_roots
+            for tag in root.xpath("//w:sdtPr/w:tag/@w:val", namespaces=ns)
+        ]
         tags = set(tag_values)
         controls = manifest.get("controls", {})
         manifest_slots = controls.get("field_export_slots")

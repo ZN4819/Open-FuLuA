@@ -146,6 +146,86 @@ def _set_sdt_identity(properties: etree._Element, tag_value: str, alias_value: s
     properties.insert(type_index, tag)
 
 
+def _append_story_text(
+    paragraph: etree._Element,
+    value: str,
+    run_properties: etree._Element | None = None,
+) -> None:
+    run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        run.append(copy.deepcopy(run_properties))
+    etree.SubElement(run, f"{{{W}}}t").text = value
+
+
+def _append_story_sdt(
+    paragraph: etree._Element,
+    tag_value: str,
+    alias_value: str,
+    display_text: str,
+    run_properties: etree._Element | None = None,
+) -> None:
+    sdt = etree.SubElement(paragraph, f"{{{W}}}sdt")
+    properties = etree.SubElement(sdt, f"{{{W}}}sdtPr")
+    _set_sdt_identity(properties, tag_value, alias_value)
+    content = etree.SubElement(sdt, f"{{{W}}}sdtContent")
+    run = etree.SubElement(content, f"{{{W}}}r")
+    if run_properties is not None:
+        run.append(copy.deepcopy(run_properties))
+    etree.SubElement(run, f"{{{W}}}t").text = display_text
+
+
+def _append_story_field(
+    paragraph: etree._Element,
+    instruction: str,
+    display_text: str,
+    run_properties: etree._Element | None = None,
+) -> None:
+    begin_run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        begin_run.append(copy.deepcopy(run_properties))
+    begin = etree.SubElement(begin_run, f"{{{W}}}fldChar")
+    begin.set(f"{{{W}}}fldCharType", "begin")
+    begin.set(f"{{{W}}}dirty", "true")
+
+    instruction_run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        instruction_run.append(copy.deepcopy(run_properties))
+    instruction_text = etree.SubElement(instruction_run, f"{{{W}}}instrText")
+    instruction_text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    instruction_text.text = instruction
+
+    separate_run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        separate_run.append(copy.deepcopy(run_properties))
+    separate = etree.SubElement(separate_run, f"{{{W}}}fldChar")
+    separate.set(f"{{{W}}}fldCharType", "separate")
+
+    result_run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        result_run.append(copy.deepcopy(run_properties))
+    etree.SubElement(result_run, f"{{{W}}}t").text = display_text
+
+    end_run = etree.SubElement(paragraph, f"{{{W}}}r")
+    if run_properties is not None:
+        end_run.append(copy.deepcopy(run_properties))
+    end = etree.SubElement(end_run, f"{{{W}}}fldChar")
+    end.set(f"{{{W}}}fldCharType", "end")
+
+
+def _clear_paragraph_content(paragraph: etree._Element) -> None:
+    for child in list(paragraph):
+        if etree.QName(child).namespace == W and etree.QName(child).localname == "pPr":
+            continue
+        paragraph.remove(child)
+
+
+def _mark_fields_dirty(root: etree._Element) -> None:
+    for field_begin in root.xpath("//w:fldChar[@w:fldCharType='begin']", namespaces=NS):
+        field_begin.set(f"{{{W}}}dirty", "true")
+    for simple_field in root.xpath("//w:fldSimple", namespaces=NS):
+        simple_field.set(f"{{{W}}}dirty", "true")
+
+
 def _iter_row_cells(row: etree._Element) -> list[etree._Element]:
     return row.xpath("./w:tc | ./w:sdt/w:sdtContent/w:tc", namespaces=NS)
 
@@ -215,6 +295,7 @@ def _clean_document(data: bytes) -> bytes:
 
     body_paragraphs = root.xpath("/w:document/w:body/w:p", namespaces=NS)
     _scrub_story(root, body_paragraphs)
+    _mark_fields_dirty(root)
 
     # 基础模板 A-7 的第 4 列错误地让两个对象共享符合情况；运行时改为对象级输入。
     tables = root.xpath("/w:document/w:body/w:tbl", namespaces=NS)
@@ -253,6 +334,7 @@ def _clean_document(data: bytes) -> bytes:
         add_zero_bookmark(paragraphs[0], f"rt_table_{table_index:03d}")
         add_zero_bookmark(paragraphs[0], f"block_table_{table_index:03d}_start")
         add_zero_bookmark(paragraphs[-1], f"block_table_{table_index:03d}_end")
+    add_zero_bookmark(body_paragraphs[-1], "report_body_end")
 
     def add_semantic_sdt(
         paragraph: etree._Element,
@@ -637,9 +719,51 @@ def _clean_app(data: bytes) -> bytes:
     return _serialize(root)
 
 
-def _clean_story_part(data: bytes) -> bytes:
+def _clean_settings(data: bytes) -> bytes:
+    root = _xml(data)
+    update_fields = root.find(f"{{{W}}}updateFields")
+    if update_fields is None:
+        update_fields = etree.SubElement(root, f"{{{W}}}updateFields")
+    update_fields.set(f"{{{W}}}val", "true")
+    return _serialize(root)
+
+
+def _clean_story_part(data: bytes, part_name: str) -> bytes:
     root = _xml(data)
     _scrub_story(root)
+    _mark_fields_dirty(root)
+    header_contracts = {
+        "word/header1.xml": ("report.header.report_number", "页眉报告编号", "【报告编号】", ""),
+        "word/header4.xml": ("report.header.system_name.1", "页眉被测系统名称 1", "【被测系统名称】", "商用密码应用安全性评估报告"),
+        "word/header5.xml": ("report.header.assessment_name.1", "页眉测评机构名称 1", "【测评机构名称】", ""),
+        "word/header6.xml": ("report.header.system_name.2", "页眉被测系统名称 2", "【被测系统名称】", "商用密码应用安全性评估报告"),
+        "word/header7.xml": ("report.header.assessment_name.2", "页眉测评机构名称 2", "【测评机构名称】", ""),
+        "word/header8.xml": ("report.header.system_name.3", "页眉被测系统名称 3", "【被测系统名称】", "商用密码应用安全性评估报告"),
+    }
+    contract = header_contracts.get(part_name)
+    if contract is not None:
+        paragraphs = root.xpath("//w:p", namespaces=NS)
+        if len(paragraphs) != 1:
+            raise ValueError(f"HEADER_PARAGRAPH_COUNT_INVALID:{part_name}")
+        paragraph = paragraphs[0]
+        run_properties = next(iter(paragraph.xpath(".//w:r/w:rPr", namespaces=NS)), None)
+        _clear_paragraph_content(paragraph)
+        tag_value, alias_value, display_text, suffix = contract
+        _append_story_sdt(paragraph, tag_value, alias_value, display_text, run_properties)
+        if suffix:
+            _append_story_text(paragraph, suffix, run_properties)
+    if part_name in {"word/footer6.xml", "word/footer7.xml"}:
+        paragraphs = root.xpath("//w:p", namespaces=NS)
+        if len(paragraphs) != 1:
+            raise ValueError(f"FOOTER_PARAGRAPH_COUNT_INVALID:{part_name}")
+        paragraph = paragraphs[0]
+        run_properties = next(iter(paragraph.xpath(".//w:r/w:rPr", namespaces=NS)), None)
+        _clear_paragraph_content(paragraph)
+        _append_story_text(paragraph, "第", run_properties)
+        _append_story_field(paragraph, " PAGE ", "1", run_properties)
+        _append_story_text(paragraph, "页/共", run_properties)
+        _append_story_field(paragraph, " PAGEREF report_body_end \\h ", "1", run_properties)
+        _append_story_text(paragraph, "页", run_properties)
     return _serialize(root)
 
 
@@ -668,12 +792,14 @@ def build(source: Path, output: Path) -> None:
             data = _clean_relationships(data)
         elif name == "word/document.xml":
             data = _clean_document(data)
+        elif name == "word/settings.xml":
+            data = _clean_settings(data)
         elif name == "docProps/core.xml":
             data = _clean_core(data)
         elif name == "docProps/app.xml":
             data = _clean_app(data)
         elif re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {"word/footnotes.xml", "word/endnotes.xml"}:
-            data = _clean_story_part(data)
+            data = _clean_story_part(data, name)
         transformed[name] = data
 
     output.parent.mkdir(parents=True, exist_ok=True)

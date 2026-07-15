@@ -123,6 +123,75 @@ class RuntimeReportTemplateTests(unittest.TestCase):
             if type_positions:
                 self.assertLess(children.index("tag"), min(type_positions))
 
+    def test_headers_footers_and_page_fields_follow_the_approved_template(self) -> None:
+        with zipfile.ZipFile(RUNTIME) as package:
+            expected_headers = {
+                "word/header1.xml": ("【报告编号】", ["report.header.report_number"]),
+                "word/header4.xml": (
+                    "【被测系统名称】商用密码应用安全性评估报告",
+                    ["report.header.system_name.1"],
+                ),
+                "word/header5.xml": ("【测评机构名称】", ["report.header.assessment_name.1"]),
+                "word/header6.xml": (
+                    "【被测系统名称】商用密码应用安全性评估报告",
+                    ["report.header.system_name.2"],
+                ),
+                "word/header7.xml": ("【测评机构名称】", ["report.header.assessment_name.2"]),
+                "word/header8.xml": (
+                    "【被测系统名称】商用密码应用安全性评估报告",
+                    ["report.header.system_name.3"],
+                ),
+            }
+            for part_name, (expected_text, expected_tags) in expected_headers.items():
+                header = etree.fromstring(package.read(part_name))
+                self.assertEqual("".join(header.xpath("//w:t/text()", namespaces=NS)), expected_text)
+                self.assertEqual(header.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS), expected_tags)
+
+            footer_page_fields = 0
+            for part_name in sorted(
+                name for name in package.namelist() if re.fullmatch(r"word/footer\d+\.xml", name)
+            ):
+                footer = etree.fromstring(package.read(part_name))
+                footer_page_fields += sum(
+                    "PAGE" in instruction.upper()
+                    for instruction in footer.xpath("//w:instrText/text() | //w:fldSimple/@w:instr", namespaces=NS)
+                )
+                for field_begin in footer.xpath("//w:fldChar[@w:fldCharType='begin']", namespaces=NS):
+                    self.assertEqual(field_begin.get(f"{{{W}}}dirty"), "true")
+            self.assertGreaterEqual(footer_page_fields, 7)
+            for part_name in ("word/footer6.xml", "word/footer7.xml"):
+                footer = etree.fromstring(package.read(part_name))
+                footer_text = "".join(footer.xpath("//w:t/text()", namespaces=NS))
+                instructions = [
+                    instruction.strip()
+                    for instruction in footer.xpath("//w:instrText/text()", namespaces=NS)
+                ]
+                self.assertEqual(footer_text, "第1页/共1页")
+                self.assertEqual(instructions, ["PAGE", "PAGEREF report_body_end \\h"])
+                self.assertNotIn("61", footer_text)
+
+            settings = etree.fromstring(package.read("word/settings.xml"))
+            self.assertEqual(settings.xpath("//w:updateFields/@w:val", namespaces=NS), ["true"])
+            document = etree.fromstring(package.read("word/document.xml"))
+            self.assertEqual(
+                document.xpath("//w:bookmarkStart[@w:name='report_body_end']/@w:name", namespaces=NS),
+                ["report_body_end"],
+            )
+            self.assertTrue(document.xpath("//w:instrText[contains(., 'TOC ')]", namespaces=NS))
+            for field_begin in document.xpath("//w:fldChar[@w:fldCharType='begin']", namespaces=NS):
+                self.assertEqual(field_begin.get(f"{{{W}}}dirty"), "true")
+
+    def test_word_refresh_script_updates_all_stories_and_toc_page_numbers(self) -> None:
+        script = (ROOT / "scripts" / "update_word_report_fields.ps1").read_text(encoding="utf-8")
+        for required in (
+            ".StoryRanges",
+            ".TablesOfContents",
+            ".UpdatePageNumbers()",
+            ".Repaginate()",
+            ".Fields.Update()",
+        ):
+            self.assertIn(required, script)
+
     def test_every_control_and_table_has_a_stable_identifier(self) -> None:
         with zipfile.ZipFile(RUNTIME) as package:
             document = etree.fromstring(package.read("word/document.xml"))

@@ -65,6 +65,10 @@ def main() -> int:
     with zipfile.ZipFile(runtime) as package:
         parts = {name: package.read(name) for name in package.namelist() if not name.endswith("/")}
     document = xml(parts["word/document.xml"])
+    story_roots = [document]
+    for name, data in parts.items():
+        if re.fullmatch(r"word/(header|footer)\d+\.xml", name) or name in {"word/footnotes.xml", "word/endnotes.xml"}:
+            story_roots.append(xml(data))
     sections = document.xpath("//w:sectPr", namespaces=NS)
     tables = document.xpath("/w:document/w:body/w:tbl", namespaces=NS)
 
@@ -148,6 +152,11 @@ def main() -> int:
     }
     slots = [slot for field in fields.fields for slot in field.export_slots]
     semantic_tags = [slot.partition(":")[2] for slot in slots if slot.startswith("sdt:")]
+    story_tag_values = [
+        tag
+        for root in story_roots
+        for tag in root.xpath("//w:sdtPr/w:tag/@w:val", namespaces=NS)
+    ]
     manifest = {
         "schema_version": "1.0",
         "package_id": "report-2023-2025.12.08",
@@ -161,9 +170,9 @@ def main() -> int:
         "blocks": block_records,
         "controls": {
             "template_tag_pattern": r"^template\.control\.\d{4}$",
-            "template_expected_count": analysis.document.content_control_count - len(semantic_tags),
+            "template_expected_count": len(story_tag_values) - len(semantic_tags),
             "semantic_scalar_tags": [{"tag": tag, "expected_count": 1} for tag in semantic_tags],
-            "expected_total_count": analysis.document.content_control_count,
+            "expected_total_count": len(story_tag_values),
             "field_export_slots": slots,
         },
         "expected_fields": {name: field_counts[name] for name in FIELD_NAMES},

@@ -7,7 +7,7 @@
     "minimum": 3,
     "maximum": 3
   },
-  "runtime_template_sha256": "45076c4aa9c5e16663c0d815f577ba60809ce94e1ed0d1dd74fce30accee56b2",
+  "runtime_template_sha256": "efb18ac9c54c6f3ef8090a697c26a3aaf8de4ae2374b40fc62c820f0c486387b",
   "allowed_parts": [
     "[Content_Types].xml",
     "_rels/.rels",
@@ -1593,6 +1593,10 @@
         "expected_count": 1
       },
       {
+        "tag": "report.header.report_number",
+        "expected_count": 1
+      },
+      {
         "tag": "report.identity.date",
         "expected_count": 1
       },
@@ -1609,6 +1613,14 @@
         "expected_count": 1
       },
       {
+        "tag": "report.header.assessment_name.1",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.header.assessment_name.2",
+        "expected_count": 1
+      },
+      {
         "tag": "report.cover.system_name",
         "expected_count": 1
       },
@@ -1618,6 +1630,18 @@
       },
       {
         "tag": "report.declaration.system_name",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.header.system_name.1",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.header.system_name.2",
+        "expected_count": 1
+      },
+      {
+        "tag": "report.header.system_name.3",
         "expected_count": 1
       },
       {
@@ -1681,16 +1705,22 @@
         "expected_count": 1
       }
     ],
-    "expected_total_count": 606,
+    "expected_total_count": 612,
     "field_export_slots": [
       "sdt:report.identity.number",
+      "sdt:report.header.report_number",
       "sdt:report.identity.date",
       "sdt:report.organization.assessed_name",
       "sdt:report.organization.assessment_name",
       "sdt:report.declaration.assessment_name",
+      "sdt:report.header.assessment_name.1",
+      "sdt:report.header.assessment_name.2",
       "sdt:report.cover.system_name",
       "sdt:report.system.name",
       "sdt:report.declaration.system_name",
+      "sdt:report.header.system_name.1",
+      "sdt:report.header.system_name.2",
+      "sdt:report.header.system_name.3",
       "sdt:report.system.security_level",
       "sdt:report.system.overview",
       "sdt:report.system.network_architecture",
@@ -1741,11 +1771,11 @@
   },
   "expected_fields": {
     "TOC": 1,
-    "PAGE": 7,
+    "PAGE": 6,
     "NUMPAGES": 0,
     "SEQ": 53,
     "REF": 21,
-    "PAGEREF": 82,
+    "PAGEREF": 84,
     "STYLEREF": 36
   },
   "required_style_ids": [
