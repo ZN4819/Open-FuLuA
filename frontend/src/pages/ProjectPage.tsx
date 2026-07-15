@@ -38,6 +38,8 @@ import {
   canUpgradeProject,
   defaultProjectWorkspace,
   FULL_REPORT_TEMPLATE_IDENTITY,
+  parseProjectWorkspacePath,
+  projectWorkspacePath,
   projectTypeLabel,
   workflowStatusLabel,
   type ProjectType,
@@ -49,6 +51,7 @@ import { scoreWorkbookExportBlockReason } from "../exporting";
 import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
 import { TemplateManagerPanel } from "../components/TemplateManagerPanel";
+import { ReportWorkbench } from "../components/ReportWorkbench";
 
 const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
   manualSubsystemNames: [],
@@ -161,6 +164,7 @@ function subsystemUiStateFromDetail(detail: SectionDetail, current?: SubsystemUi
 
 function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
+    id: row.id,
     unit: row.unit,
     object_name: row.object_name,
     subsystem: row.subsystem ?? "",
@@ -420,7 +424,30 @@ export function ProjectPage() {
       .then(setProfile)
       .catch((err) => setError(err instanceof Error ? err.message : "读取模板 profile 失败"));
     refreshRecordTemplateSlots().catch((err) => setError(err instanceof Error ? err.message : "读取分段结果记录模板失败"));
-    refreshProjects();
+    let cancelled = false;
+    void refreshProjects().then(async (savedProjects) => {
+      const requested = parseProjectWorkspacePath(window.location.pathname);
+      if (!requested || cancelled) {
+        return;
+      }
+      const matched = savedProjects.find((item) => item.project_uuid === requested.projectUuid);
+      if (!matched) {
+        setError("深链接中的项目不存在或已删除。");
+        window.history.replaceState({}, "", "/");
+        return;
+      }
+      try {
+        const loaded = await getProject(matched.id);
+        if (!cancelled) {
+          openProject(loaded, true);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "按深链接打开项目失败");
+        }
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -466,6 +493,46 @@ export function ProjectPage() {
     return () => window.removeEventListener("keydown", handleProjectUndoShortcut);
   }, [undoStack, isSavingAny]);
 
+  useEffect(() => {
+    if (!project || workspaceView !== "appendix_a") {
+      return;
+    }
+    const activeProject = project;
+    function handleAppendixHistoryNavigation() {
+      const parsed = parseProjectWorkspacePath(window.location.pathname);
+      const currentPath = projectWorkspacePath(activeProject.project_uuid, {
+        view: "appendix_a",
+        sectionCode: activeCode ?? activeProject.sections[0]?.code
+      });
+      const confirmDiscard = () => dirtySections.size === 0 || window.confirm(
+        "附录 A 还有未保存章节，确定离开当前工作区并放弃这些修改吗？"
+      );
+      if (!parsed || parsed.projectUuid !== activeProject.project_uuid) {
+        if (!confirmDiscard()) {
+          window.history.pushState({}, "", currentPath);
+          return;
+        }
+        returnToProjectList();
+        return;
+      }
+      if (parsed.route.view === "appendix_a") {
+        setActiveCode(parsed.route.sectionCode ?? activeProject.sections[0]?.code);
+        return;
+      }
+      if (activeProject.project_type === "full_report") {
+        if (!confirmDiscard()) {
+          window.history.pushState({}, "", currentPath);
+          return;
+        }
+        discardAppendixDrafts();
+        setWorkspaceView("report_home");
+        setActiveCode(undefined);
+      }
+    }
+    window.addEventListener("popstate", handleAppendixHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleAppendixHistoryNavigation);
+  }, [activeCode, dirtySections, project, workspaceView]);
+
   function createUndoSnapshot(): UndoSnapshot {
     return {
       sectionDetails: cloneSectionDetails(sectionDetails),
@@ -504,13 +571,15 @@ export function ProjectPage() {
     setUndoStack((current) => current.slice(0, -1));
   }
 
-  async function refreshProjects() {
+  async function refreshProjects(): Promise<Project[]> {
     setIsLoadingProjects(true);
     try {
       const savedProjects = await listProjects();
       setProjects(savedProjects);
+      return savedProjects;
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取已有项目失败");
+      return [];
     } finally {
       setIsLoadingProjects(false);
     }
@@ -530,9 +599,13 @@ export function ProjectPage() {
     return slots;
   }
 
-  function openProject(projectToOpen: Project) {
+  function openProject(projectToOpen: Project, preserveLocation = false) {
     setProject(projectToOpen);
-    const nextWorkspace = defaultProjectWorkspace(projectToOpen.project_type);
+    const requested = parseProjectWorkspacePath(window.location.pathname);
+    const requestedForProject = requested?.projectUuid === projectToOpen.project_uuid ? requested.route : undefined;
+    const nextWorkspace = projectToOpen.project_type === "full_report" && requestedForProject?.view !== "appendix_a"
+      ? "report_home"
+      : defaultProjectWorkspace(projectToOpen.project_type);
     setWorkspaceView(nextWorkspace);
     setSectionDetails({});
     setDraftRows({});
@@ -542,7 +615,17 @@ export function ProjectPage() {
     setValidation(undefined);
     setSaveMessage(undefined);
     setError(undefined);
-    setActiveCode(nextWorkspace === "appendix_a" ? projectToOpen.sections[0]?.code : undefined);
+    const requestedSectionCode = requestedForProject?.view === "appendix_a" ? requestedForProject.sectionCode : undefined;
+    const validRequestedSectionCode = requestedSectionCode && projectToOpen.sections.some((section) => section.code === requestedSectionCode)
+      ? requestedSectionCode
+      : undefined;
+    setActiveCode(nextWorkspace === "appendix_a" ? validRequestedSectionCode ?? projectToOpen.sections[0]?.code : undefined);
+    if (!preserveLocation) {
+      const nextRoute = nextWorkspace === "report_home"
+        ? { view: "overview" } as const
+        : { view: "appendix_a", sectionCode: projectToOpen.sections[0]?.code } as const;
+      window.history.pushState({}, "", projectWorkspacePath(projectToOpen.project_uuid, nextRoute));
+    }
   }
 
   function handleWorkspaceViewChange(nextView: ProjectWorkspaceView) {
@@ -550,10 +633,27 @@ export function ProjectPage() {
       setError("当前还有未保存的附录 A 章节，请先保存后再返回完整报告工作台。");
       return;
     }
+    const shouldNotifyMountedReport = nextView === "report_home" && workspaceView === "report_home";
     setWorkspaceView(nextView);
     setIsTemplateManagerOpen(false);
     if (nextView === "appendix_a" && project && !activeCode) {
       setActiveCode(project.sections[0]?.code);
+    }
+    if (project) {
+      const nextRoute = nextView === "report_home"
+        ? { view: "overview" } as const
+        : { view: "appendix_a", sectionCode: activeCode ?? project.sections[0]?.code } as const;
+      window.history.pushState({}, "", projectWorkspacePath(project.project_uuid, nextRoute));
+      if (shouldNotifyMountedReport) {
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    }
+  }
+
+  function handleAppendixSectionSelect(code: string) {
+    setActiveCode(code);
+    if (project) {
+      window.history.pushState({}, "", projectWorkspacePath(project.project_uuid, { view: "appendix_a", sectionCode: code }));
     }
   }
 
@@ -645,21 +745,32 @@ export function ProjectPage() {
     }
   }
 
+  function discardAppendixDrafts() {
+    setSectionDetails({});
+    setDraftRows({});
+    setSubsystemUiStateBySection({});
+    setUndoStack([]);
+    setDirtySections(new Set());
+    setValidation(undefined);
+    setSaveMessage(undefined);
+    setError(undefined);
+  }
+
+  function returnToProjectList() {
+    discardAppendixDrafts();
+    setProject(null);
+    setWorkspaceView("appendix_a");
+    setActiveCode(undefined);
+    window.history.replaceState({}, "", "/");
+    void refreshProjects();
+  }
+
   function handleBackToProjects() {
     if (dirtySections.size > 0) {
       setError("当前还有未保存的章节，请先保存后再返回项目列表。");
       return;
     }
-    setProject(null);
-    setWorkspaceView("appendix_a");
-    setActiveCode(undefined);
-    setSectionDetails({});
-    setDraftRows({});
-    setSubsystemUiStateBySection({});
-    setUndoStack([]);
-    setValidation(undefined);
-    setSaveMessage(undefined);
-    refreshProjects();
+    returnToProjectList();
   }
 
   function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -1166,7 +1277,7 @@ export function ProjectPage() {
                   sections={project.sections}
                   activeCode={activeCode}
                   dirtyCodes={dirtySections}
-                  onSelect={setActiveCode}
+                  onSelect={handleAppendixSectionSelect}
                 />
               ) : null}
             </>
@@ -1175,7 +1286,7 @@ export function ProjectPage() {
               sections={project.sections}
               activeCode={activeCode}
               dirtyCodes={dirtySections}
-              onSelect={setActiveCode}
+              onSelect={handleAppendixSectionSelect}
             />
           )
         ) : (
@@ -1400,12 +1511,25 @@ export function ProjectPage() {
           {saveMessage ? <p className="success">{saveMessage}</p> : null}
         </section>
       ) : project.project_type === "full_report" && workspaceView === "report_home" ? (
-        <FullReportPlaceholder
+        <ReportWorkbench
           project={project}
           onBack={handleBackToProjects}
-          onOpenAppendix={() => handleWorkspaceViewChange("appendix_a")}
-          error={error}
-          message={saveMessage}
+          onProjectUpdated={(updatedProject) => {
+            setProject(updatedProject);
+            setProjects((current) => current.map((item) => item.id === updatedProject.id ? updatedProject : item));
+          }}
+          onOpenAppendix={(sectionCode, preserveLocation = false) => {
+            const nextCode = sectionCode ?? activeCode ?? project.sections[0]?.code;
+            setWorkspaceView("appendix_a");
+            setIsTemplateManagerOpen(false);
+            setActiveCode(nextCode);
+            if (!preserveLocation) {
+              window.history.pushState({}, "", projectWorkspacePath(project.project_uuid, {
+                view: "appendix_a",
+                sectionCode: nextCode
+              }));
+            }
+          }}
         />
       ) : (
         <section className="panel wide-panel">
@@ -1626,7 +1750,7 @@ function FullReportWorkspaceNav({ activeView, onSelect }: FullReportWorkspaceNav
         onClick={() => onSelect("report_home")}
       >
         <strong>报告正文</strong>
-        <small>下一阶段提供</small>
+        <small>章节与基础数据</small>
       </button>
       <button
         type="button"
@@ -1640,53 +1764,6 @@ function FullReportWorkspaceNav({ activeView, onSelect }: FullReportWorkspaceNav
     </nav>
   );
 }
-
-type FullReportPlaceholderProps = {
-  project: Project;
-  onBack: () => void;
-  onOpenAppendix: () => void;
-  error?: string;
-  message?: string;
-};
-
-function FullReportPlaceholder({ project, onBack, onOpenAppendix, error, message }: FullReportPlaceholderProps) {
-  return (
-    <section className="panel wide-panel full-report-placeholder">
-      <div className="project-header">
-        <div className="project-header-main">
-          <p className="eyebrow">完整报告项目</p>
-          <h2>{project.name}</h2>
-          <div className="project-status-row">
-            <span className="project-type-badge full_report">{projectTypeLabel(project.project_type)}</span>
-            <span className="workflow-status-badge">{workflowStatusLabel(project.workflow_status)}</span>
-            <span className="template-version-badge">母版 {project.template_revision ?? "未绑定"}</span>
-          </div>
-        </div>
-        <div className="workspace-actions">
-          <button type="button" className="secondary-button" onClick={onBack}>返回项目列表</button>
-          <button type="button" onClick={onOpenAppendix}>进入附录 A</button>
-        </div>
-      </div>
-      {error ? <p className="error">{error}</p> : null}
-      {message ? <p className="success">{message}</p> : null}
-      <div className="placeholder-grid">
-        <div>
-          <strong>报告正文</strong>
-          <p>完整报告数据域和章节编辑将在下一阶段提供。本阶段不会生成虚假的完整报告内容。</p>
-        </div>
-        <div>
-          <strong>附录 A</strong>
-          <p>A-1 至 A-8 的结构化编写、评分、证据和现有附录 A 导出能力已经可用。</p>
-        </div>
-        <div>
-          <strong>冻结母版</strong>
-          <p>{project.template_package_id ?? FULL_REPORT_TEMPLATE_IDENTITY.template_package_id}</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 
 type ImportPreviewPanelProps = {
   job: DocxImportJob;

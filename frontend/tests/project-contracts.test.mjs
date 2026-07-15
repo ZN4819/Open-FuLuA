@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, createProject, upgradeProjectCopy } from "../src/api/client.ts";
+import { ApiError, changeProjectWorkflow, createProject, upgradeProjectCopy } from "../src/api/client.ts";
 import {
   FULL_REPORT_TEMPLATE_IDENTITY,
   canUpgradeProject,
   defaultProjectWorkspace,
+  parseProjectWorkspacePath,
+  projectWorkspacePath,
   projectCreatePayload,
   projectTypeLabel,
   projectUpgradeCopyPayload,
@@ -42,6 +44,30 @@ test("项目契约固定两类创建请求和工作台路由", () => {
   assert.equal(canUpgradeProject("full_report"), false);
   assert.equal(projectTypeLabel("full_report"), "完整报告");
   assert.equal(workflowStatusLabel("ready_for_review"), "待复核");
+});
+
+test("完整报告工作台深链接可稳定生成并恢复", () => {
+  const projectUuid = "c54a4090-d69f-4feb-aeca-760df514b5e8";
+  assert.equal(projectWorkspacePath(projectUuid, { view: "overview" }), `/projects/${projectUuid}/overview`);
+  assert.equal(projectWorkspacePath(projectUuid, { view: "basics" }), `/projects/${projectUuid}/basics`);
+  assert.equal(projectWorkspacePath(projectUuid, { view: "objects" }), `/projects/${projectUuid}/objects`);
+  assert.equal(
+    projectWorkspacePath(projectUuid, { view: "section", sectionKey: "chapter/1" }),
+    `/projects/${projectUuid}/report/chapter%2F1`
+  );
+  assert.equal(
+    projectWorkspacePath(projectUuid, { view: "appendix_a", sectionCode: "A-2" }),
+    `/projects/${projectUuid}/appendix-a/A-2`
+  );
+  assert.deepEqual(parseProjectWorkspacePath(`/projects/${projectUuid}/report/chapter%2F1`), {
+    projectUuid,
+    route: { view: "section", sectionKey: "chapter/1" }
+  });
+  assert.deepEqual(parseProjectWorkspacePath(`/projects/${projectUuid}/basics`), {
+    projectUuid,
+    route: { view: "basics" }
+  });
+  assert.equal(parseProjectWorkspacePath("/projects/bad/report"), null);
 });
 
 test("复制升级请求固定模板三元组并携带调用方幂等键", () => {
@@ -93,6 +119,22 @@ test("复制升级客户端使用项目 UUID 路由并原样复用幂等键", as
       idempotency_key: "same-key-on-retry"
     }
   });
+});
+
+test("完整报告工作流通过受控动作进入复核或重新打开", async (context) => {
+  const requests = [];
+  context.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url: String(url), method: init?.method, body: init?.body });
+    return Response.json({ ...PROJECT_RESPONSE, project_type: "full_report", workflow_status: "ready_for_review" });
+  });
+
+  await changeProjectWorkflow("project/uuid", "ready-for-review");
+  await changeProjectWorkflow("project/uuid", "reopen");
+
+  assert.deepEqual(requests, [
+    { url: "/api/projects/project%2Fuuid/workflow/ready-for-review", method: "POST", body: "{}" },
+    { url: "/api/projects/project%2Fuuid/workflow/reopen", method: "POST", body: "{}" }
+  ]);
 });
 
 test("通用请求将 FastAPI detail 转换为结构化 ApiError", async (context) => {

@@ -53,6 +53,7 @@ export type MetricResult = {
 export type AssessmentRow = {
   id: number;
   section_id: number;
+  assessment_object_uuid?: string | null;
   unit: string;
   object_name: string;
   subsystem: string;
@@ -62,6 +63,7 @@ export type AssessmentRow = {
 };
 
 export type AssessmentRowInput = {
+  id?: number | null;
   unit: string;
   object_name: string;
   subsystem?: string;
@@ -349,13 +351,13 @@ export type RecordTemplateImportResult = {
   items: RecordTemplateImportItem[];
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
-    },
-    ...init
+    }
   });
 
   if (!response.ok) {
@@ -380,6 +382,16 @@ export function upgradeProjectCopy(
   return request<Project>(`/api/projects/${encodeURIComponent(projectUuid)}/upgrade-copy`, {
     method: "POST",
     body: JSON.stringify(projectUpgradeCopyPayload(name, idempotencyKey))
+  });
+}
+
+export function changeProjectWorkflow(
+  projectUuid: string,
+  action: "ready-for-review" | "reopen"
+): Promise<Project> {
+  return request<Project>(`/api/projects/${encodeURIComponent(projectUuid)}/workflow/${action}`, {
+    method: "POST",
+    body: "{}"
   });
 }
 
@@ -813,8 +825,8 @@ function responseErrorDetails(text: string, fallback: string): {
     return { message: fallback };
   }
   try {
-    const payload = JSON.parse(text) as { detail?: unknown; message?: unknown };
-    const detail = payload.detail ?? payload.message;
+    const payload = JSON.parse(text) as { detail?: unknown; message?: unknown; code?: unknown };
+    const detail = payload.detail ?? (payload.code && typeof payload.message === "string" ? payload : payload.message);
     if (typeof detail === "string" && detail.trim()) {
       return { message: detail };
     }
