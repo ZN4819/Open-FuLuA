@@ -16,6 +16,7 @@ from .api.projects import router as projects_router
 from .api.record_template_slots import router as record_template_slots_router
 from .api.record_templates import router as record_templates_router
 from .api.report_templates import router as report_templates_router
+from .api.report import router as report_router
 from .api.render_jobs import router as render_jobs_router
 from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
@@ -25,6 +26,7 @@ from .config import settings
 from .database import current_database_path, init_db, read_schema_version
 from .runtime import BACKEND_VERSION, ensure_runtime_directories
 from .schemas import HealthResponse
+from .services.report_domain.errors import ReportDomainError
 from .web_assets import mount_frontend_assets
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(ReportDomainError)
+async def report_domain_error_handler(_request: Request, exc: ReportDomainError):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail()})
 
 
 @app.exception_handler(RequestValidationError)
@@ -58,6 +65,33 @@ async def stable_project_validation_error(request: Request, exc: RequestValidati
         "template_revision": "UNSUPPORTED_TEMPLATE_IDENTITY",
         "name": "PROJECT_NAME_INVALID",
     }.get(field, "PROJECT_REQUEST_INVALID")
+    if "/report" in request.url.path:
+        entity_uuid = next(
+            (
+                request.path_params.get(name)
+                for name in (
+                    "block_uuid", "section_uuid", "object_uuid", "organization_uuid",
+                    "member_uuid", "product_uuid", "standard_uuid", "indicator_uuid",
+                    "relation_uuid", "correction_uuid",
+                )
+                if request.path_params.get(name)
+            ),
+            None,
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "REPORT_REQUEST_INVALID",
+                    "message": "完整报告请求参数无效。",
+                    "project_uuid": request.path_params.get("project_uuid"),
+                    "entity_type": None,
+                    "entity_uuid": entity_uuid,
+                    "field": field,
+                    "details": {"validation_type": error.get("type", "unknown")},
+                }
+            },
+        )
     return JSONResponse(
         status_code=422,
         content={
@@ -98,11 +132,13 @@ async def reject_business_writes_during_maintenance(request: Request, call_next)
 @app.on_event("startup")
 def on_startup() -> None:
     from .services.projects import recover_abandoned_upgrade_operations
+    from .report_core.field_matrix import validate_default_field_matrix
 
     runtime_paths = ensure_runtime_directories()
     _bind_files_directory(runtime_paths.storage_path)
     logger.info("附录A编写工具以 %s 模式启动，数据根目录：%s", runtime_paths.mode, runtime_paths.data_root)
     init_db()
+    validate_default_field_matrix()
     recovered = recover_abandoned_upgrade_operations()
     if recovered:
         logger.warning("已回收 %s 个上次异常中断的项目升级操作", recovered)
@@ -132,6 +168,7 @@ def health() -> HealthResponse:
 app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(record_templates_router, prefix=settings.api_prefix)
 app.include_router(report_templates_router, prefix=settings.api_prefix)
+app.include_router(report_router, prefix=settings.api_prefix)
 app.include_router(record_template_slots_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)

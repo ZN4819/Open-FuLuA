@@ -18,6 +18,7 @@ def evidence_to_schema(
         figure_label = f"图{raw['section_code']}-{section_index}"
     return EvidenceImageRead(
         id=raw["id"],
+        evidence_uuid=raw["evidence_uuid"],
         project_image_no=project_image_no,
         project_id=raw["project_id"],
         section_code=raw["section_code"],
@@ -162,7 +163,13 @@ def replace_evidence_image_file(image_id: int, file: UploadFile = File(...)) -> 
 
 @router.delete("/evidence/{image_id}", response_model=EvidenceImageRead)
 def delete_evidence_image(image_id: int) -> EvidenceImageRead:
-    row = database.delete_evidence_image(image_id)
+    try:
+        row = database.delete_evidence_image(image_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REPORT_ENTITY_REFERENCED", "message": str(exc)},
+        ) from exc
     if row is None:
         raise HTTPException(status_code=404, detail="图片不存在")
     remove_stored_file(row["file_path"])

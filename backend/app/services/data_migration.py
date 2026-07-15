@@ -21,6 +21,8 @@ from app.contracts import (
     FULL_REPORT_TEMPLATE_REVISION,
 )
 from app.runtime import BACKEND_VERSION, RuntimePaths
+from app.report_core.contracts import REPORT_CORE_AUXILIARY_TABLES, REPORT_CORE_ENTITY_TABLES
+from app.report_core.schema import audit_report_core_schema
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,7 @@ def remove_sqlite_sidecars(database_path: Path) -> None:
 
 def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]]:
     db = sqlite3.connect(database_path)
+    db.row_factory = sqlite3.Row
     try:
         integrity = str(db.execute("PRAGMA integrity_check").fetchone()[0]).lower()
         if integrity != "ok":
@@ -181,6 +184,11 @@ def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]
             foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchone()
             if invalid_projects or duplicate_uuids or foreign_key_errors is not None:
                 return "schema_invalid", 0, 0, ()
+        if schema_version >= 5:
+            try:
+                audit_report_core_schema(db)
+            except (RuntimeError, sqlite3.Error):
+                return "schema_invalid", 0, 0, ()
         projects = int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0])
         rows = tuple(str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images"))
         return "ok", projects, len(rows), rows
@@ -261,7 +269,13 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
             db = sqlite3.connect(paths.database_path)
             try:
                 tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-                allowed = {"projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "record_templates", "record_template_slots", "section_subsystems", "app_metadata", "project_upgrade_operations", "sqlite_sequence"}
+                allowed = {
+                    "projects", "appendix_sections", "assessment_rows", "metric_results",
+                    "evidence_images", "cross_references", "render_jobs", "validation_issues",
+                    "docx_import_jobs", "record_templates", "record_template_slots",
+                    "section_subsystems", "app_metadata", "project_upgrade_operations",
+                    "sqlite_sequence", *REPORT_CORE_ENTITY_TABLES, *REPORT_CORE_AUXILIARY_TABLES,
+                }
                 if not tables <= allowed or "projects" not in tables:
                     return True
                 for table in ("projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "section_subsystems"):

@@ -31,6 +31,7 @@ def assessment_row_to_schema(row) -> AssessmentRowRead:
     return AssessmentRowRead(
         id=row["id"],
         section_id=row["section_id"],
+        assessment_object_uuid=row["assessment_object_uuid"],
         unit=row["unit"],
         object_name=row["object_name"],
         subsystem=row["subsystem"],

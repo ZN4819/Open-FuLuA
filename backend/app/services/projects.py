@@ -19,6 +19,7 @@ from ..contracts import (
     FULL_REPORT_TEMPLATE_PACKAGE_ID,
     FULL_REPORT_TEMPLATE_REVISION,
 )
+from ..report_core.contracts import ReportDomainInitializationError
 from .report_templates.registry import ReportTemplateUnavailable, report_template_registry
 
 
@@ -105,15 +106,24 @@ def create_typed_project(
         template_edition,
         template_revision,
     )
-    return database.create_project(
-        normalized_name,
-        project_type="full_report",
-        workflow_status="draft",
-        template_package_id=binding.package_id,
-        template_edition=binding.edition,
-        template_revision=binding.revision,
-        template_asset_set_hash=binding.asset_set_hash,
-    )
+    try:
+        return database.create_project(
+            normalized_name,
+            project_type="full_report",
+            workflow_status="draft",
+            template_package_id=binding.package_id,
+            template_edition=binding.edition,
+            template_revision=binding.revision,
+            template_asset_set_hash=binding.asset_set_hash,
+        )
+    except ReportDomainInitializationError as exc:
+        raise ProjectServiceError(
+            exc.code,
+            "完整报告模板数据域初始化失败，项目未创建。",
+            status_code=409,
+            field="template_package_id",
+            details=exc.details,
+        ) from exc
 
 
 def upgrade_project_copy(
@@ -548,10 +558,31 @@ def transition_workflow(project_uuid: str, action: str) -> sqlite3.Row:
             status_code=404,
             project_uuid=project_uuid,
         )
-    if action in {"ready-for-review", "confirm"}:
+    if action == "ready-for-review":
+        if project["project_type"] != "full_report":
+            raise ProjectServiceError(
+                "REPORT_DOMAIN_NOT_AVAILABLE",
+                "仅完整报告项目可以进入报告复核流程。",
+                project_uuid=project_uuid,
+            )
+        from .report_domain.validation import validate_report
+
+        result = validate_report(project_uuid)
+        if result["errors"]:
+            raise ProjectServiceError(
+                "REPORT_VALIDATION_FAILED",
+                "报告数据仍存在错误，不能进入复核状态。",
+                project_uuid=project_uuid,
+                details={"error_count": result["errors"], "issues": result["issues"][:20]},
+            )
+        updated = database.update_project_workflow(project_uuid, "ready_for_review")
+        if updated is None:
+            raise ProjectServiceError("PROJECT_NOT_FOUND", "项目不存在。", status_code=404, project_uuid=project_uuid)
+        return updated
+    if action == "confirm":
         raise ProjectServiceError(
             "REPORT_VALIDATION_NOT_AVAILABLE",
-            "完整报告校验将在下一阶段提供，当前项目只能保持草稿状态。",
+            "确认流程将在派生结果与导出链路完成后开放。",
             project_uuid=project_uuid,
         )
     if action != "reopen":
@@ -709,6 +740,7 @@ def _clone_appendix_a_domain(
         cursor = db.execute(
             """
             INSERT INTO evidence_images (
+                evidence_uuid,
                 project_id,
                 section_code,
                 file_path,
@@ -725,9 +757,10 @@ def _clone_appendix_a_domain(
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                database.new_evidence_uuid(),
                 target_project_id,
                 image["section_code"],
                 target_relative_path,
