@@ -459,6 +459,114 @@ export type ReportValidation = {
   issues: ReportIssue[];
 };
 
+export type DerivedIssue = {
+  code: string;
+  message: string;
+  field?: string | null;
+  section_code?: string | null;
+  indicator?: string | null;
+  object_uuid?: string | null;
+  entity_uuid?: string | null;
+  block_key?: string | null;
+  details?: Record<string, unknown>;
+};
+
+export type GenerationImpact = {
+  project_revision: number;
+  current_run_uuid?: string | null;
+  rule_set_id: string;
+  rule_set_hash: string;
+  current_input_hash: string;
+  last_input_hash?: string | null;
+  has_changes: boolean;
+  affected_blocks: string[];
+  overrides_requiring_review: string[];
+  can_generate: boolean;
+  issues: DerivedIssue[];
+};
+
+export type DerivedGenerationRun = {
+  run_uuid: string;
+  status: "current" | "needs_input" | "failed";
+  rule_set_id: string;
+  rule_set_hash: string;
+  input_hash: string;
+  projection?: Record<string, unknown> | null;
+  issues: DerivedIssue[];
+  state_revision: number;
+  project_revision: number;
+  started_at: string;
+  finished_at: string;
+};
+
+export type ThreatCatalogItem = {
+  id: string;
+  layer: string;
+  description: string;
+};
+
+export type DerivedRisk = {
+  risk_uuid: string;
+  finding_uuid: string;
+  indicator_code: string;
+  indicator_name: string;
+  layer_code: string;
+  final_indicator_result: "部分符合" | "不符合";
+  problem_description: string;
+  problem_items: Array<Record<string, unknown>>;
+  risk_level?: "high" | "medium" | "low" | null;
+  analysis_baseline: Record<string, unknown>;
+  analysis_override?: { text?: string } | null;
+  override_reason: string;
+  confirmation_status: "needs_input" | "unconfirmed" | "confirmed";
+  source_hash: string;
+  threat_ids: string[];
+  revision: number;
+};
+
+export type DerivedRiskCollection = {
+  project_revision: number;
+  threat_catalog: ThreatCatalogItem[];
+  items: DerivedRisk[];
+};
+
+export type DerivedBlock = {
+  block_uuid: string;
+  block_key: string;
+  edit_policy: ReportEditPolicy;
+  block_revision: number;
+  revision_uuid: string;
+  revision: number;
+  baseline: Record<string, unknown>;
+  override?: Record<string, unknown> | null;
+  effective: Record<string, unknown>;
+  override_reason: string;
+  generation_status: "not_generated" | "current" | "stale" | "failed";
+  confirmation_status: "unconfirmed" | "confirmed" | "review_required";
+  rule_set_id: string;
+  rule_id: string;
+  source_hash: string;
+};
+
+export type ConsistencyResult = {
+  check_uuid: string;
+  run_uuid?: string | null;
+  status: "valid" | "invalid" | "needs_input";
+  issues: DerivedIssue[];
+  context_hash?: string | null;
+  state_revision: number;
+  project_revision: number;
+  checked_at: string;
+};
+
+export type DerivedReview = {
+  project_revision: number;
+  current_run_uuid?: string | null;
+  current_input_hash?: string | null;
+  blocks: DerivedBlock[];
+  latest_consistency?: ConsistencyResult | null;
+};
+
 const reportRoot = (projectUuid: string) => `/api/projects/${encodeURIComponent(projectUuid)}/report`;
 
 const revisionHeaders = (revision: number) => ({ "If-Match": String(revision) });
@@ -923,4 +1031,102 @@ export function createReportBlock(
 
 export function validateReport(projectUuid: string): Promise<ReportValidation> {
   return request<ReportValidation>(`${reportRoot(projectUuid)}/validate`, { method: "POST", body: "{}" });
+}
+
+export function previewDerivedGeneration(projectUuid: string): Promise<GenerationImpact> {
+  return request<GenerationImpact>(`${reportRoot(projectUuid)}/generation/impact-preview`, {
+    method: "POST"
+  });
+}
+
+export function createDerivedGenerationRun(
+  projectUuid: string,
+  expectedProjectRevision: number
+): Promise<DerivedGenerationRun> {
+  return request<DerivedGenerationRun>(`${reportRoot(projectUuid)}/generation/runs`, {
+    method: "POST",
+    body: JSON.stringify({ expected_project_revision: expectedProjectRevision })
+  });
+}
+
+export function getDerivedGenerationReview(projectUuid: string): Promise<DerivedReview> {
+  return request<DerivedReview>(`${reportRoot(projectUuid)}/generation/review`);
+}
+
+export function listDerivedRisks(projectUuid: string): Promise<DerivedRiskCollection> {
+  return request<DerivedRiskCollection>(`${reportRoot(projectUuid)}/risks`);
+}
+
+export function updateDerivedRisk(
+  projectUuid: string,
+  risk: DerivedRisk,
+  projectRevision: number,
+  payload: {
+    risk_level?: "high" | "medium" | "low" | null;
+    threat_ids: string[];
+    analysis_text?: string | null;
+    override_reason?: string;
+    confirm: boolean;
+  }
+): Promise<{ project_revision: number; risk: DerivedRisk }> {
+  return request<{ project_revision: number; risk: DerivedRisk }>(
+    `${reportRoot(projectUuid)}/risks/${encodeURIComponent(risk.risk_uuid)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        expected_project_revision: projectRevision,
+        expected_revision: risk.revision,
+        ...payload
+      })
+    }
+  );
+}
+
+export function overrideDerivedBlock(
+  projectUuid: string,
+  blockUuid: string,
+  projectRevision: number,
+  override: Record<string, unknown>,
+  overrideReason: string
+): Promise<{ project_revision: number; block: DerivedBlock }> {
+  return request<{ project_revision: number; block: DerivedBlock }>(
+    `${reportRoot(projectUuid)}/derived-blocks/${encodeURIComponent(blockUuid)}/override`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        expected_project_revision: projectRevision,
+        override,
+        override_reason: overrideReason
+      })
+    }
+  );
+}
+
+export function confirmDerivedBlock(
+  projectUuid: string,
+  blockUuid: string,
+  projectRevision: number,
+  action: "confirm" | "keep_override" | "discard_override" | "reset" = "confirm"
+): Promise<{ project_revision: number; block: DerivedBlock }> {
+  return request<{ project_revision: number; block: DerivedBlock }>(
+    `${reportRoot(projectUuid)}/derived-blocks/${encodeURIComponent(blockUuid)}/confirmation`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expected_project_revision: projectRevision, action })
+    }
+  );
+}
+
+export function runDerivedConsistencyCheck(
+  projectUuid: string,
+  expectedProjectRevision: number
+): Promise<ConsistencyResult> {
+  return request<ConsistencyResult>(`${reportRoot(projectUuid)}/consistency-checks`, {
+    method: "POST",
+    body: JSON.stringify({ expected_project_revision: expectedProjectRevision })
+  });
+}
+
+export function getLatestDerivedConsistency(projectUuid: string): Promise<ConsistencyResult | null> {
+  return request<ConsistencyResult | null>(`${reportRoot(projectUuid)}/consistency-checks/latest`);
 }

@@ -575,6 +575,20 @@ def transition_workflow(project_uuid: str, action: str) -> sqlite3.Row:
                 project_uuid=project_uuid,
                 details={"error_count": result["errors"], "issues": result["issues"][:20]},
             )
+        from . import report_generation
+        from .report_domain.errors import ReportDomainError
+
+        try:
+            report_generation.get_projection_context(project_uuid)
+        except ReportDomainError as exc:
+            raise ProjectServiceError(
+                exc.code,
+                "派生评分、风险或正文尚未通过当前版本的一致性校验，不能进入复核状态。",
+                status_code=exc.status_code,
+                project_uuid=project_uuid,
+                field=exc.field,
+                details={"reason": exc.message, **exc.details},
+            ) from exc
         updated = database.update_project_workflow(project_uuid, "ready_for_review")
         if updated is None:
             raise ProjectServiceError("PROJECT_NOT_FOUND", "项目不存在。", status_code=404, project_uuid=project_uuid)

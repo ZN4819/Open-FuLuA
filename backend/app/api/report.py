@@ -11,9 +11,13 @@ from ..report_schemas import (
     BlockReorderWrite,
     CorrectionRelationUpdate,
     CorrectionRelationWrite,
+    ConsistencyCheckWrite,
     CryptoProductUpdate,
     CryptoProductWrite,
+    DerivedBlockConfirmationWrite,
+    DerivedBlockOverrideWrite,
     DistributionWrite,
+    GenerationRunWrite,
     MemberUpdate,
     MemberWrite,
     ObjectMergeWrite,
@@ -27,6 +31,7 @@ from ..report_schemas import (
     ReportBlockPatch,
     ReportMetadataWrite,
     ReportSectionUpdate,
+    RiskUpdateWrite,
     SpecialIndicatorUpdate,
     SpecialIndicatorWrite,
     StandardUpdate,
@@ -34,6 +39,7 @@ from ..report_schemas import (
     SystemProfileWrite,
     WarningConfirmationWrite,
 )
+from ..services import report_generation
 from ..services.report_domain import basic, blocks, objects, validation
 from ..services.report_domain.errors import ReportDomainError
 
@@ -376,3 +382,71 @@ def delete_block(project_uuid: str, block_uuid: str, expected_revision: int = Qu
 @router.post("/blocks/reorder")
 def reorder_blocks(project_uuid: str, payload: BlockReorderWrite) -> list[dict[str, Any]]:
     return blocks.reorder_blocks(project_uuid, payload)
+
+
+@router.post("/generation/impact-preview")
+def preview_generation_impact(project_uuid: str) -> dict[str, Any]:
+    return report_generation.impact_preview(project_uuid)
+
+
+@router.post("/generation/runs", status_code=201)
+def create_generation_run(project_uuid: str, payload: GenerationRunWrite) -> dict[str, Any]:
+    return report_generation.create_generation_run(project_uuid, payload)
+
+
+@router.get("/generation/runs/{run_uuid}")
+def get_generation_run(project_uuid: str, run_uuid: str) -> dict[str, Any]:
+    return report_generation.get_generation_run(project_uuid, run_uuid)
+
+
+@router.get("/generation/review")
+def get_generation_review(project_uuid: str) -> dict[str, Any]:
+    return report_generation.review_state(project_uuid)
+
+
+@router.get("/findings")
+def list_report_findings(project_uuid: str) -> dict[str, Any]:
+    return report_generation.list_findings(project_uuid)
+
+
+@router.get("/risks")
+def list_report_risks(project_uuid: str) -> dict[str, Any]:
+    return report_generation.list_risks(project_uuid)
+
+
+@router.put("/risks/{risk_uuid}")
+def update_report_risk(project_uuid: str, risk_uuid: str, payload: RiskUpdateWrite) -> dict[str, Any]:
+    return report_generation.update_risk(project_uuid, risk_uuid, payload)
+
+
+@router.put("/derived-blocks/{block_uuid}/override")
+def override_derived_block(
+    project_uuid: str,
+    block_uuid: str,
+    payload: DerivedBlockOverrideWrite,
+) -> dict[str, Any]:
+    return report_generation.override_block(project_uuid, block_uuid, payload)
+
+
+@router.post("/derived-blocks/{block_uuid}/confirmation")
+def confirm_derived_block(
+    project_uuid: str,
+    block_uuid: str,
+    payload: DerivedBlockConfirmationWrite,
+) -> dict[str, Any]:
+    return report_generation.confirm_block(project_uuid, block_uuid, payload)
+
+
+@router.post("/consistency-checks", status_code=201)
+def create_consistency_check(project_uuid: str, payload: ConsistencyCheckWrite) -> dict[str, Any]:
+    return report_generation.run_consistency_check(project_uuid, payload)
+
+
+@router.get("/consistency-checks/latest")
+def get_latest_consistency_check(project_uuid: str) -> dict[str, Any] | None:
+    return report_generation.latest_consistency_check(project_uuid)
+
+
+@router.get("/projection-context")
+def get_projection_context(project_uuid: str) -> dict[str, Any]:
+    return report_generation.get_projection_context(project_uuid)

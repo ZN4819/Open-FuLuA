@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:open-fulua:report-2023-2025.12.08:r3-projection-context:v1",
+  "title": "R3ProjectionContext v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generation_run_uuid",
+    "generation_state_revision",
+    "rule_set_id",
+    "rule_set_hash",
+    "input_hash",
+    "source_hashes",
+    "original_projection",
+    "correction_projection",
+    "final_projection",
+    "projection_hash",
+    "findings",
+    "risk_snapshot",
+    "assessment_conclusion",
+    "blocks",
+    "threat_catalog",
+    "consistency",
+    "project_revision"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "generation_run_uuid": {"type": "string", "minLength": 1},
+    "generation_state_revision": {"type": "integer", "minimum": 1},
+    "rule_set_id": {"const": "report-derived-2023-2025.12.08-v1"},
+    "rule_set_hash": {"$ref": "#/$defs/sha256"},
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "source_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system_summary",
+        "report_facts",
+        "appendix_a",
+        "correction_relations",
+        "risks",
+        "special_indicators"
+      ],
+      "properties": {
+        "system_summary": {"$ref": "#/$defs/sha256"},
+        "report_facts": {"$ref": "#/$defs/sha256"},
+        "appendix_a": {"$ref": "#/$defs/sha256"},
+        "correction_relations": {"$ref": "#/$defs/sha256"},
+        "risks": {"$ref": "#/$defs/sha256"},
+        "special_indicators": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "original_projection": {"$ref": "#/$defs/projection"},
+    "correction_projection": {
+      "type": "object",
+      "required": ["rows", "render_empty_as_slash_row"],
+      "properties": {
+        "rows": {"type": "array", "items": {"type": "object"}},
+        "render_empty_as_slash_row": {"type": "boolean"}
+      }
+    },
+    "final_projection": {
+      "allOf": [
+        {"$ref": "#/$defs/projection"},
+        {
+          "type": "object",
+          "required": ["statistics", "score"],
+          "properties": {
+            "statistics": {
+              "type": "object",
+              "required": ["layers", "total"],
+              "properties": {
+                "layers": {"type": "array", "minItems": 8, "maxItems": 8},
+                "total": {
+                  "type": "object",
+                  "required": [
+                    "indicator_total",
+                    "compliant",
+                    "partially_compliant",
+                    "noncompliant",
+                    "not_applicable"
+                  ],
+                  "properties": {"indicator_total": {"const": 41}}
+                }
+              }
+            },
+            "score": {
+              "type": "object",
+              "required": ["raw_score", "display_score", "rounding", "layers"],
+              "properties": {
+                "display_score": {"type": "string"},
+                "rounding": {"const": "ROUND_HALF_UP"}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "projection_hash": {"$ref": "#/$defs/sha256"},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "risk_snapshot": {
+      "type": "object",
+      "required": ["risk_total", "counts", "overall_risk", "high_risk_judgment", "rows"],
+      "properties": {
+        "risk_total": {"type": "integer", "minimum": 0},
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["high", "medium", "low"],
+          "properties": {
+            "high": {"type": "integer", "minimum": 0},
+            "medium": {"type": "integer", "minimum": 0},
+            "low": {"type": "integer", "minimum": 0}
+          }
+        },
+        "overall_risk": {"type": "string"},
+        "high_risk_judgment": {
+          "enum": ["判定系统存在高风险", "判定系统不存在高风险"]
+        },
+        "rows": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "assessment_conclusion": {
+      "type": "object",
+      "required": ["display_score", "conclusion", "overall_risk", "high_risk_judgment"],
+      "properties": {
+        "display_score": {"type": "string"},
+        "conclusion": {"enum": ["符合", "基本符合", "不符合"]},
+        "overall_risk": {"type": "string"},
+        "high_risk_judgment": {"type": "string"}
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 33,
+      "maxItems": 33,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["block_uuid", "block_key", "effective", "rule_id", "source_hash"],
+        "properties": {
+          "block_uuid": {"type": "string", "minLength": 1},
+          "block_key": {"type": "string", "minLength": 1},
+          "effective": {"type": "object"},
+          "rule_id": {"type": "string", "minLength": 1},
+          "source_hash": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "threat_catalog": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "layer", "description"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "layer": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "consistency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_uuid",
+        "run_uuid",
+        "status",
+        "issues",
+        "context_hash",
+        "state_revision",
+        "checked_at"
+      ],
+      "properties": {
+        "check_uuid": {"type": "string", "minLength": 1},
+        "run_uuid": {"type": "string", "minLength": 1},
+        "status": {"const": "valid"},
+        "issues": {"type": "array", "maxItems": 0},
+        "context_hash": {"$ref": "#/$defs/sha256"},
+        "state_revision": {"type": "integer", "minimum": 1},
+        "checked_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "project_revision": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "projection": {
+      "type": "object",
+      "required": ["rows", "indicators"],
+      "properties": {
+        "rows": {"type": "array", "items": {"type": "object"}},
+        "indicators": {
+          "type": "array",
+          "minItems": 41,
+          "maxItems": 41,
+          "items": {"type": "object"}
+        }
+      }
+    }
+  },
+  "x-contract-semantics": {
+    "context_hash_scope": "all required properties except consistency and project_revision",
+    "private_fields_forbidden": ["Ra", "Rk"],
+    "risk_count_invariant": "risk_total = partially_compliant + noncompliant = high + medium + low",
+    "consumer_rule": "R4 must consume this context without recalculating R3 business rules"
+  }
+}

@@ -351,6 +351,14 @@ class DesktopPackagingContractTests(unittest.TestCase):
                     "templates/report/contracts/2023-2025.12.08",
                 ),
                 (
+                    "templates/report/contracts/2023-2025.12.08/derived_rule_matrix.v1.json",
+                    "templates/report/contracts/2023-2025.12.08",
+                ),
+                (
+                    "templates/report/contracts/2023-2025.12.08/r3_projection_context.v1.schema.json",
+                    "templates/report/contracts/2023-2025.12.08",
+                ),
+                (
                     "backend/app/report_core/manifests/report-2023-2025.12.08.json",
                     "app/report_core/manifests",
                 ),

@@ -26,6 +26,12 @@ from .report_core.initializer import (
     initialize_report_domain,
 )
 from .report_core.schema import audit_report_core_schema, ensure_report_core_schema
+from .report_derived.schema import (
+    audit_report_derived_schema,
+    ensure_report_derived_schema,
+    initialize_existing_report_derived_states,
+    initialize_report_derived_state,
+)
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -376,6 +382,10 @@ def init_db() -> None:
             audit_report_core_schema(db)
         ensure_report_core_schema(db)
         initialize_existing_full_report_projects(db)
+        if current_version >= 6:
+            audit_report_derived_schema(db)
+        ensure_report_derived_schema(db)
+        initialize_existing_report_derived_states(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
@@ -814,6 +824,7 @@ def _insert_project(
     )
     if project_type == "full_report":
         initialize_report_domain(db, project_id=project_id)
+        initialize_report_derived_state(db, project_id)
     project = get_project_by_id(project_id, db)
     if project is None:
         raise RuntimeError("PROJECT_CREATE_FAILED")

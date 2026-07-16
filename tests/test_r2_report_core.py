@@ -25,6 +25,7 @@ from app.report_core.initializer import (
     ReportDomainInitializationError,
     initialize_report_domain,
 )
+from app.runtime import SCHEMA_VERSION
 from app.services.report_templates.registry import ReportTemplateUnavailable
 
 
@@ -77,7 +78,10 @@ class R2ReportCoreTests(unittest.TestCase):
                 for row in connection.execute("PRAGMA table_info(assessment_rows)")
             }
             self.assertIn("assessment_object_uuid", assessment_columns)
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                int(SCHEMA_VERSION),
+            )
 
     def test_full_report_creation_initializes_singletons_tree_blocks_and_constants(self) -> None:
         project = self._create_full_report()
@@ -353,7 +357,7 @@ class R2ReportCoreTests(unittest.TestCase):
                 ).fetchone()[0]
                 for table in ("report_metadata", "report_sections", "report_blocks")
             )
-        self.assertEqual(version, 5)
+        self.assertEqual(version, int(SCHEMA_VERSION))
         self.assertEqual(counts, (1, 109, 55))
 
     def test_schema_four_upgrade_failure_rolls_back_tables_and_version(self) -> None:
@@ -403,7 +407,10 @@ class R2ReportCoreTests(unittest.TestCase):
             database.init_db()
         connection = sqlite3.connect(self.database_path)
         try:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                int(SCHEMA_VERSION),
+            )
             self.assertIsNone(
                 connection.execute(
                     "SELECT name FROM sqlite_master WHERE name = 'report_blocks'"

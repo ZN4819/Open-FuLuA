@@ -318,3 +318,42 @@ class WarningConfirmationWrite(ReportModel):
     entity_path: str = Field(min_length=1, max_length=300)
     warning_code: str = Field(min_length=1, max_length=100)
     source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GenerationRunWrite(ReportModel):
+    expected_project_revision: int = Field(ge=1)
+
+
+class RiskUpdateWrite(ReportModel):
+    expected_project_revision: int = Field(ge=1)
+    expected_revision: int = Field(ge=1)
+    risk_level: Literal["high", "medium", "low"] | None = None
+    threat_ids: list[str] = Field(default_factory=list, max_length=24)
+    analysis_text: str | None = Field(default=None, max_length=10000)
+    override_reason: str = Field(default="", max_length=2000)
+    confirm: bool = False
+
+    @field_validator("threat_ids")
+    @classmethod
+    def unique_threat_ids(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for value in values:
+            item = value.strip()
+            if item and item not in cleaned:
+                cleaned.append(item)
+        return cleaned
+
+
+class DerivedBlockOverrideWrite(ReportModel):
+    expected_project_revision: int = Field(ge=1)
+    override: dict[str, Any]
+    override_reason: str = Field(min_length=1, max_length=2000)
+
+
+class DerivedBlockConfirmationWrite(ReportModel):
+    expected_project_revision: int = Field(ge=1)
+    action: Literal["confirm", "keep_override", "discard_override", "reset"] = "confirm"
+
+
+class ConsistencyCheckWrite(ReportModel):
+    expected_project_revision: int = Field(ge=1)

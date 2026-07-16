@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } f
 
 import { ApiError, changeProjectWorkflow, type Project } from "../api/client.ts";
 import { ReportBasicDataWorkspace } from "./ReportBasicDataWorkspace.tsx";
+import { ReportDerivedWorkspace } from "./ReportDerivedWorkspace.tsx";
 import {
   confirmAppendixBindings,
   createAssessmentObject,
@@ -137,6 +138,7 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
   const handleMetadataDirty = useCallback((dirty: boolean) => handleDirty("metadata", dirty), [handleDirty]);
   const handleBasicsDirty = useCallback((dirty: boolean) => handleDirty("basics", dirty), [handleDirty]);
   const handleObjectsDirty = useCallback((dirty: boolean) => handleDirty("objects", dirty), [handleDirty]);
+  const handleDerivedDirty = useCallback((dirty: boolean) => handleDirty("derived", dirty), [handleDirty]);
   const handleSectionDirty = useCallback((dirty: boolean) => {
     if (route.view === "section") {
       handleDirty(`section:${route.sectionKey}`, dirty);
@@ -343,6 +345,14 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
               onChanged={() => { void loadWorkspace(); void loadValidation(); }}
             />
           ) : null}
+          {!isLoading && route.view === "derived" ? (
+            <ReportDerivedWorkspace
+              key={`derived-${editorEpoch}`}
+              projectUuid={project.project_uuid}
+              onDirtyChange={handleDerivedDirty}
+              onChanged={() => { void loadWorkspace(); void loadValidation(); }}
+            />
+          ) : null}
           {!isLoading && route.view === "section" && activeSection ? (
             <ReportSectionWorkspace
               key={`${activeSection.section_uuid}-${editorEpoch}`}
@@ -446,6 +456,17 @@ function ReportSectionTree({ sections, route, dirtyOwner, isLoading, onNavigate,
         <span>测评对象库</span>
         <small>对象与引用关系</small>
       </button>
+      <button
+        type="button"
+        data-tree-item
+        className={route.view === "derived" ? "report-tree-button active" : "report-tree-button"}
+        aria-current={route.view === "derived" ? "page" : undefined}
+        onClick={() => onNavigate({ view: "derived" })}
+        onKeyDown={(event) => handleTreeKeyDown(event, 3)}
+      >
+        <span>正文生成与一致性</span>
+        <small>评分、风险、正文与交付闸门</small>
+      </button>
       {isLoading ? <p className="report-tree-loading">正在读取...</p> : null}
       {orderedSections.map((section, sectionIndex) => {
         const active = route.view === "section" && route.sectionKey === section.section_key;
@@ -460,7 +481,7 @@ function ReportSectionTree({ sections, route, dirtyOwner, isLoading, onNavigate,
             onClick={() => section.section_type === "appendix_a"
               ? onOpenAppendix(appendixCodeFromSection(section))
               : onNavigate({ view: "section", sectionKey: section.section_key })}
-            onKeyDown={(event) => handleTreeKeyDown(event, sectionIndex + 3)}
+            onKeyDown={(event) => handleTreeKeyDown(event, sectionIndex + 4)}
           >
             <span>{section.title}</span>
             <small>{completionLabel(section.completion_status)}</small>
@@ -497,6 +518,7 @@ function ReportOverviewPanel({ projectUuid, overview, sections, onDirtyChange, o
       <div className="report-overview-actions">
         <button type="button" onClick={() => onNavigate({ view: "basics" })}>完善基础数据</button>
         <button type="button" className="secondary-button" onClick={() => onNavigate({ view: "objects" })}>管理测评对象</button>
+        <button type="button" className="secondary-button" onClick={() => onNavigate({ view: "derived" })}>生成与复核正文</button>
         {sections[0] ? (
           <button type="button" onClick={() => onNavigate({ view: "section", sectionKey: sections[0].section_key })}>开始编写章节</button>
         ) : null}
