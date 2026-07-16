@@ -1,7 +1,7 @@
 from .confirm import DocxImportConfirmError, confirm_docx_import_project
 from .document import scan_docx_structure
 from .media import parse_docx_images_and_references
-from .tables import parse_docx_core_tables
+from .tables import parse_docx_core_tables, parse_full_report_appendix_tables
 from .models import (
     DOCX_IMPORT_STATUSES,
     DocxImportAssessmentRowModel,
@@ -38,6 +38,7 @@ __all__ = [
     "import_job_dir",
     "parsed_json_path",
     "parse_docx_core_tables",
+    "parse_full_report_appendix_tables",
     "parse_docx_images_and_references",
     "read_docx_package",
     "remove_import_job_dir",

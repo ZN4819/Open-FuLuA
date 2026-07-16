@@ -203,6 +203,56 @@ class DesktopStaticFrontendTests(unittest.TestCase):
         self.assertEqual(rejected_html_route_status, 404)
         self.assertNotEqual(rejected_html_route_body, index)
 
+    def test_report_migration_history_route_uses_spa_without_masking_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dist_path = temp_path / "frontend-dist"
+            data_path = temp_path / "runtime-data"
+            dist_path.mkdir()
+            index = b"<!doctype html><title>R6 report migration</title>"
+            (dist_path / "index.html").write_bytes(index)
+            (data_path / "storage").mkdir(parents=True)
+            (data_path / "data").mkdir(parents=True)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "FULUA_WEB_DIST_PATH": str(dist_path),
+                    "FULUA_DATA_DIR": str(data_path),
+                },
+                clear=True,
+            ):
+                # Direct ASGI invocation does not run FastAPI's startup hook.
+                # Initialize the temporary database explicitly so this route
+                # test exercises API routing instead of an absent-schema error.
+                from app import database
+
+                database.init_db()
+                app = self._load_app()
+                html_headers = {"accept": "text/html,application/xhtml+xml"}
+                page_status, _, page_body = self._request(
+                    app,
+                    "/report-imports/42",
+                    headers=html_headers,
+                )
+                review_status, _, review_body = self._request(
+                    app,
+                    "/projects/00000000-0000-4000-8000-000000000001/migration-review",
+                    headers=html_headers,
+                )
+                api_status, _, api_body = self._request(
+                    app,
+                    "/api/report-imports/2147483647",
+                    headers=html_headers,
+                )
+
+        self.assertEqual(page_status, 200)
+        self.assertEqual(page_body, index)
+        self.assertEqual(review_status, 200)
+        self.assertEqual(review_body, index)
+        self.assertEqual(api_status, 404)
+        self.assertNotEqual(api_body, index)
+
     def test_frontend_api_base_prefers_override_then_dev_fallback_then_same_origin(self) -> None:
         client_source = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")
 

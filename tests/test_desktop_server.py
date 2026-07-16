@@ -42,6 +42,7 @@ class DesktopServerTests(unittest.TestCase):
 
     def test_offline_integrity_is_read_only_and_reports_actual_user_version(self) -> None:
         import sqlite3
+        from app.runtime import SCHEMA_VERSION
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -51,7 +52,7 @@ class DesktopServerTests(unittest.TestCase):
             try:
                 connection.execute("CREATE TABLE sentinel (value TEXT)")
                 connection.execute("INSERT INTO sentinel VALUES ('unchanged')")
-                connection.execute("PRAGMA user_version = 8")
+                connection.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
                 connection.commit()
             finally:
                 connection.close()
@@ -62,7 +63,7 @@ class DesktopServerTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             event = json.loads(result.stdout.strip())
-            self.assertEqual(event, {"event": "FULUA_OFFLINE_INTEGRITY", "integrity": "ok", "schema_version": "8"})
+            self.assertEqual(event, {"event": "FULUA_OFFLINE_INTEGRITY", "integrity": "ok", "schema_version": SCHEMA_VERSION})
             self.assertEqual(database_path.read_bytes(), before)
             self.assertEqual(database_path.stat().st_mtime_ns, before_mtime)
 

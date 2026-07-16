@@ -26,11 +26,36 @@ from .report_templates.registry import report_template_registry
 
 
 VERSION_RE = re.compile(r"^V[0-9]+(?:\.[0-9]+){1,3}$", re.IGNORECASE)
+WORD_PATH_CHARACTER_LIMIT = 245
+DEFAULT_REPORT_FILENAME_LIMIT = 220
 WINDOWS_RESERVED = {
     "CON", "PRN", "AUX", "NUL",
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
+
+
+def _windows_utf16_units(value: str) -> int:
+    """Return the number of UTF-16 code units used by a Windows path string."""
+    return len(value.encode("utf-16-le", errors="surrogatepass")) // 2
+
+
+def _truncate_utf16(value: str, max_units: int) -> str:
+    """Truncate without splitting a Unicode code point at the UTF-16 budget."""
+    if max_units <= 0:
+        return ""
+    if _windows_utf16_units(value) <= max_units:
+        return value
+
+    lower = 0
+    upper = len(value)
+    while lower < upper:
+        midpoint = (lower + upper + 1) // 2
+        if _windows_utf16_units(value[:midpoint]) <= max_units:
+            lower = midpoint
+        else:
+            upper = midpoint - 1
+    return value[:lower]
 
 
 def _json(value: Any) -> str:
@@ -49,10 +74,14 @@ def _safe_component(value: Any) -> str:
     cleaned = re.sub(r"_+", "_", cleaned).replace("（客户复核版）", "").replace("(客户复核版)", "")
     if cleaned.upper() in WINDOWS_RESERVED:
         cleaned = f"_{cleaned}"
-    return cleaned[:80].rstrip(" .")
+    return _truncate_utf16(cleaned, 80).rstrip(" .")
 
 
-def report_filename(context: dict[str, Any]) -> str:
+def report_filename(
+    context: dict[str, Any],
+    *,
+    max_length: int = DEFAULT_REPORT_FILENAME_LIMIT,
+) -> str:
     scalars = context["scalar_slot_values"]
     identity = context["project_identity"]
     components = (
@@ -62,8 +91,31 @@ def report_filename(context: dict[str, Any]) -> str:
     )
     version = _safe_component(identity["export_version"])
     suffix = "-草稿" if identity["export_mode"] == "draft" else ""
-    stem = f"{components[0]}-{components[1]}-{components[2]}商用密码应用安全性评估报告{version}{suffix}"
-    return f"{stem[:220].rstrip(' .')}.docx"
+    base = f"{components[0]}-{components[1]}-{components[2]}商用密码应用安全性评估报告"
+    stem = f"{base}{version}{suffix}"
+    filename = f"{stem}.docx"
+    if _windows_utf16_units(filename) <= max_length:
+        return filename
+    digest = hashlib.sha256(filename.encode("utf-8")).hexdigest()[:10]
+    tail = f"-{digest}-{version}{suffix}.docx"
+    prefix_budget = max_length - _windows_utf16_units(tail)
+    if prefix_budget < 12:
+        raise ReportDomainError(
+            "REPORT_EXPORT_PATH_TOO_LONG",
+            "报告导出目录过深，Microsoft Word 无法安全刷新，请缩短客户端数据目录。",
+            status_code=500,
+        )
+    prefix = _truncate_utf16(base, prefix_budget).rstrip(" .-")
+    return f"{prefix}{tail}"
+
+
+def _word_safe_report_filename(context: dict[str, Any], directory: Path) -> str:
+    directory_length = _windows_utf16_units(str(directory.resolve())) + 1
+    max_length = min(
+        DEFAULT_REPORT_FILENAME_LIMIT,
+        WORD_PATH_CHARACTER_LIMIT - directory_length,
+    )
+    return report_filename(context, max_length=max_length)
 
 
 def _job_result(row: sqlite3.Row) -> dict[str, Any]:
@@ -290,7 +342,27 @@ def process_export_job(job_uuid: str) -> None:
             raise ReportDomainError("REPORT_EXPORT_PATH_CONFLICT", "导出任务目录已存在。", status_code=500)
         staging.mkdir(parents=True, exist_ok=False)
         initial = staging / "assembly.docx"
-        refreshed = staging / report_filename(context)
+        full_filename = report_filename(context)
+        safe_filename = _word_safe_report_filename(context, staging)
+        refreshed = staging / safe_filename
+        if safe_filename != full_filename:
+            with database.connect() as db:
+                row = db.execute(
+                    "SELECT issues_json FROM report_export_jobs WHERE job_uuid = ?",
+                    (job_uuid,),
+                ).fetchone()
+                issues = _loads(row["issues_json"], [])
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "code": "REPORT_EXPORT_FILENAME_SHORTENED",
+                        "message": "为兼容 Microsoft Word 路径长度限制，导出文件名已确定性缩短。",
+                    }
+                )
+                db.execute(
+                    "UPDATE report_export_jobs SET issues_json = ? WHERE job_uuid = ?",
+                    (_json(issues), job_uuid),
+                )
         render_report(context, initial)
 
         word_status = "not_started"

@@ -43,6 +43,7 @@ from .report_evidence.schema import (
     initialize_existing_report_evidence_categories,
     initialize_report_evidence_categories,
 )
+from .report_import.schema import audit_report_import_schema, ensure_report_import_schema
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -406,6 +407,9 @@ def init_db() -> None:
             audit_report_evidence_schema(db)
         ensure_report_evidence_schema(db)
         initialize_existing_report_evidence_categories(db)
+        if current_version >= 9:
+            audit_report_import_schema(db)
+        ensure_report_import_schema(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")

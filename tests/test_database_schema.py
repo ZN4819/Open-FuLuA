@@ -13,6 +13,164 @@ from app.runtime import SCHEMA_VERSION
 
 
 class DatabaseSchemaTests(unittest.TestCase):
+    def test_schema_nine_creates_queryable_report_import_tables_idempotently(self) -> None:
+        expected_columns = {
+            "report_import_jobs": {
+                "id",
+                "mode",
+                "status",
+                "job_revision",
+                "original_name",
+                "source_docx_path",
+                "source_sha256",
+                "detected_edition",
+                "detected_revision",
+                "fingerprint_json",
+                "parsed_json_path",
+                "summary_json",
+                "appendix_a_source",
+                "created_project_id",
+                "created_at",
+                "started_at",
+                "finished_at",
+                "error_message",
+            },
+            "report_import_issues": {
+                "id",
+                "job_id",
+                "code",
+                "severity",
+                "association_id",
+                "authority_field_id",
+                "field_path",
+                "source_locator",
+                "original_text",
+                "source_value_hash",
+                "candidate_value_json",
+                "confidence",
+                "status",
+                "revision",
+                "created_at",
+                "updated_at",
+            },
+            "report_import_resolutions": {
+                "id",
+                "job_id",
+                "issue_id",
+                "association_id",
+                "authority_field_id",
+                "field_path",
+                "action",
+                "resolved_value_json",
+                "resolved_by_user",
+                "issue_revision",
+                "created_at",
+                "updated_at",
+            },
+            "report_field_sources": {
+                "id",
+                "project_id",
+                "report_import_job_id",
+                "association_id",
+                "authority_field_id",
+                "field_path",
+                "source_kind",
+                "source_locator",
+                "source_value_hash",
+                "original_text",
+                "confidence",
+                "mapping_status",
+                "needs_confirmation",
+                "created_at",
+                "updated_at",
+            },
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "app.db"
+            with patch.dict(os.environ, {"FULUA_DATABASE_PATH": str(path)}):
+                database.init_db()
+                database.init_db()
+
+            connection = sqlite3.connect(path)
+            try:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 9)
+                for table_name, required in expected_columns.items():
+                    actual = {
+                        row[1]
+                        for row in connection.execute(f"PRAGMA table_info({table_name})")
+                    }
+                    self.assertTrue(
+                        required.issubset(actual),
+                        f"{table_name} 缺少字段：{sorted(required - actual)}",
+                    )
+                issue_foreign_keys = {
+                    (row[2], row[3], row[4], row[6])
+                    for row in connection.execute("PRAGMA foreign_key_list(report_import_issues)")
+                }
+                resolution_foreign_keys = {
+                    (row[2], row[3], row[4], row[6])
+                    for row in connection.execute("PRAGMA foreign_key_list(report_import_resolutions)")
+                }
+                source_foreign_keys = {
+                    (row[2], row[3], row[4], row[6])
+                    for row in connection.execute("PRAGMA foreign_key_list(report_field_sources)")
+                }
+            finally:
+                connection.close()
+
+        self.assertIn(("report_import_jobs", "job_id", "id", "CASCADE"), issue_foreign_keys)
+        self.assertIn(("report_import_jobs", "job_id", "id", "CASCADE"), resolution_foreign_keys)
+        self.assertIn(("report_import_issues", "issue_id", "id", "CASCADE"), resolution_foreign_keys)
+        self.assertIn(("projects", "project_id", "id", "CASCADE"), source_foreign_keys)
+
+    def test_schema_eight_upgrade_preserves_projects_and_adds_report_import_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "app.db"
+            with patch.dict(os.environ, {"FULUA_DATABASE_PATH": str(path)}):
+                database.init_db()
+                project = database.create_project("Schema 8 保留项目")
+
+            connection = sqlite3.connect(path)
+            try:
+                for table_name in (
+                    "report_import_resolutions",
+                    "report_import_issues",
+                    "report_field_sources",
+                    "report_import_jobs",
+                ):
+                    connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+                connection.execute("PRAGMA user_version = 8")
+                connection.commit()
+            finally:
+                connection.close()
+
+            with patch.dict(os.environ, {"FULUA_DATABASE_PATH": str(path)}):
+                database.init_db()
+                migrated = database.get_project_by_id(project["id"])
+
+            connection = sqlite3.connect(path)
+            try:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+            finally:
+                connection.close()
+
+        self.assertEqual(migrated["name"], "Schema 8 保留项目")
+        self.assertEqual(version, 9)
+        self.assertTrue(
+            {
+                "report_import_jobs",
+                "report_import_issues",
+                "report_import_resolutions",
+                "report_field_sources",
+            }.issubset(tables)
+        )
+
     def test_schema_three_failure_rolls_back_all_identity_schema_changes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "app.db"
