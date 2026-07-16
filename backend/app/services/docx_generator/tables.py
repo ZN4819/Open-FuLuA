@@ -33,11 +33,18 @@ def add_assessment_table(
     profile: dict[str, Any],
     mode: str,
     figure_refs: dict[int, dict[str, str]],
+    *,
+    authoritative_scores: bool = False,
 ) -> Table:
     section_profile = _section_profile(profile, section["code"])
     table_profile = profile["tables"][section_profile["table_type"]]
     columns = table_profile["columns"]
-    output_rows = _rows_with_calculated_unit_scores(rows or [_empty_row(section_profile["table_type"])], section_profile["table_type"])
+    source_rows = rows or [_empty_row(section_profile["table_type"])]
+    output_rows = (
+        [dict(row) for row in source_rows]
+        if authoritative_scores
+        else _rows_with_calculated_unit_scores(source_rows, section_profile["table_type"])
+    )
     header_row_count = 2 if section_profile["table_type"] == "technical" else 1
 
     table = document.add_table(rows=header_row_count, cols=len(columns))

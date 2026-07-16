@@ -32,6 +32,11 @@ from .report_derived.schema import (
     initialize_existing_report_derived_states,
     initialize_report_derived_state,
 )
+from .report_export.schema import (
+    audit_report_export_schema,
+    ensure_report_export_schema,
+    invalidate_pre_r4_projection_contexts,
+)
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -386,6 +391,11 @@ def init_db() -> None:
             audit_report_derived_schema(db)
         ensure_report_derived_schema(db)
         initialize_existing_report_derived_states(db)
+        if current_version >= 7:
+            audit_report_export_schema(db)
+        ensure_report_export_schema(db)
+        if current_version == 6:
+            invalidate_pre_r4_projection_contexts(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")

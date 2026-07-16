@@ -51,7 +51,47 @@
         "special_indicators": {"$ref": "#/$defs/sha256"}
       }
     },
-    "original_projection": {"$ref": "#/$defs/projection"},
+    "original_projection": {
+      "allOf": [
+        {"$ref": "#/$defs/projection"},
+        {
+          "type": "object",
+          "required": ["chapter4_tables"],
+          "properties": {
+            "chapter4_tables": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "table_4_1",
+                "table_4_2",
+                "table_4_3",
+                "table_4_4",
+                "table_4_5",
+                "table_4_6",
+                "table_4_7",
+                "table_4_8",
+                "table_4_9",
+                "table_4_10",
+                "table_4_11"
+              ],
+              "properties": {
+                "table_4_1": {"$ref": "#/$defs/chapter4Table1"},
+                "table_4_2": {"$ref": "#/$defs/chapter4Table2"},
+                "table_4_3": {"$ref": "#/$defs/chapter4Table3"},
+                "table_4_4": {"$ref": "#/$defs/chapter4Table4"},
+                "table_4_5": {"$ref": "#/$defs/chapter4Table5"},
+                "table_4_6": {"$ref": "#/$defs/chapter4Table6"},
+                "table_4_7": {"$ref": "#/$defs/chapter4Table7"},
+                "table_4_8": {"$ref": "#/$defs/chapter4Table8"},
+                "table_4_9": {"$ref": "#/$defs/chapter4Table9"},
+                "table_4_10": {"$ref": "#/$defs/chapter4Table10"},
+                "table_4_11": {"$ref": "#/$defs/chapter4Table11"}
+              }
+            }
+          }
+        }
+      ]
+    },
     "correction_projection": {
       "type": "object",
       "required": ["rows", "render_empty_as_slash_row"],
@@ -201,7 +241,30 @@
           "items": {"type": "object"}
         }
       }
-    }
+    },
+    "chapter4Table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projection_id", "columns", "rows", "summary", "render_empty_structure"],
+      "properties": {
+        "projection_id": {"type": "string", "pattern": "^table_4_(?:[1-9]|1[01])$"},
+        "columns": {"type": "array", "items": {"type": "string"}},
+        "rows": {"type": "array", "items": {"type": "object"}},
+        "summary": {"type": "object"},
+        "render_empty_structure": {"type": "boolean"}
+      }
+    },
+    "chapter4Table1": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_1"}}}]},
+    "chapter4Table2": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_2"}}}]},
+    "chapter4Table3": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_3"}}}]},
+    "chapter4Table4": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_4"}}}]},
+    "chapter4Table5": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_5"}}}]},
+    "chapter4Table6": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_6"}}}]},
+    "chapter4Table7": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_7"}}}]},
+    "chapter4Table8": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_8"}}}]},
+    "chapter4Table9": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_9"}}}]},
+    "chapter4Table10": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_10"}}}]},
+    "chapter4Table11": {"allOf": [{"$ref": "#/$defs/chapter4Table"}, {"properties": {"projection_id": {"const": "table_4_11"}}}]}
   },
   "x-contract-semantics": {
     "context_hash_scope": "all required properties except consistency and project_revision",

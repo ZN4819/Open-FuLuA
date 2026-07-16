@@ -362,6 +362,7 @@ class DesktopPackagingContractTests(unittest.TestCase):
                     "backend/app/report_core/manifests/report-2023-2025.12.08.json",
                     "app/report_core/manifests",
                 ),
+                ("scripts/word_refresh_report.ps1", "scripts"),
                 ("frontend/dist", "frontend"),
             ),
         )

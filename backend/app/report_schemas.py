@@ -357,3 +357,9 @@ class DerivedBlockConfirmationWrite(ReportModel):
 
 class ConsistencyCheckWrite(ReportModel):
     expected_project_revision: int = Field(ge=1)
+
+
+class ReportExportJobWrite(ReportModel):
+    mode: Literal["draft", "final"]
+    version: str = Field(default="V1.0", min_length=3, max_length=40)
+    expected_project_revision: int = Field(ge=1)

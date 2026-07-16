@@ -18,6 +18,7 @@ import {
   type GenerationImpact,
   type ThreatCatalogItem
 } from "../api/reportClient.ts";
+import { ReportExportWorkspace } from "./ReportExportWorkspace.tsx";
 
 type ReportDerivedWorkspaceProps = {
   projectUuid: string;
@@ -233,6 +234,12 @@ export function ReportDerivedWorkspace({
           {isChecking ? "正在校验..." : "执行一致性校验"}
         </button>
       </section>
+
+      <ReportExportWorkspace
+        projectUuid={projectUuid}
+        projectRevision={review?.project_revision ?? impact?.project_revision}
+        hasUnsavedChanges={dirtyKeys.size > 0}
+      />
     </div>
   );
 }
