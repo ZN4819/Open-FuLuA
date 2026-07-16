@@ -4239,6 +4239,172 @@ textarea:hover {
   line-height: 1.6;
 }
 
+/* R3 正文生成与一致性工作台 */
+.derived-workspace .report-form-card {
+  display: grid;
+  gap: 14px;
+}
+
+.derived-workspace .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.derived-workspace button {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.derived-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.derived-item-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  background: #fafafa;
+  border-radius: 8px;
+  box-shadow: var(--shadow-ring);
+}
+
+.derived-item-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.derived-item-card input,
+.derived-item-card select,
+.derived-item-card textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+  background: #ffffff;
+}
+
+.derived-item-card select[multiple] {
+  min-height: 132px;
+}
+
+.derived-item-card p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.derived-item-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.derived-item-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.derived-item-heading small {
+  color: var(--color-text-muted);
+}
+
+.derived-form-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.35fr) minmax(260px, 1fr);
+  gap: 12px;
+}
+
+.derived-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  color: #525252;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e5e5e5;
+  border-radius: 999px;
+}
+
+.derived-status.valid,
+.derived-status.confirmed,
+.derived-status.current\:confirmed {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.derived-status.invalid,
+.derived-status.failed,
+.derived-status.stale\:confirmed,
+.derived-status.stale\:unconfirmed,
+.derived-status.stale\:review_required {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.derived-status.needs_input,
+.derived-status.review_required,
+.derived-status.current\:review_required,
+.derived-status.current\:unconfirmed {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.derived-issue-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.derived-issue-list li {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.35fr) minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 9px 10px;
+  background: var(--color-danger-soft);
+  border-radius: 7px;
+}
+
+.derived-issue-list strong {
+  overflow-wrap: anywhere;
+  color: var(--color-danger);
+  font-size: 11px;
+}
+
+.derived-issue-list small {
+  grid-column: 2;
+  color: var(--color-text-muted);
+}
+
+.derived-preview {
+  padding: 10px 12px;
+  color: #404040;
+  background: #ffffff;
+  border-left: 3px solid #a3a3a3;
+}
+
+.derived-workspace .success-message {
+  margin: 0;
+  padding: 10px 12px;
+  color: #166534;
+  background: #dcfce7;
+  border-radius: 7px;
+}
+
+.derived-workspace .warning-text {
+  color: var(--color-warning);
+}
+
 @media (max-width: 1360px) {
   .report-workbench-grid {
     grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
@@ -4256,6 +4422,10 @@ textarea:hover {
     padding-left: 14px;
     border-top: 0;
     border-left: 1px solid var(--color-border);
+  }
+
+  .derived-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 

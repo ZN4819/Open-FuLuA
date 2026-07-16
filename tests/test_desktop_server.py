@@ -69,7 +69,7 @@ class DesktopServerTests(unittest.TestCase):
     def test_prepare_schema_upgrade_creates_verified_schema_three_backup_before_start(self) -> None:
         import sqlite3
 
-        from app.runtime import RuntimePaths
+        from app.runtime import RuntimePaths, SCHEMA_VERSION
         from tests.test_backups import _create_live_data
 
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -110,7 +110,7 @@ class DesktopServerTests(unittest.TestCase):
             event = json.loads(result.stdout.strip())
             self.assertEqual(event["event"], "FULUA_OFFLINE_SCHEMA_UPGRADE")
             self.assertTrue(event["prepared"])
-            self.assertEqual((event["source_schema"], event["target_schema"]), ("3", "5"))
+            self.assertEqual((event["source_schema"], event["target_schema"]), ("3", SCHEMA_VERSION))
             backup = paths.backup_path / event["backup_id"]
             self.assertTrue((backup / "metadata.json").is_file())
             backup_db = sqlite3.connect(backup / "data" / "app.db")

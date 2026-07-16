@@ -1104,7 +1104,14 @@ class R2ReportDomainTests(unittest.TestCase):
         result = validation.validate_report(self.project_uuid)
         self.assertEqual(result["errors"], 0, json.dumps(result["issues"], ensure_ascii=False, indent=2))
         self.assertFalse(any(issue["code"] == "REPORT_SECTION_INCOMPLETE" for issue in result["issues"]))
-        updated = transition_workflow(self.project_uuid, "ready-for-review")
+        with self.assertRaises(ProjectServiceError) as derived_blocked:
+            transition_workflow(self.project_uuid, "ready-for-review")
+        self.assertEqual(derived_blocked.exception.code, "R3_CONTEXT_STALE")
+        with patch(
+            "app.services.report_generation.get_projection_context",
+            return_value={"consistency": {"status": "valid"}},
+        ):
+            updated = transition_workflow(self.project_uuid, "ready-for-review")
         self.assertEqual(updated["workflow_status"], "ready_for_review")
 
 

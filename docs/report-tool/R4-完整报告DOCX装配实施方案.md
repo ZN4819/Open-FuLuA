@@ -39,13 +39,15 @@ R4 不直接查询业务表，不调用评分公式重新计算分数，也不�
 
 ### 2.3 R3 输入
 
-`R3ProjectionContext` 至少包含：
+R4 只通过已冻结的 [`R3ProjectionContext v1`](contracts/R3ProjectionContext-v1.md) 取得 R3 输入，并按机器 schema `templates/report/contracts/2023-2025.12.08/r3_projection_context.v1.schema.json` 校验。上下文至少包含：
 
 - `original_projection`、`correction_projection`、`final_projection`。
 - 表 4-1～表 4-11、表 5-1、表 5-2 的结构化行。
 - 最终附录 A 投影、41 项统计、风险、完整威胁目录、显示综合得分和评估结论。
 - 已确认且未过期的系统简介、测评情况简介、总体评价、安全问题及建议、风险分析和第 7 章结论。
 - 规则集版本/哈希、生成运行 ID、源哈希和一致性校验结果。
+
+`R3_CONTEXT_NOT_AVAILABLE|R3_CONTEXT_STALE|R3_CONTEXT_NOT_CONFIRMED` 属于可由用户回到 R3 处理的导出阻断；`RULE_SET_UNAVAILABLE|R3_CONTEXT_HASH_MISMATCH|R3_CONTEXT_SCHEMA_INVALID|R3_PRIVATE_FACTOR_LEAK` 属于系统级失败，R4 不得降级读取内部表或沿用旧上下文。
 
 ### 2.4 R5 扩展接口
 
