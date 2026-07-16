@@ -26,6 +26,16 @@ M = f"{{{NS['m']}}}"
 
 TECHNICAL_HEADER_MARKERS = {"测评单元", "测评对象", "结果记录", "量化指标"}
 MANAGEMENT_HEADER_MARKERS = {"测评单元", "测评对象", "结果记录", "符合情况"}
+FULL_REPORT_APPENDIX_TABLE_INDICES = {
+    "A-1": 39,
+    "A-2": 40,
+    "A-3": 41,
+    "A-4": 42,
+    "A-5": 43,
+    "A-6": 44,
+    "A-7": 45,
+    "A-8": 46,
+}
 
 
 @dataclass(frozen=True)
@@ -80,6 +90,80 @@ def parse_docx_core_tables(path: str | Path) -> DocxImportParsedProject:
     )
 
 
+def parse_full_report_appendix_tables(path: str | Path) -> DocxImportParsedProject:
+    """按当前完整报告模板的固定表身份解析 A-1 至 A-8。
+
+    该入口只能在调用方已经完成 55 表模板指纹校验后使用。完整报告正文中
+    存在多张与附录 A 列数相同的表，不能沿用独立附录文档的启发式候选选择。
+    """
+
+    package = read_docx_package(path)
+    profile = load_template_profile()
+    issues: list[DocxImportIssueModel] = []
+    tables = _table_elements_by_table_index(package.document)
+    parsed_sections: list[DocxImportParsedSectionModel] = []
+    for section_profile in profile["sections"]:
+        code = str(section_profile["code"])
+        table_index = FULL_REPORT_APPENDIX_TABLE_INDICES[code]
+        located = tables.get(table_index)
+        rows: list[DocxImportAssessmentRowModel] = []
+        if located is None:
+            issues.append(
+                DocxImportIssueModel(
+                    severity="error",
+                    code="IMPORT_EXPECTED_TABLE_MISSING",
+                    message=f"{code} 固定表不存在。",
+                    section_code=code,
+                    target=f"table:{table_index}",
+                )
+            )
+        else:
+            body_index, table = located
+            expanded = _expanded_table_rows(table)
+            column_count = max((len(row) for row in expanded), default=0)
+            header_count = _header_row_count(expanded, str(section_profile["table_type"]))
+            candidate = DocxTableCandidate(
+                body_index=body_index,
+                table_index=table_index,
+                section_code=code,
+                table_type=str(section_profile["table_type"]),
+                row_count=len(expanded),
+                column_count=column_count,
+                data_row_count=max(0, len(expanded) - header_count),
+                confidence=1.0,
+            )
+            rows = _parse_section_rows(
+                table,
+                candidate,
+                section_profile,
+                profile,
+                issues,
+            )
+        parsed_sections.append(
+            DocxImportParsedSectionModel(
+                code=code,
+                title=str(section_profile["title"]),
+                table_title=str(section_profile["table_title"]),
+                table_type=str(section_profile["table_type"]),
+                rows=rows,
+            )
+        )
+
+    summary = {
+        "assessment_rows": sum(section.row_count for section in parsed_sections),
+        "parsed_sections": sum(1 for section in parsed_sections if section.row_count > 0),
+        "errors": sum(1 for issue in issues if issue.severity == "error"),
+        "warnings": sum(1 for issue in issues if issue.severity == "warning"),
+        "info": sum(1 for issue in issues if issue.severity == "info"),
+    }
+    return DocxImportParsedProject(
+        suggested_project_name="",
+        sections=parsed_sections,
+        issues=issues,
+        summary=summary,
+    )
+
+
 def _table_elements_by_body_index(document: ET.Element) -> dict[int, ET.Element]:
     body = document.find("w:body", NS)
     if body is None:
@@ -88,6 +172,22 @@ def _table_elements_by_body_index(document: ET.Element) -> dict[int, ET.Element]
     for body_index, child in enumerate(list(body), start=1):
         if child.tag == W + "tbl":
             tables[body_index] = child
+    return tables
+
+
+def _table_elements_by_table_index(
+    document: ET.Element,
+) -> dict[int, tuple[int, ET.Element]]:
+    body = document.find("w:body", NS)
+    if body is None:
+        return {}
+    tables: dict[int, tuple[int, ET.Element]] = {}
+    table_index = 0
+    for body_index, child in enumerate(list(body), start=1):
+        if child.tag != W + "tbl":
+            continue
+        table_index += 1
+        tables[table_index] = (body_index, child)
     return tables
 
 

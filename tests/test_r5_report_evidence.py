@@ -16,6 +16,7 @@ from PIL import Image
 from starlette.datastructures import Headers
 
 from app import database
+from app.runtime import SCHEMA_VERSION
 from app.contracts import (
     FULL_REPORT_TEMPLATE_ASSET_SET_HASH,
     FULL_REPORT_TEMPLATE_EDITION,
@@ -164,7 +165,10 @@ class R5ReportEvidenceTests(unittest.TestCase):
         database.init_db()
         workspace = report_evidence.get_appendix_b(self.project_uuid)
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 8)
+            self.assertEqual(
+                int(db.execute("PRAGMA user_version").fetchone()[0]),
+                int(SCHEMA_VERSION),
+            )
             categories = db.execute(
                 "SELECT category_code FROM report_evidence_categories WHERE project_id = ? ORDER BY id",
                 (self.project["id"],),
@@ -570,7 +574,7 @@ class R5MigrationTests(unittest.TestCase):
                             (project["id"],),
                         ).fetchone()[0]
                     )
-            self.assertEqual(version, 8)
+            self.assertEqual(version, int(SCHEMA_VERSION))
             self.assertEqual(count, 9)
 
 

@@ -4,6 +4,7 @@ import re
 from collections import Counter, defaultdict
 from copy import copy
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +107,44 @@ def generate_score_workbook(project_id: int) -> Path:
     workbook.save(output_path)
     _validate_generated_workbook(output_path)
     return output_path
+
+
+def validate_score_workbook_rows(
+    section_rows: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, str]]:
+    """按正式打分表口径校验一组尚未入库的附录 A 行。"""
+
+    expected_units, profile = _score_workbook_validation_context()
+    issues: list[dict[str, str]] = []
+    for code, _, _, table_type in SECTION_LAYOUT:
+        rows = section_rows.get(code)
+        if rows is None:
+            issues.append(_issue(code, "", "", "section", "缺少评分章节。"))
+            continue
+        issues.extend(
+            _validate_section_rows(
+                code,
+                table_type,
+                rows,
+                expected_units[code],
+                profile,
+            )
+        )
+    return issues
+
+
+@lru_cache(maxsize=1)
+def _score_workbook_validation_context() -> tuple[dict[str, list[str]], dict[str, Any]]:
+    template_path = resolve_resource_path(
+        "templates", "scoring", "scoring_template_v1.xlsx"
+    )
+    workbook = load_workbook(template_path, read_only=True, data_only=False)
+    try:
+        expected_units = _expected_units(workbook)
+    finally:
+        workbook.close()
+    profile = load_template_profile()
+    return expected_units, profile
 
 
 def _expected_units(workbook: Any) -> dict[str, list[str]]:

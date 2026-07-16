@@ -4,6 +4,7 @@ import { ApiError, changeProjectWorkflow, type Project } from "../api/client.ts"
 import { ReportBasicDataWorkspace } from "./ReportBasicDataWorkspace.tsx";
 import { ReportDerivedWorkspace } from "./ReportDerivedWorkspace.tsx";
 import { ReportAppendixBWorkspace } from "./ReportAppendixBWorkspace.tsx";
+import { ReportMigrationReview } from "./ReportMigrationWorkspace.tsx";
 import {
   confirmAppendixBindings,
   createAssessmentObject,
@@ -314,6 +315,7 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
           route={route}
           dirtyOwner={dirtyOwner}
           isLoading={isLoading}
+          showMigrationReview={project.created_by_operation === "migration_import"}
           onNavigate={navigate}
           onOpenAppendix={handleOpenAppendix}
         />
@@ -354,6 +356,9 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
               onDirtyChange={handleDerivedDirty}
               onChanged={() => { void loadWorkspace(); void loadValidation(); }}
             />
+          ) : null}
+          {!isLoading && route.view === "migration_review" ? (
+            <ReportMigrationReview projectUuid={project.project_uuid} />
           ) : null}
           {!isLoading && route.view === "section" && activeSection ? (
             activeSection.section_type === "appendix_b" ? (
@@ -400,11 +405,12 @@ type ReportSectionTreeProps = {
   route: ReportWorkspaceRoute;
   dirtyOwner?: string;
   isLoading: boolean;
+  showMigrationReview: boolean;
   onNavigate: (route: ReportWorkspaceRoute) => void;
   onOpenAppendix: (sectionCode?: string) => void;
 };
 
-function ReportSectionTree({ sections, route, dirtyOwner, isLoading, onNavigate, onOpenAppendix }: ReportSectionTreeProps) {
+function ReportSectionTree({ sections, route, dirtyOwner, isLoading, showMigrationReview, onNavigate, onOpenAppendix }: ReportSectionTreeProps) {
   const orderedSections = useMemo(() => flattenSectionTree(sections), [sections]);
 
   function handleTreeKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -479,6 +485,19 @@ function ReportSectionTree({ sections, route, dirtyOwner, isLoading, onNavigate,
         <span>正文生成与一致性</span>
         <small>评分、风险、正文与交付闸门</small>
       </button>
+      {showMigrationReview ? (
+        <button
+          type="button"
+          data-tree-item
+          className={route.view === "migration_review" ? "report-tree-button active" : "report-tree-button"}
+          aria-current={route.view === "migration_review" ? "page" : undefined}
+          onClick={() => onNavigate({ view: "migration_review" })}
+          onKeyDown={(event) => handleTreeKeyDown(event, 4)}
+        >
+          <span>迁移审阅</span>
+          <small>来源、歧义与导出待办</small>
+        </button>
+      ) : null}
       {isLoading ? <p className="report-tree-loading">正在读取...</p> : null}
       {orderedSections.map((section, sectionIndex) => {
         const active = route.view === "section" && route.sectionKey === section.section_key;
@@ -493,7 +512,7 @@ function ReportSectionTree({ sections, route, dirtyOwner, isLoading, onNavigate,
             onClick={() => section.section_type === "appendix_a"
               ? onOpenAppendix(appendixCodeFromSection(section))
               : onNavigate({ view: "section", sectionKey: section.section_key })}
-            onKeyDown={(event) => handleTreeKeyDown(event, sectionIndex + 4)}
+            onKeyDown={(event) => handleTreeKeyDown(event, sectionIndex + (showMigrationReview ? 5 : 4))}
           >
             <span>{section.title}</span>
             <small>{completionLabel(section.completion_status)}</small>

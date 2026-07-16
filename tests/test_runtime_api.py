@@ -73,13 +73,14 @@ class RuntimeApiTests(unittest.TestCase):
 
     def test_upgrade_prepare_creates_pre_upgrade_backup_inside_exclusive_gate(self) -> None:
         from app.api.runtime import prepare_upgrade
+        from app.runtime import SCHEMA_VERSION
 
         backup = type("Backup", (), {"path": Path("C:/backups/pre_upgrade-safe")})()
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "app.db"
             connection = sqlite3.connect(database_path)
             try:
-                connection.execute("PRAGMA user_version = 8")
+                connection.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
             finally:
                 connection.close()
             with patch("app.api.runtime.resolve_runtime_paths") as paths, patch(
@@ -91,7 +92,7 @@ class RuntimeApiTests(unittest.TestCase):
         create_backup.assert_called_once_with(paths.return_value, "pre_upgrade")
         self.assertTrue(response["ready"])
         self.assertEqual(response["backup_id"], "pre_upgrade-safe")
-        self.assertEqual(response["schema_version"], "8")
+        self.assertEqual(response["schema_version"], SCHEMA_VERSION)
         self.assertEqual(response["lease_id"], "client-known")
         from app.api.runtime import cancel_upgrade, runtime_operations
         self.assertTrue(runtime_operations.writes_blocked())
@@ -101,6 +102,7 @@ class RuntimeApiTests(unittest.TestCase):
 
     def test_integrity_check_returns_only_integrity_and_schema_version(self) -> None:
         from app.api.runtime import integrity_check
+        from app.runtime import SCHEMA_VERSION
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "app.db"
@@ -108,7 +110,7 @@ class RuntimeApiTests(unittest.TestCase):
             try:
                 connection.execute("CREATE TABLE private_body (body TEXT)")
                 connection.execute("INSERT INTO private_body VALUES ('不得泄露的正文')")
-                connection.execute("PRAGMA user_version = 8")
+                connection.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
                 connection.commit()
             finally:
                 connection.close()
@@ -116,7 +118,7 @@ class RuntimeApiTests(unittest.TestCase):
                 paths.return_value.database_path = database_path
                 response = integrity_check()
 
-        self.assertEqual(response, {"integrity": "ok", "schema_version": "8"})
+        self.assertEqual(response, {"integrity": "ok", "schema_version": SCHEMA_VERSION})
         self.assertNotIn("不得泄露", repr(response))
 
     def test_exclusive_waits_for_started_write_and_rejects_new_write(self) -> None:

@@ -17,6 +17,7 @@ from lxml import etree
 from PIL import Image
 
 from app import database
+from app.runtime import SCHEMA_VERSION
 from app.main import app
 from app.report_derived.rules import canonical_json, stable_hash
 from app.report_export.context import build_assembly_context
@@ -226,7 +227,10 @@ class R4ReportExportTests(unittest.TestCase):
 
     def test_current_schema_keeps_immutable_export_storage(self) -> None:
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 8)
+            self.assertEqual(
+                int(db.execute("PRAGMA user_version").fetchone()[0]),
+                int(SCHEMA_VERSION),
+            )
             tables = {
                 row[0]
                 for row in db.execute(
@@ -409,6 +413,56 @@ class R4ReportExportTests(unittest.TestCase):
         self.assertEqual(
             captured.exception.code,
             "REPORT_TEMPLATE_MUTATION_ALLOWLIST_VIOLATION",
+        )
+
+    def test_report_filename_is_deterministically_shortened_for_word_path_budget(self) -> None:
+        context = {
+            "scalar_slot_values": {
+                "report_number": "R" * 80,
+                "assessed_name": "被测单位" * 30,
+                "system_name": "系统名称" * 30,
+            },
+            "project_identity": {
+                "export_version": "V1.0",
+                "export_mode": "draft",
+            },
+        }
+
+        filename = report_exports.report_filename(context, max_length=64)
+
+        self.assertLessEqual(len(filename), 64)
+        self.assertTrue(filename.endswith("-V1.0-草稿.docx"))
+        self.assertEqual(
+            filename,
+            report_exports.report_filename(context, max_length=64),
+        )
+
+    def test_report_filename_and_full_path_use_windows_utf16_units(self) -> None:
+        context = {
+            "scalar_slot_values": {
+                "report_number": "😀" * 40,
+                "assessed_name": "被测😀单位" * 20,
+                "system_name": "系统😀名称" * 20,
+            },
+            "project_identity": {
+                "export_version": "V1.0",
+                "export_mode": "draft",
+            },
+        }
+
+        filename = report_exports.report_filename(context, max_length=64)
+        utf16_units = lambda value: len(value.encode("utf-16-le")) // 2
+
+        self.assertLessEqual(utf16_units(filename), 64)
+        self.assertTrue(filename.endswith("-V1.0-草稿.docx"))
+        self.assertEqual(filename, report_exports.report_filename(context, max_length=64))
+
+        directory = self.storage.parent / ("😀" * 20)
+        directory.mkdir()
+        safe_filename = report_exports._word_safe_report_filename(context, directory)
+        self.assertLessEqual(
+            utf16_units(f"{directory.resolve()}\\{safe_filename}"),
+            report_exports.WORD_PATH_CHARACTER_LIMIT,
         )
 
     def test_export_job_persists_snapshot_and_allows_repeat_after_success(self) -> None:

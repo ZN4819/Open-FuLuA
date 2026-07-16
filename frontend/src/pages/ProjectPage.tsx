@@ -38,8 +38,10 @@ import {
   canUpgradeProject,
   defaultProjectWorkspace,
   FULL_REPORT_TEMPLATE_IDENTITY,
+  parseReportImportPath,
   parseProjectWorkspacePath,
   projectWorkspacePath,
+  reportImportPath,
   projectTypeLabel,
   workflowStatusLabel,
   type ProjectType,
@@ -52,6 +54,8 @@ import { Layout } from "../components/Layout";
 import { SectionNav } from "../components/SectionNav";
 import { TemplateManagerPanel } from "../components/TemplateManagerPanel";
 import { ReportWorkbench } from "../components/ReportWorkbench";
+import { ReportMigrationWorkspace } from "../components/ReportMigrationWorkspace";
+import { type ReportImportJob } from "../api/reportImportClient";
 
 const EMPTY_SUBSYSTEM_UI_STATE: SubsystemUiState = {
   manualSubsystemNames: [],
@@ -395,6 +399,10 @@ export function ProjectPage() {
   const [upgradeProjectName, setUpgradeProjectName] = useState("");
   const [upgradeIdempotencyKey, setUpgradeIdempotencyKey] = useState("");
   const [isUpgradingProject, setIsUpgradingProject] = useState(false);
+  const [hasPendingReportMigration, setHasPendingReportMigration] = useState(false);
+  const [reportImportJobId, setReportImportJobId] = useState<number | undefined>(
+    () => parseReportImportPath(window.location.pathname)?.jobId
+  );
 
   const activeSection = useMemo(
     () => project?.sections.find((section) => section.code === activeCode),
@@ -449,6 +457,24 @@ export function ProjectPage() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (project) return;
+    function handleReportImportHistoryNavigation() {
+      const nextJobId = parseReportImportPath(window.location.pathname)?.jobId;
+      if (
+        hasPendingReportMigration &&
+        nextJobId !== reportImportJobId &&
+        !window.confirm("完整报告迁移预览尚未确认，确定离开并放弃当前预览吗？")
+      ) {
+        window.history.pushState({}, "", reportImportJobId ? reportImportPath(reportImportJobId) : "/");
+        return;
+      }
+      setReportImportJobId(nextJobId);
+    }
+    window.addEventListener("popstate", handleReportImportHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleReportImportHistoryNavigation);
+  }, [hasPendingReportMigration, project, reportImportJobId]);
 
   useEffect(() => {
     if (!activeCode) {
@@ -601,6 +627,7 @@ export function ProjectPage() {
 
   function openProject(projectToOpen: Project, preserveLocation = false) {
     setProject(projectToOpen);
+    setReportImportJobId(undefined);
     const requested = parseProjectWorkspacePath(window.location.pathname);
     const requestedForProject = requested?.projectUuid === projectToOpen.project_uuid ? requested.route : undefined;
     const nextWorkspace = projectToOpen.project_type === "full_report" && requestedForProject?.view !== "appendix_a"
@@ -657,7 +684,30 @@ export function ProjectPage() {
     }
   }
 
+  function confirmLeavePendingReportMigration(): boolean {
+    return !hasPendingReportMigration || window.confirm(
+      "完整报告迁移预览尚未确认，确定离开并放弃当前预览吗？"
+    );
+  }
+
+  function handleReportImportJobChanged(jobId?: number) {
+    setReportImportJobId(jobId);
+    if (jobId) {
+      const nextPath = reportImportPath(jobId);
+      if (window.location.pathname !== nextPath) {
+        window.history.pushState({}, "", nextPath);
+      }
+      return;
+    }
+    if (parseReportImportPath(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
+    }
+  }
+
   async function handleOpenProject(projectId: number) {
+    if (!confirmLeavePendingReportMigration()) {
+      return;
+    }
     setOpeningProjectId(projectId);
     setError(undefined);
     try {
@@ -668,6 +718,20 @@ export function ProjectPage() {
     } finally {
       setOpeningProjectId(null);
     }
+  }
+
+  async function handleReportMigrationCreated(job: ReportImportJob) {
+    if (!job.created_project_uuid) {
+      throw new Error("迁移任务未返回新项目标识。");
+    }
+    const savedProjects = await refreshProjects();
+    const createdSummary = savedProjects.find((item) => item.project_uuid === job.created_project_uuid);
+    if (!createdSummary) {
+      throw new Error("迁移已完成，但新项目尚未出现在项目列表中，请刷新后重试。");
+    }
+    const loaded = await getProject(createdSummary.id);
+    window.history.pushState({}, "", projectWorkspacePath(loaded.project_uuid, { view: "migration_review" }));
+    openProject(loaded, true);
   }
 
   async function handleDeleteProject(projectToDelete: Project) {
@@ -713,6 +777,9 @@ export function ProjectPage() {
 
   async function handleUpgradeProjectCopy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!confirmLeavePendingReportMigration()) {
+      return;
+    }
     if (!upgradeSourceProject || !upgradeIdempotencyKey) {
       return;
     }
@@ -819,6 +886,9 @@ export function ProjectPage() {
     if (!importJob) {
       return;
     }
+    if (!confirmLeavePendingReportMigration()) {
+      return;
+    }
 
     setIsConfirmingImport(true);
     setError(undefined);
@@ -844,6 +914,9 @@ export function ProjectPage() {
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!confirmLeavePendingReportMigration()) {
+      return;
+    }
     setError(undefined);
     setIsCreating(true);
     try {
@@ -1460,6 +1533,13 @@ export function ProjectPage() {
                 </div>
               )}
             </section>
+
+            <ReportMigrationWorkspace
+              initialJobId={reportImportJobId}
+              onCreated={handleReportMigrationCreated}
+              onJobChanged={handleReportImportJobChanged}
+              onPendingChange={setHasPendingReportMigration}
+            />
           </div>
           {upgradeSourceProject ? (
             <div className="project-upgrade-backdrop">

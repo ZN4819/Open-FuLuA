@@ -403,6 +403,7 @@ $Result = [ordered]@{
     project_saved = $false
     image_uploaded = $false
     template_slots_checked = $false
+    r6_report_migration_previewed = $false
     validation_checked = $false
     editable_exported = $false
     final_exported = $false
@@ -445,6 +446,21 @@ try {
     $Result.template_slots_checked = $true
     $rootPage = Invoke-WebRequest -Uri "$($authorServer.BaseUri)/" -UseBasicParsing -TimeoutSec 10
     if ($rootPage.StatusCode -ne 200) { throw '客户端根页面不可用。' }
+
+    $r6Template = Join-Path $InstallRoot 'resources\backend\_internal\templates\report\2023-2025.12.08\runtime_template.docx'
+    $r6Job = Send-MultipartFile -Uri "$($authorServer.BaseUri)/api/report-imports/docx?mode=migration" -FilePath $r6Template -FormFileName 'file'
+    if ($r6Job.status -ne 'preview_ready' -or -not $r6Job.fingerprint.matched) {
+        throw '安装态 R6 完整报告迁移未形成已匹配的预览。'
+    }
+    if ([int]$r6Job.fingerprint.table_count -ne 55 -or [int]$r6Job.fingerprint.section_count -ne 17) {
+        throw '安装态 R6 模板指纹与冻结母版不一致。'
+    }
+    if ([bool]$r6Job.summary.document_appendix.available) {
+        throw '空白运行时母版被错误识别为完整附录 A。'
+    }
+    $r6DeepLink = Invoke-WebRequest -Uri "$($authorServer.BaseUri)/report-imports/$($r6Job.id)" -Headers @{ Accept = 'text/html,application/xhtml+xml' } -UseBasicParsing -TimeoutSec 10
+    if ($r6DeepLink.StatusCode -ne 200) { throw '安装态 R6 迁移审阅深链接不可用。' }
+    $Result.r6_report_migration_previewed = $true
 
     $created = Invoke-JsonRequest -Method POST -Uri "$($authorServer.BaseUri)/api/projects" -Body @{ name = $ProjectName }
     $projectId = [int]$created.id
@@ -577,7 +593,7 @@ finally {
             $evidenceParent = Split-Path -Parent $evidencePath
             if ($evidenceParent) { New-Item -ItemType Directory -Force -Path $evidenceParent | Out-Null }
             $checks = [ordered]@{}
-            foreach ($key in @('package_contents_checked','project_saved','image_uploaded','template_slots_checked','validation_checked','editable_exported','final_exported','docx_imported','close_reopen_checked','business_state_reopen','migration_preflight_checked','migration_checked','business_state_migration','uninstall_data_retained','reinstall_checked','business_state_reinstall')) { $checks[$key] = [bool]$Result[$key] }
+            foreach ($key in @('package_contents_checked','project_saved','image_uploaded','template_slots_checked','r6_report_migration_previewed','validation_checked','editable_exported','final_exported','docx_imported','close_reopen_checked','business_state_reopen','migration_preflight_checked','migration_checked','business_state_migration','uninstall_data_retained','reinstall_checked','business_state_reinstall')) { $checks[$key] = [bool]$Result[$key] }
             $evidence = [ordered]@{ schema_version = $Result.schema_version; source_commit = $Result.source_commit; version = $Result.version; installer_name = [System.IO.Path]::GetFileName($installer); installer_sha512 = $Result.installer_sha512; signatures = $Result.signatures; checks = $checks; source_database_unchanged = ($Result.source_database_hash_before -eq $Result.source_database_hash_after); manual_items = $Result.manual_items }
             [System.IO.File]::WriteAllText($evidencePath, ($evidence | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
         }

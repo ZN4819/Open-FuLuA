@@ -10,7 +10,7 @@ from unittest.mock import patch
 from app.config import settings
 from app import database
 from app.main import app, on_startup
-from app.runtime import resolve_runtime_paths
+from app.runtime import SCHEMA_VERSION, resolve_runtime_paths
 from app.services.docx_generator.generator import generate_project_docx
 
 
@@ -145,7 +145,7 @@ class RuntimePathsTests(unittest.TestCase):
             database_path.parent.mkdir(parents=True)
             connection = __import__("sqlite3").connect(database_path)
             try:
-                connection.execute("PRAGMA user_version = 8")
+                connection.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
             finally:
                 connection.close()
             with patch.dict(os.environ, {"FULUA_DATA_DIR": str(data_root)}, clear=True):
@@ -153,7 +153,7 @@ class RuntimePathsTests(unittest.TestCase):
 
         self.assertEqual(response.runtime_mode, "desktop")
         self.assertEqual(response.data_root, str(data_root))
-        self.assertEqual(response.schema_version, "8")
+        self.assertEqual(response.schema_version, SCHEMA_VERSION)
         self.assertTrue(response.backend_version)
 
     def test_startup_rebinds_files_route_to_desktop_storage_path_after_app_import(self) -> None:

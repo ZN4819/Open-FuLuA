@@ -59,6 +59,34 @@ def _create_source(root: Path, *, missing_image: bool = False) -> Path:
 
 
 class DataMigrationTests(unittest.TestCase):
+    def test_schema_nine_missing_report_import_table_fails_integrity_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            paths.storage_path.mkdir(parents=True)
+            with patch.dict(
+                os.environ,
+                {
+                    "FULUA_DATA_DIR": str(paths.data_root),
+                    "FULUA_DATABASE_PATH": str(paths.database_path),
+                },
+            ):
+                database.init_db()
+            connection = sqlite3.connect(paths.database_path)
+            try:
+                connection.execute("DROP TABLE report_import_issues")
+                connection.commit()
+            finally:
+                connection.close()
+
+            valid, reason, projects, images, missing = validate_database_and_evidence(
+                paths.database_path,
+                paths.storage_path,
+            )
+
+            self.assertFalse(valid)
+            self.assertEqual(reason, "数据库完整性或结构校验失败")
+            self.assertEqual((projects, images, missing), (0, 0, ()))
+
     def test_schema_six_missing_derived_table_fails_integrity_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))

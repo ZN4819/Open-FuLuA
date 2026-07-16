@@ -132,6 +132,117 @@ def validate_report(project_uuid: str) -> dict[str, Any]:
         members = db.execute("SELECT * FROM report_members WHERE project_id=? AND active=1", (project_id,)).fetchall()
         issues: list[dict[str, Any]] = []
 
+        import_job = db.execute(
+            """
+            SELECT * FROM report_import_jobs
+            WHERE created_project_id = ? AND status = 'succeeded'
+            ORDER BY id DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+        if import_job is not None:
+            blocked_source_keys: set[tuple[Any, Any, str, str]] = set()
+            migration_issues = db.execute(
+                """
+                SELECT i.*, r.action AS resolution_action
+                FROM report_import_issues i
+                LEFT JOIN report_import_resolutions r
+                  ON r.job_id = i.job_id AND r.issue_id = i.id
+                WHERE i.job_id = ? AND i.blocks_final_export = 1
+                ORDER BY i.id
+                """,
+                (int(import_job["id"]),),
+            ).fetchall()
+            for migration_issue in migration_issues:
+                action = str(migration_issue["resolution_action"] or "")
+                if action == "skip":
+                    continue
+                adopted = False
+                if action == "adopt_candidate":
+                    adopted = db.execute(
+                        """
+                        SELECT 1 FROM report_field_sources
+                        WHERE project_id = ? AND report_import_job_id = ?
+                          AND association_id IS ? AND authority_field_id IS ?
+                          AND field_path = ? AND source_locator = ?
+                          AND mapping_status = 'adopted' AND needs_confirmation = 0
+                        LIMIT 1
+                        """,
+                        (
+                            project_id,
+                            int(import_job["id"]),
+                            migration_issue["association_id"],
+                            migration_issue["authority_field_id"],
+                            migration_issue["field_path"],
+                            migration_issue["source_locator"],
+                        ),
+                    ).fetchone() is not None
+                if adopted:
+                    continue
+                blocked_source_keys.add(
+                    (
+                        migration_issue["association_id"],
+                        migration_issue["authority_field_id"],
+                        str(migration_issue["field_path"]),
+                        str(migration_issue["source_locator"]),
+                    )
+                )
+                issues.append(
+                    _issue(
+                        "migration-review",
+                        f"report_import_issues.{migration_issue['id']}",
+                        "MIGRATION_REVIEW_PENDING",
+                        "一次性迁移仍有内容需要审阅，正式导出前必须采用有效映射或明确跳过。",
+                        target="migration-review",
+                        relation_id=str(migration_issue["association_id"] or "R6-MIGRATION-REVIEW"),
+                        details={
+                            "job_id": int(import_job["id"]),
+                            "issue_id": int(migration_issue["id"]),
+                            "issue_code": str(migration_issue["code"]),
+                            "source_locator": str(migration_issue["source_locator"]),
+                            "resolution_action": action or None,
+                        },
+                    )
+                )
+
+            pending_sources = db.execute(
+                """
+                SELECT id, association_id, authority_field_id, field_path, source_locator, mapping_status
+                FROM report_field_sources
+                WHERE project_id = ? AND report_import_job_id = ?
+                  AND (needs_confirmation = 1 OR mapping_status = 'pending')
+                ORDER BY id
+                """,
+                (project_id, int(import_job["id"])),
+            ).fetchall()
+            for source in pending_sources:
+                source_key = (
+                    source["association_id"],
+                    source["authority_field_id"],
+                    str(source["field_path"]),
+                    str(source["source_locator"]),
+                )
+                if source_key in blocked_source_keys:
+                    continue
+                entity_path = f"report_field_sources.{source['id']}"
+                issues.append(
+                    _issue(
+                        "migration-review",
+                        entity_path,
+                        "MIGRATION_REVIEW_PENDING",
+                        "迁移字段仍处于待确认状态，正式导出前必须完成审阅。",
+                        target="migration-review",
+                        relation_id=str(source["association_id"] or "R6-MIGRATION-REVIEW"),
+                        details={
+                            "job_id": int(import_job["id"]),
+                            "source_id": int(source["id"]),
+                            "field_path": str(source["field_path"]),
+                            "source_locator": str(source["source_locator"]),
+                            "mapping_status": str(source["mapping_status"]),
+                        },
+                    )
+                )
+
         if not profile or not str(profile["system_name"]).strip():
             issues.append(_issue("3.6.1.01", "system_profiles.system_name", "SYSTEM_NAME_REQUIRED", "系统名称不能为空。", field="system_name", target="front.cover"))
         assessed = [row for row in organizations if row["organization_type"] == "assessed"]

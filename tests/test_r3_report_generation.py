@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import database
+from app.runtime import SCHEMA_VERSION
 from app.contracts import (
     FULL_REPORT_TEMPLATE_ASSET_SET_HASH,
     FULL_REPORT_TEMPLATE_EDITION,
@@ -246,7 +247,7 @@ class R3ReportGenerationTests(unittest.TestCase):
                 ).fetchone()[0]
             )
             foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
-        self.assertEqual(version, 8)
+        self.assertEqual(version, int(SCHEMA_VERSION))
         self.assertEqual((full_count, appendix_count), (1, 0))
         self.assertEqual(foreign_keys, [])
 
@@ -255,7 +256,10 @@ class R3ReportGenerationTests(unittest.TestCase):
         self._downgrade_to_schema_five()
         database.init_db()
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 8)
+            self.assertEqual(
+                int(db.execute("PRAGMA user_version").fetchone()[0]),
+                int(SCHEMA_VERSION),
+            )
             state = db.execute(
                 "SELECT project_revision FROM report_generation_state WHERE project_id = ?",
                 (project["id"],),

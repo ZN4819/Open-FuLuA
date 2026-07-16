@@ -8,6 +8,7 @@ export type ReportWorkspaceRoute =
   | { view: "basics" }
   | { view: "objects" }
   | { view: "derived" }
+  | { view: "migration_review" }
   | { view: "section"; sectionKey: string }
   | { view: "appendix_a"; sectionCode?: string };
 
@@ -96,6 +97,9 @@ export function projectWorkspacePath(projectUuid: string, route: ReportWorkspace
   if (route.view === "derived") {
     return `${root}/derived`;
   }
+  if (route.view === "migration_review") {
+    return `${root}/migration-review`;
+  }
   if (route.view === "appendix_a") {
     return route.sectionCode
       ? `${root}/appendix-a/${encodeURIComponent(route.sectionCode)}`
@@ -132,6 +136,9 @@ export function parseProjectWorkspacePath(pathname: string): {
   if (segments[2] === "derived" && segments.length === 3) {
     return { projectUuid, route: { view: "derived" } };
   }
+  if (segments[2] === "migration-review" && segments.length === 3) {
+    return { projectUuid, route: { view: "migration_review" } };
+  }
   if (segments[2] === "report" && segments[3] && segments.length === 4) {
     return { projectUuid, route: { view: "section", sectionKey: segments[3] } };
   }
@@ -142,4 +149,20 @@ export function parseProjectWorkspacePath(pathname: string): {
     };
   }
   return null;
+}
+
+export function reportImportPath(jobId: number): string {
+  if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+    throw new Error("迁移任务 ID 必须是正整数");
+  }
+  return `/report-imports/${jobId}`;
+}
+
+export function parseReportImportPath(pathname: string): { jobId: number } | null {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length !== 2 || segments[0] !== "report-imports" || !/^\d+$/.test(segments[1])) {
+    return null;
+  }
+  const jobId = Number(segments[1]);
+  return Number.isSafeInteger(jobId) && jobId > 0 ? { jobId } : null;
 }
