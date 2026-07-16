@@ -141,6 +141,16 @@ class R3ReportGenerationTests(unittest.TestCase):
                         timestamp,
                     ),
                 )
+                if layer.section_code == "A-4":
+                    db.execute(
+                        """
+                        INSERT INTO assessment_object_subsystems (
+                            binding_uuid, project_id, object_uuid, subsystem_name,
+                            assessment_methods_json, remark, created_at, updated_at
+                        ) VALUES (?, ?, ?, '业务子系统', '[]', '', ?, ?)
+                        """,
+                        (str(uuid.uuid4()), project["id"], object_uuid, timestamp, timestamp),
+                    )
             self.rows: dict[str, int] = {}
             for sort_order, indicator in enumerate(self.rules.indicators, start=1):
                 cursor = db.execute(
@@ -218,7 +228,7 @@ class R3ReportGenerationTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_schema_six_initializes_derived_state_only_for_full_report(self) -> None:
+    def test_current_schema_initializes_derived_state_only_for_full_report(self) -> None:
         appendix_project = database.create_project("仅附录 A")
         full_report = self._create_project()
         with database.connect() as db:
@@ -236,7 +246,7 @@ class R3ReportGenerationTests(unittest.TestCase):
                 ).fetchone()[0]
             )
             foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
-        self.assertEqual(version, 6)
+        self.assertEqual(version, 7)
         self.assertEqual((full_count, appendix_count), (1, 0))
         self.assertEqual(foreign_keys, [])
 
@@ -245,7 +255,7 @@ class R3ReportGenerationTests(unittest.TestCase):
         self._downgrade_to_schema_five()
         database.init_db()
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 6)
+            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 7)
             state = db.execute(
                 "SELECT project_revision FROM report_generation_state WHERE project_id = ?",
                 (project["id"],),
@@ -323,6 +333,18 @@ class R3ReportGenerationTests(unittest.TestCase):
         )
         self.assertEqual(schema["properties"]["blocks"]["minItems"], len(report_generation.DERIVED_BLOCK_KEYS))
         self.assertEqual(schema["properties"]["threat_catalog"]["minItems"], 24)
+        chapter4_contract = schema["properties"]["original_projection"]["allOf"][1]["properties"]["chapter4_tables"]
+        self.assertEqual(
+            set(chapter4_contract["required"]),
+            {f"table_4_{index}" for index in range(1, 12)},
+        )
+        self.assertFalse(chapter4_contract["additionalProperties"])
+        for table_id, contract in chapter4_contract["properties"].items():
+            definition = schema["$defs"][contract["$ref"].rsplit("/", 1)[-1]]
+            self.assertEqual(
+                definition["allOf"][1]["properties"]["projection_id"]["const"],
+                table_id,
+            )
 
     def test_indicator_aggregation_and_bidirectional_correction_contract(self) -> None:
         vectors = {
@@ -488,6 +510,17 @@ class R3ReportGenerationTests(unittest.TestCase):
         self.assertEqual(final["statistics"]["total"]["indicator_total"], 41)
         self.assertEqual(final["statistics"]["total"]["compliant"], 41)
         self.assertEqual(final["score"]["display_score"], "100.00")
+        chapter4 = projection["original_projection"]["chapter4_tables"]
+        self.assertEqual(set(chapter4), {f"table_4_{index}" for index in range(1, 12)})
+        self.assertEqual(chapter4["table_4_4"]["rows"][0]["object_name"], "业务子系统")
+        self.assertEqual(
+            chapter4["table_4_6"]["rows"][0]["cells"]["存储完整性"]["result"],
+            "符合",
+        )
+        self.assertEqual(
+            chapter4["table_4_6"]["summary"]["存储完整性"]["result"],
+            "符合",
+        )
         self.assertFalse(_has_private_factor(projection))
 
         run = report_generation.create_generation_run(
@@ -599,6 +632,15 @@ class R3ReportGenerationTests(unittest.TestCase):
                 ) VALUES (?, ?, 'data', '第二个重要数据', 'A-4', '{}', ?, ?)
                 """,
                 (second_a4, project["id"], timestamp, timestamp),
+            )
+            db.execute(
+                """
+                INSERT INTO assessment_object_subsystems (
+                    binding_uuid, project_id, object_uuid, subsystem_name,
+                    assessment_methods_json, remark, created_at, updated_at
+                ) VALUES (?, ?, ?, '业务子系统', '[]', '', ?, ?)
+                """,
+                (str(uuid.uuid4()), project["id"], second_a4, timestamp, timestamp),
             )
             extra_rows: dict[str, int] = {}
             for sort_order, (indicator_name, score_kind) in enumerate(

@@ -4335,6 +4335,7 @@ textarea:hover {
 }
 
 .derived-status.valid,
+.derived-status.succeeded,
 .derived-status.confirmed,
 .derived-status.current\:confirmed {
   color: #166534;
@@ -4403,6 +4404,116 @@ textarea:hover {
 
 .derived-workspace .warning-text {
   color: var(--color-warning);
+}
+
+/* R4 完整报告 DOCX 导出工作区 */
+.report-export-card {
+  border-top: 3px solid var(--color-primary);
+}
+
+.report-export-card > p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.report-export-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.report-export-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.report-export-controls input {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.report-export-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.report-export-facts div {
+  min-width: 0;
+  padding: 9px 10px;
+  background: #fafafa;
+  border-radius: 7px;
+  box-shadow: var(--shadow-ring);
+}
+
+.report-export-facts dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.report-export-facts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.report-export-issues > strong {
+  display: block;
+  margin-bottom: 7px;
+}
+
+.report-export-issues ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-export-issues li {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.28fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 7px;
+}
+
+.report-export-issues.error li {
+  background: var(--color-danger-soft);
+}
+
+.report-export-issues.warning li {
+  background: var(--color-warning-soft);
+}
+
+.report-export-issues li > span {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-export-issues li p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.report-export-issues li small {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 800px) {
+  .report-export-controls,
+  .report-export-facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1360px) {

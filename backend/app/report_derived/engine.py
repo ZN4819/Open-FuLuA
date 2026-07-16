@@ -420,8 +420,11 @@ def _apply_corrections(
                     "object_name": a2_row["object_name"],
                     "indicator_code": a2_row["indicator_code"],
                     "indicator_name": a2_row["indicator_name"],
+                    "section_code": a2_row["section_code"],
                     "original_score": a2_row["object_score"],
+                    "original_result": a2_row["object_result"],
                     "final_score": final_score,
+                    "final_result": object_result_from_score(final_score),
                     "related_source_row_ids": sorted(row["source_row_id"] for _, row in related),
                     "correction_uuids": sorted(str(relation["correction_uuid"]) for relation, _ in related),
                     "was_corrected": True,
@@ -439,8 +442,11 @@ def _apply_corrections(
                     "object_name": a4_row["object_name"],
                     "indicator_code": a4_row["indicator_code"],
                     "indicator_name": a4_row["indicator_name"],
+                    "section_code": a4_row["section_code"],
                     "original_score": a4_row["object_score"],
+                    "original_result": a4_row["object_result"],
                     "final_score": final_score,
+                    "final_result": object_result_from_score(final_score),
                     "related_source_row_ids": [a2_row["source_row_id"]],
                     "correction_uuids": [str(relation["correction_uuid"])],
                     "was_corrected": True,
@@ -500,6 +506,320 @@ def _aggregate_projection_rows(
             }
         )
     return output_rows, indicators
+
+
+def _chapter4_object_matrix(
+    rows: list[dict[str, Any]],
+    *,
+    projection_id: str,
+    indicator_names: tuple[str, ...],
+) -> dict[str, Any]:
+    """Build an authoritative object/result matrix for one chapter-4 table.
+
+    The renderer must not re-aggregate Appendix A records.  This projection is
+    therefore produced next to the original R3 scores and carries both the
+    display result and its exact source-row provenance.
+    """
+
+    by_object: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row["indicator_name"] in indicator_names:
+            by_object[str(row["object_uuid"])].append(row)
+    output: list[dict[str, Any]] = []
+    for object_uuid, object_rows in sorted(
+        by_object.items(),
+        key=lambda item: (str(item[1][0]["object_name"]), item[0]),
+    ):
+        cells: dict[str, dict[str, Any]] = {}
+        for indicator_name in indicator_names:
+            matches = [
+                row for row in object_rows if row["indicator_name"] == indicator_name
+            ]
+            if len(matches) > 1:
+                raise ProjectionInputError(
+                    [
+                        _issue(
+                            "CHAPTER4_PROJECTION_DUPLICATE_CELL",
+                            "同一测评对象的同一指标存在多条原始记录。",
+                            indicator=indicator_name,
+                            object_uuid=object_uuid,
+                            details={
+                                "projection_id": projection_id,
+                                "source_row_ids": [
+                                    row["source_row_id"] for row in matches
+                                ],
+                            },
+                        )
+                    ]
+                )
+            source = matches[0] if matches else None
+            cells[indicator_name] = {
+                "result": source["object_result"] if source else "不适用",
+                "source_row_ids": [source["source_row_id"]] if source else [],
+                "missing": source is None,
+            }
+        output.append(
+            {
+                "object_uuid": object_uuid,
+                "object_name": str(object_rows[0]["object_name"]),
+                "cells": cells,
+                "source_row_ids": sorted(
+                    row["source_row_id"] for row in object_rows
+                ),
+            }
+        )
+    return {
+        "projection_id": projection_id,
+        "columns": list(indicator_names),
+        "rows": output,
+        "render_empty_structure": not bool(output),
+    }
+
+
+def _chapter4_subsystem_matrix(
+    rows: list[dict[str, Any]],
+    *,
+    indicator_names: tuple[str, ...],
+    subsystem_by_object: dict[str, str],
+) -> dict[str, Any]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    missing_objects: set[str] = set()
+    for row in rows:
+        object_uuid = str(row["object_uuid"])
+        subsystem = subsystem_by_object.get(object_uuid, "").strip()
+        if not subsystem:
+            missing_objects.add(object_uuid)
+            continue
+        grouped[(subsystem, str(row["indicator_name"]))].append(row)
+    if missing_objects:
+        raise ProjectionInputError(
+            [
+                _issue(
+                    "A4_SUBSYSTEM_REQUIRED",
+                    "A-4 测评对象缺少所属子系统，不能生成表 4-4。",
+                    details={"object_uuids": sorted(missing_objects)},
+                )
+            ]
+        )
+
+    subsystems = sorted({key[0] for key in grouped})
+    output: list[dict[str, Any]] = []
+    for subsystem in subsystems:
+        cells: dict[str, dict[str, Any]] = {}
+        source_ids: list[int] = []
+        for indicator_name in indicator_names:
+            sources = grouped.get((subsystem, indicator_name), [])
+            source_row_ids = sorted(row["source_row_id"] for row in sources)
+            source_ids.extend(source_row_ids)
+            cells[indicator_name] = {
+                "result": aggregate_indicator_result(
+                    row["object_result"] for row in sources
+                )
+                if sources
+                else "不适用",
+                "source_row_ids": source_row_ids,
+                "missing": not bool(sources),
+            }
+        output.append(
+            {
+                "object_uuid": f"subsystem:{stable_hash(subsystem)[:24]}",
+                "object_name": subsystem,
+                "subsystem_name": subsystem,
+                "cells": cells,
+                "source_row_ids": sorted(source_ids),
+            }
+        )
+    return {
+        "projection_id": "table_4_4",
+        "grouping": ["subsystem_name", "indicator_name"],
+        "columns": list(indicator_names),
+        "rows": output,
+        "render_empty_structure": not bool(output),
+    }
+
+
+def _chapter4_data_matrix(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    columns: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("重要数据传输机密性", ("重要数据传输机密性",)),
+        ("重要数据存储机密性", ("重要数据存储机密性",)),
+        ("重要数据传输完整性", ("重要数据传输完整性",)),
+        (
+            "存储完整性",
+            ("访问控制信息完整性", "重要数据存储完整性"),
+        ),
+    )
+    relevant_names = {name for _, names in columns for name in names}
+    by_object: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row["indicator_name"] in relevant_names:
+            by_object[str(row["object_uuid"])].append(row)
+    output: list[dict[str, Any]] = []
+    for object_uuid, object_rows in sorted(
+        by_object.items(),
+        key=lambda item: (str(item[1][0]["object_name"]), item[0]),
+    ):
+        cells: dict[str, dict[str, Any]] = {}
+        source_ids: list[int] = []
+        for label, source_names in columns:
+            matches = [
+                row for row in object_rows if row["indicator_name"] in source_names
+            ]
+            if len(matches) > 1 and len({row["object_result"] for row in matches}) > 1:
+                raise ProjectionInputError(
+                    [
+                        _issue(
+                            "TABLE_4_6_INTEGRITY_MAPPING_CONFLICT",
+                            "同一对象的表 4-6 投影列存在互斥指标且结论不一致。",
+                            object_uuid=object_uuid,
+                            details={
+                                "column": label,
+                                "source_row_ids": [
+                                    row["source_row_id"] for row in matches
+                                ],
+                            },
+                        )
+                    ]
+                )
+            source = matches[0] if matches else None
+            matched_ids = sorted(row["source_row_id"] for row in matches)
+            source_ids.extend(matched_ids)
+            cells[label] = {
+                "result": source["object_result"] if source else "不适用",
+                "source_indicator": (
+                    "、".join(row["indicator_name"] for row in matches)
+                    if matches
+                    else None
+                ),
+                "source_row_ids": matched_ids,
+                "missing": source is None,
+            }
+        output.append(
+            {
+                "object_uuid": object_uuid,
+                "object_name": str(object_rows[0]["object_name"]),
+                "cells": cells,
+                "source_row_ids": sorted(source_ids),
+            }
+        )
+    return {
+        "projection_id": "table_4_6",
+        "columns": [label for label, _ in columns],
+        "rows": output,
+        "render_empty_structure": not bool(output),
+    }
+
+
+def build_chapter4_projection(
+    db: sqlite3.Connection,
+    project_id: int,
+    rows: list[dict[str, Any]],
+    rule_set: DerivedRuleSet,
+) -> dict[str, Any]:
+    layer_indicators = {
+        layer.section_code: tuple(
+            indicator.name
+            for indicator in rule_set.indicators
+            if indicator.section_code == layer.section_code
+        )
+        for layer in rule_set.layers
+    }
+    by_section: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_section[str(row["section_code"])].append(row)
+    subsystem_by_object = {
+        str(row["object_uuid"]): str(row["subsystem_name"] or "")
+        for row in db.execute(
+            "SELECT object_uuid, subsystem_name FROM assessment_object_subsystems WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+    }
+    a4_rows = by_section["A-4"]
+    tables = {
+        "table_4_1": _chapter4_object_matrix(
+            by_section["A-1"], projection_id="table_4_1",
+            indicator_names=layer_indicators["A-1"],
+        ),
+        "table_4_2": _chapter4_object_matrix(
+            by_section["A-2"], projection_id="table_4_2",
+            indicator_names=layer_indicators["A-2"],
+        ),
+        "table_4_3": _chapter4_object_matrix(
+            by_section["A-3"], projection_id="table_4_3",
+            indicator_names=layer_indicators["A-3"],
+        ),
+        "table_4_4": _chapter4_subsystem_matrix(
+            a4_rows,
+            indicator_names=layer_indicators["A-4"],
+            subsystem_by_object=subsystem_by_object,
+        ),
+        "table_4_5": _chapter4_object_matrix(
+            a4_rows, projection_id="table_4_5", indicator_names=("身份鉴别",),
+        ),
+        "table_4_6": _chapter4_data_matrix(a4_rows),
+        "table_4_7": _chapter4_object_matrix(
+            a4_rows, projection_id="table_4_7", indicator_names=("不可否认性",),
+        ),
+        "table_4_8": _chapter4_object_matrix(
+            by_section["A-5"], projection_id="table_4_8",
+            indicator_names=layer_indicators["A-5"],
+        ),
+        "table_4_9": _chapter4_object_matrix(
+            by_section["A-6"], projection_id="table_4_9",
+            indicator_names=layer_indicators["A-6"],
+        ),
+        "table_4_10": _chapter4_object_matrix(
+            by_section["A-7"], projection_id="table_4_10",
+            indicator_names=layer_indicators["A-7"],
+        ),
+        "table_4_11": _chapter4_object_matrix(
+            by_section["A-8"], projection_id="table_4_11",
+            indicator_names=layer_indicators["A-8"],
+        ),
+    }
+    result_by_indicator = {
+        (str(row["section_code"]), str(row["indicator_name"])): str(row["indicator_result"])
+        for row in rows
+    }
+    section_by_table = {
+        "table_4_1": "A-1", "table_4_2": "A-2", "table_4_3": "A-3",
+        "table_4_4": "A-4", "table_4_5": "A-4", "table_4_6": "A-4",
+        "table_4_7": "A-4", "table_4_8": "A-5", "table_4_9": "A-6",
+        "table_4_10": "A-7", "table_4_11": "A-8",
+    }
+    for table_id, table in tables.items():
+        summary: dict[str, dict[str, Any]] = {}
+        for column in table["columns"]:
+            source_names = (
+                ("访问控制信息完整性", "重要数据存储完整性")
+                if table_id == "table_4_6" and column == "存储完整性"
+                else (column,)
+            )
+            available = [
+                (name, result_by_indicator[(section_by_table[table_id], name)])
+                for name in source_names
+                if (section_by_table[table_id], name) in result_by_indicator
+            ]
+            distinct = {result for _, result in available}
+            if len(distinct) > 1:
+                raise ProjectionInputError(
+                    [
+                        _issue(
+                            "CHAPTER4_SUMMARY_MAPPING_CONFLICT",
+                            "第 4 章汇总列关联的原始指标结论不一致。",
+                            details={
+                                "projection_id": table_id,
+                                "column": column,
+                                "source_indicators": [name for name, _ in available],
+                            },
+                        )
+                    ]
+                )
+            summary[column] = {
+                "result": next(iter(distinct), "不适用"),
+                "source_indicators": [name for name, _ in available],
+            }
+        table["summary"] = summary
+    return tables
 
 
 def calculate_statistics(indicators: list[dict[str, Any]], rule_set: DerivedRuleSet) -> dict[str, Any]:
@@ -601,6 +921,12 @@ def build_projection(
     original_projection = {
         "rows": original_rows,
         "indicators": original_indicators,
+        "chapter4_tables": build_chapter4_projection(
+            db,
+            project_id,
+            original_rows,
+            rules,
+        ),
     }
     correction_projection = {
         "rows": corrections,

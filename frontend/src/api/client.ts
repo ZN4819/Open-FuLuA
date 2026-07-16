@@ -367,6 +367,25 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function downloadFile(path: string, fallbackFileName: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}${path}`);
+  if (!response.ok) {
+    throw await responseApiError(response, `下载失败：${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const fileName = _fileNameFromDisposition(response.headers.get("content-disposition")) ?? fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return fileName;
+}
+
 export function createProject(name: string, projectType: ProjectType = "appendix_a"): Promise<Project> {
   return request<Project>("/api/projects", {
     method: "POST",

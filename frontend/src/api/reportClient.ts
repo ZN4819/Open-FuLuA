@@ -1,4 +1,4 @@
-import { request } from "./client.ts";
+import { downloadFile, request } from "./client.ts";
 import type { WorkflowStatus } from "../projectContracts.ts";
 
 export type ReportSectionType = "form" | "blocks" | "generated" | "appendix_a" | "appendix_b";
@@ -567,6 +567,65 @@ export type DerivedReview = {
   latest_consistency?: ConsistencyResult | null;
 };
 
+export type ReportExportMode = "draft" | "final";
+export type ReportExportIssue = {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  field?: string | null;
+  section_code?: string | null;
+  indicator?: string | null;
+  object_uuid?: string | null;
+  object_name?: string | null;
+  block_id?: string | null;
+  details?: Record<string, unknown>;
+};
+
+export type ReportExportValidation = {
+  project_uuid: string;
+  project_revision: number;
+  mode: ReportExportMode;
+  errors: number;
+  warnings: number;
+  issues: ReportExportIssue[];
+  valid: boolean;
+};
+
+export type ReportExportJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type ReportExportJob = {
+  job_uuid: string;
+  project_id: number;
+  mode: ReportExportMode;
+  version: string;
+  status: ReportExportJobStatus;
+  project_revision: number;
+  template_package_id: string;
+  template_asset_set_hash: string;
+  template_docx_hash: string;
+  r2_context_hash?: string | null;
+  r3_context_hash?: string | null;
+  assembly_context_hash?: string | null;
+  snapshot_uuid?: string | null;
+  docx_hash?: string | null;
+  page_count?: number | null;
+  word_refresh_status: "not_started" | "skipped" | "succeeded" | "failed";
+  issues: ReportExportIssue[];
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  download_available: boolean;
+};
+
+export type ReportExportIssueCollection = {
+  job_uuid: string;
+  status: ReportExportJobStatus;
+  errors: ReportExportIssue[];
+  warnings: ReportExportIssue[];
+  info: ReportExportIssue[];
+};
+
 const reportRoot = (projectUuid: string) => `/api/projects/${encodeURIComponent(projectUuid)}/report`;
 
 const revisionHeaders = (revision: number) => ({ "If-Match": String(revision) });
@@ -1129,4 +1188,39 @@ export function runDerivedConsistencyCheck(
 
 export function getLatestDerivedConsistency(projectUuid: string): Promise<ConsistencyResult | null> {
   return request<ConsistencyResult | null>(`${reportRoot(projectUuid)}/consistency-checks/latest`);
+}
+
+export function validateReportExport(
+  projectUuid: string,
+  mode: ReportExportMode
+): Promise<ReportExportValidation> {
+  return request<ReportExportValidation>(
+    `/api/projects/${encodeURIComponent(projectUuid)}/report-validations?mode=${encodeURIComponent(mode)}`,
+    { method: "POST" }
+  );
+}
+
+export function createReportExportJob(
+  projectUuid: string,
+  payload: { mode: ReportExportMode; version: string; expected_project_revision: number }
+): Promise<ReportExportJob> {
+  return request<ReportExportJob>(
+    `/api/projects/${encodeURIComponent(projectUuid)}/report-export-jobs`,
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+export function getReportExportJob(jobUuid: string): Promise<ReportExportJob> {
+  return request<ReportExportJob>(`/api/report-export-jobs/${encodeURIComponent(jobUuid)}`);
+}
+
+export function getReportExportIssues(jobUuid: string): Promise<ReportExportIssueCollection> {
+  return request<ReportExportIssueCollection>(`/api/report-export-jobs/${encodeURIComponent(jobUuid)}/issues`);
+}
+
+export function downloadReportExportDocx(jobUuid: string): Promise<string> {
+  return downloadFile(
+    `/api/report-export-jobs/${encodeURIComponent(jobUuid)}/docx`,
+    `完整报告-${jobUuid}.docx`
+  );
 }

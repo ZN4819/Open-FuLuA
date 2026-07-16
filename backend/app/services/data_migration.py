@@ -24,6 +24,7 @@ from app.runtime import BACKEND_VERSION, RuntimePaths
 from app.report_core.contracts import REPORT_CORE_AUXILIARY_TABLES, REPORT_CORE_ENTITY_TABLES
 from app.report_core.schema import audit_report_core_schema
 from app.report_derived.schema import REPORT_DERIVED_TABLES, audit_report_derived_schema
+from app.report_export.schema import REPORT_EXPORT_TABLES, audit_report_export_schema
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,11 @@ def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]
                 audit_report_derived_schema(db)
             except (RuntimeError, sqlite3.Error):
                 return "schema_invalid", 0, 0, ()
+        if schema_version >= 7:
+            try:
+                audit_report_export_schema(db)
+            except (RuntimeError, sqlite3.Error):
+                return "schema_invalid", 0, 0, ()
         projects = int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0])
         rows = tuple(str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images"))
         return "ok", projects, len(rows), rows
@@ -282,6 +288,7 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
                     "section_subsystems", "app_metadata", "project_upgrade_operations",
                     "sqlite_sequence", *REPORT_CORE_ENTITY_TABLES, *REPORT_CORE_AUXILIARY_TABLES,
                     *REPORT_DERIVED_TABLES,
+                    *REPORT_EXPORT_TABLES,
                 }
                 if not tables <= allowed or "projects" not in tables:
                     return True

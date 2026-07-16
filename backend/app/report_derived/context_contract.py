@@ -69,13 +69,42 @@ def _require_sha256(value: Any, location: str) -> None:
         _fail("INVALID_SHA256", location=location)
 
 
-def _require_projection(value: Any, location: str, *, final: bool = False) -> dict[str, Any]:
+def _require_projection(
+    value: Any,
+    location: str,
+    *,
+    final: bool = False,
+    chapter4: bool = False,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail("TYPE_MISMATCH", location=location, expected="object")
     if not isinstance(value.get("rows"), list) or not isinstance(value.get("indicators"), list):
         _fail("PROJECTION_COLLECTION_INVALID", location=location)
     if len(value["indicators"]) != 41:
         _fail("INDICATOR_CARDINALITY_INVALID", location=location, actual=len(value["indicators"]))
+    if chapter4:
+        tables = value.get("chapter4_tables")
+        expected = {f"table_4_{index}" for index in range(1, 12)}
+        if not isinstance(tables, dict) or set(tables) != expected:
+            _fail(
+                "CHAPTER4_TABLE_SET_MISMATCH",
+                location=f"{location}.chapter4_tables",
+                expected=sorted(expected),
+                actual=sorted(tables) if isinstance(tables, dict) else None,
+            )
+        for table_id, table in tables.items():
+            if (
+                not isinstance(table, dict)
+                or table.get("projection_id") != table_id
+                or not isinstance(table.get("columns"), list)
+                or not isinstance(table.get("rows"), list)
+                or not isinstance(table.get("summary"), dict)
+                or not isinstance(table.get("render_empty_structure"), bool)
+            ):
+                _fail(
+                    "CHAPTER4_TABLE_INVALID",
+                    location=f"{location}.chapter4_tables.{table_id}",
+                )
     if final:
         statistics = value.get("statistics")
         score = value.get("score")
@@ -113,7 +142,11 @@ def validate_context_payload(
     for key, digest in source_hashes.items():
         _require_sha256(digest, f"source_hashes.{key}")
 
-    _require_projection(payload["original_projection"], "original_projection")
+    _require_projection(
+        payload["original_projection"],
+        "original_projection",
+        chapter4=True,
+    )
     final_projection = _require_projection(payload["final_projection"], "final_projection", final=True)
     correction = payload["correction_projection"]
     if not isinstance(correction, dict) or not isinstance(correction.get("rows"), list) or not isinstance(
