@@ -37,6 +37,12 @@ from .report_export.schema import (
     ensure_report_export_schema,
     invalidate_pre_r4_projection_contexts,
 )
+from .report_evidence.schema import (
+    audit_report_evidence_schema,
+    ensure_report_evidence_schema,
+    initialize_existing_report_evidence_categories,
+    initialize_report_evidence_categories,
+)
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -396,6 +402,10 @@ def init_db() -> None:
         ensure_report_export_schema(db)
         if current_version == 6:
             invalidate_pre_r4_projection_contexts(db)
+        if current_version >= 8:
+            audit_report_evidence_schema(db)
+        ensure_report_evidence_schema(db)
+        initialize_existing_report_evidence_categories(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
@@ -835,6 +845,7 @@ def _insert_project(
     if project_type == "full_report":
         initialize_report_domain(db, project_id=project_id)
         initialize_report_derived_state(db, project_id)
+        initialize_report_evidence_categories(db, project_id)
     project = get_project_by_id(project_id, db)
     if project is None:
         raise RuntimeError("PROJECT_CREATE_FAILED")

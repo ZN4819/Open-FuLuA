@@ -19,6 +19,7 @@ from ..report_export.context import build_assembly_context, validate_for_export
 from ..report_export.renderer import render_report, validate_rendered_report
 from ..report_export.word import WordRefreshError, refresh_with_word
 from ..report_schemas import ReportExportJobWrite
+from . import report_context, report_evidence
 from .report_domain.common import require_report_project
 from .report_domain.errors import ReportDomainError
 from .report_templates.registry import report_template_registry
@@ -217,7 +218,7 @@ def _insert_snapshot(
             """,
             (
                 context["r2_context_hash"], context["r3_context_hash"], context["assembly_context_hash"],
-                snapshot_uuid, _json(context["validation_summary"]["issues"] + context["warning_summary"]["appendix_b"]),
+                snapshot_uuid, _json(context["validation_summary"]["issues"]),
                 job_uuid,
             ),
         )
@@ -311,6 +312,26 @@ def process_export_job(job_uuid: str) -> None:
                 issues = _loads(row["issues_json"], [])
                 issues.append({"severity": "warning", "code": exc.code, "message": "草稿未完成 Microsoft Word 字段刷新。"})
                 db.execute("UPDATE report_export_jobs SET issues_json = ? WHERE job_uuid = ?", (_json(issues), job_uuid))
+
+        # Word automation may be long-running. Do not publish a document built
+        # from an obsolete R2/R3/R5 snapshot if another window changed the
+        # report while Word was refreshing fields and repaginating.
+        report_context.assert_context_current(
+            project_uuid,
+            expected_revision=revision,
+            expected_project_updated_at=str(context["r2_context"]["project"]["updated_at"]),
+        )
+        current_appendix_b = report_evidence.build_projection(
+            project_uuid,
+            expected_project_revision=revision,
+        )
+        if current_appendix_b["projection_hash"] != context["r5_projection_hash"]:
+            raise ReportDomainError(
+                "APPENDIX_B_CHANGED_DURING_EXPORT",
+                "附录 B 在 Word 刷新期间发生变化，请重新导出。",
+                status_code=409,
+                project_uuid=project_uuid,
+            )
         initial.unlink(missing_ok=True)
         status_file = staging / "word-status.json"
         status_file.unlink(missing_ok=True)

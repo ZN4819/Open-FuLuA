@@ -25,7 +25,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
-const CURRENT_SCHEMA_VERSION = "7";
+const CURRENT_SCHEMA_VERSION = "8";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">

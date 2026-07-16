@@ -367,6 +367,14 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function requestFormData<T>(path: string, form: FormData, method = "POST"): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method, body: form });
+  if (!response.ok) {
+    throw await responseApiError(response, `请求失败：${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export async function downloadFile(path: string, fallbackFileName: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}${path}`);
   if (!response.ok) {

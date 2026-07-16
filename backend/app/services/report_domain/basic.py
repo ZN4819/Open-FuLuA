@@ -360,6 +360,14 @@ def delete_organization(project_uuid: str, organization_uuid: str, expected_revi
         block_count = int(db.execute("SELECT COUNT(*) FROM report_blocks WHERE project_id=? AND instr(payload_json,?)>0", (project["id"], organization_uuid)).fetchone()[0])
         if block_count:
             references.append({"entity_type": "report_block", "count": block_count})
+        evidence_count = int(
+            db.execute(
+                "SELECT COUNT(*) FROM report_evidence_items WHERE project_id = ? AND organization_uuid = ?",
+                (project["id"], organization_uuid),
+            ).fetchone()[0]
+        )
+        if evidence_count:
+            references.append({"entity_type": "report_evidence_item", "count": evidence_count})
         if references:
             raise ReportDomainError("REPORT_ENTITY_REFERENCED", "该单位仍被报告数据引用，不能删除。", status_code=409, project_uuid=project_uuid, entity_type="report_organization", entity_uuid=organization_uuid, details={"references": references})
         cursor=db.execute("DELETE FROM report_organizations WHERE project_id=? AND organization_uuid=? AND revision=?", (project["id"], organization_uuid, expected_revision))
@@ -463,6 +471,14 @@ def delete_member(project_uuid: str, member_uuid: str, expected_revision: int) -
         block_count = int(db.execute("SELECT COUNT(*) FROM report_blocks WHERE project_id=? AND instr(payload_json,?)>0", (project["id"], member_uuid)).fetchone()[0])
         if block_count:
             references.append({"entity_type": "report_block", "count": block_count})
+        evidence_count = int(
+            db.execute(
+                "SELECT COUNT(*) FROM report_evidence_usages WHERE project_id = ? AND related_member_uuid = ?",
+                (project["id"], member_uuid),
+            ).fetchone()[0]
+        )
+        if evidence_count:
+            references.append({"entity_type": "report_evidence_usage", "count": evidence_count})
         if references:
             raise ReportDomainError("REPORT_ENTITY_REFERENCED", "该成员仍被报告数据引用，不能删除。", status_code=409, project_uuid=project_uuid, entity_type="report_member", entity_uuid=member_uuid, details={"references": references})
         cursor=db.execute("DELETE FROM report_members WHERE member_uuid=? AND project_id=? AND revision=?", (member_uuid, project["id"], expected_revision))

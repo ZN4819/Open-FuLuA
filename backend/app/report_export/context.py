@@ -15,7 +15,7 @@ from typing import Any, Literal
 from ..config import settings
 from ..report_core.field_matrix import load_default_field_matrix
 from ..report_derived.rules import canonical_json, load_default_rule_set, stable_hash
-from ..services import report_context, report_generation
+from ..services import report_context, report_evidence, report_generation
 from ..services.report_domain import validation as report_validation
 from ..services.report_domain.errors import ReportDomainError
 from ..services.report_templates.registry import report_template_registry
@@ -210,12 +210,15 @@ def _table_rows(r2: dict[str, Any], r3: dict[str, Any]) -> dict[str, list[dict[s
 def _validate_context(
     r2: dict[str, Any],
     r3: dict[str, Any],
+    appendix_b: dict[str, Any],
     *,
     mode: ExportMode,
     base_issues: list[dict[str, Any]],
     table_rows: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     issues = list(base_issues)
+    issues.extend(dict(item) for item in appendix_b.get("errors", []))
+    issues.extend(dict(item) for item in appendix_b.get("warnings", []))
     scalars = r2["scalars"]
     required = {
         "report_number": "报告编号",
@@ -340,6 +343,9 @@ def build_assembly_context(
         else:
             r3 = _empty_r3(exc)
     r3_hash = stable_hash(r3)
+    appendix_b = report_evidence.build_projection(
+        project_uuid, expected_project_revision=expected_project_revision
+    )
     blocks = _block_map(r3)
     final_projection = r3.get("final_projection", {})
     statistics = final_projection.get("statistics", {}).get("total", {})
@@ -362,7 +368,7 @@ def build_assembly_context(
     )
     table_rows = _table_rows(r2, r3)
     issues = _validate_context(
-        r2, r3, mode=mode, base_issues=mapped_issues, table_rows=table_rows
+        r2, r3, appendix_b, mode=mode, base_issues=mapped_issues, table_rows=table_rows
     )
     errors = [item for item in issues if item["severity"] == "error"]
     warnings = [item for item in issues if item["severity"] == "warning"]
@@ -397,12 +403,11 @@ def build_assembly_context(
         "chapter_blocks": blocks,
         "table_rows_by_table_id": table_rows,
         "appendix_a_final_projection": final_projection,
-        "appendix_b_projection": {"schema_version": "1.0", "status": "not_implemented", "tables": {}},
+        "appendix_b_projection": appendix_b,
+        "r5_projection_hash": appendix_b["projection_hash"],
         "validation_summary": {"errors": len(errors), "warnings": len(warnings), "issues": issues},
         "warning_summary": {
-            "appendix_b": [
-                _issue("warning", "APPENDIX_B_NOT_IMPLEMENTED", "附录 B 数据将在 R5 阶段接入，当前保留母版空结构。", block_id="appendix_b")
-            ]
+            "appendix_b": list(appendix_b.get("warnings", []))
         },
     }
     if any(str(key).lower() in {"ra", "rk"} for key in _walk_keys(context)):

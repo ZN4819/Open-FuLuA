@@ -246,7 +246,7 @@ class R3ReportGenerationTests(unittest.TestCase):
                 ).fetchone()[0]
             )
             foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
-        self.assertEqual(version, 7)
+        self.assertEqual(version, 8)
         self.assertEqual((full_count, appendix_count), (1, 0))
         self.assertEqual(foreign_keys, [])
 
@@ -255,7 +255,7 @@ class R3ReportGenerationTests(unittest.TestCase):
         self._downgrade_to_schema_five()
         database.init_db()
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 7)
+            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 8)
             state = db.execute(
                 "SELECT project_revision FROM report_generation_state WHERE project_id = ?",
                 (project["id"],),

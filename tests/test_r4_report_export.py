@@ -224,9 +224,9 @@ class R4ReportExportTests(unittest.TestCase):
             context["test_image_id"] = image_id
         return project, revision, context
 
-    def test_schema_seven_adds_immutable_export_storage(self) -> None:
+    def test_current_schema_keeps_immutable_export_storage(self) -> None:
         with database.connect() as db:
-            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 7)
+            self.assertEqual(int(db.execute("PRAGMA user_version").fetchone()[0]), 8)
             tables = {
                 row[0]
                 for row in db.execute(

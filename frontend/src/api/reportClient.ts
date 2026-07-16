@@ -1,4 +1,4 @@
-import { downloadFile, request } from "./client.ts";
+import { downloadFile, request, requestFormData } from "./client.ts";
 import type { WorkflowStatus } from "../projectContracts.ts";
 
 export type ReportSectionType = "form" | "blocks" | "generated" | "appendix_a" | "appendix_b";
@@ -26,6 +26,112 @@ export type ReportIssue = {
   target?: string | null;
   navigation_target?: string | null;
   details?: Record<string, unknown>;
+};
+
+export type AppendixBIssue = {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  category_code?: string | null;
+  item_uuid?: string | null;
+  field?: string | null;
+  details: Record<string, unknown>;
+  navigation_target: string;
+};
+
+export type AppendixBUsage = {
+  usage_uuid: string;
+  usage_kind: "member" | "covered_onsite" | "personnel_role" | "exam_proof" | "image_slot";
+  related_member_uuid?: string | null;
+  related_item_uuid?: string | null;
+  slot_key: string;
+  sort_order: number;
+  member_name?: string | null;
+  qualification_passed_at?: string | null;
+};
+
+export type AppendixBEvidenceItem = {
+  item_uuid: string;
+  project_id: number;
+  category_code: string;
+  parent_item_uuid?: string | null;
+  item_kind: "record" | "image";
+  subtype: string;
+  title: string;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  organization_uuid?: string | null;
+  location: string;
+  sort_order: number;
+  metadata: Record<string, unknown>;
+  file_path?: string | null;
+  original_name?: string | null;
+  mime_type?: string | null;
+  caption: string;
+  alt_text: string;
+  pixel_width?: number | null;
+  pixel_height?: number | null;
+  display_width_in?: number | null;
+  display_height_in?: number | null;
+  sha256?: string | null;
+  revision: number;
+  usages: AppendixBUsage[];
+  file_url?: string | null;
+};
+
+export type AppendixBCategory = {
+  code: `B-${number}`;
+  category_code: string;
+  title: string;
+  order: number;
+  category_uuid: string;
+  is_not_applicable: boolean;
+  not_applicable_reason: string;
+  warning_acknowledged_at?: string | null;
+  revision: number;
+  items: AppendixBEvidenceItem[];
+  warnings: AppendixBIssue[];
+  errors: AppendixBIssue[];
+  completion: "empty" | "complete" | "not_applicable";
+};
+
+export type AppendixBWorkspace = {
+  schema_version: string;
+  project_uuid: string;
+  project_revision: number;
+  categories: AppendixBCategory[];
+  members: ReportMember[];
+  organizations: ReportOrganization[];
+  warnings: AppendixBIssue[];
+  errors: AppendixBIssue[];
+  completion: {
+    category_total: number;
+    completed: number;
+    warning_count: number;
+    error_count: number;
+  };
+};
+
+export type AppendixBRecordInput = {
+  subtype: string;
+  title: string;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  organization_uuid?: string | null;
+  location: string;
+  sort_order: number;
+  metadata: Record<string, unknown>;
+  member_uuids: string[];
+  related_item_uuids: string[];
+};
+
+export type AppendixBValidation = {
+  project_uuid: string;
+  project_revision: number;
+  valid: boolean;
+  errors: AppendixBIssue[];
+  warnings: AppendixBIssue[];
+  issues: AppendixBIssue[];
 };
 
 export type ReportOverview = {
@@ -1090,6 +1196,140 @@ export function createReportBlock(
 
 export function validateReport(projectUuid: string): Promise<ReportValidation> {
   return request<ReportValidation>(`${reportRoot(projectUuid)}/validate`, { method: "POST", body: "{}" });
+}
+
+export function getAppendixB(projectUuid: string): Promise<AppendixBWorkspace> {
+  return request<AppendixBWorkspace>(`${reportRoot(projectUuid)}/appendix-b`);
+}
+
+export function updateAppendixBCategory(
+  projectUuid: string,
+  category: AppendixBCategory,
+  projectRevision: number,
+  payload: { is_not_applicable: boolean; not_applicable_reason: string; acknowledge_warning: boolean }
+): Promise<AppendixBWorkspace> {
+  return request<AppendixBWorkspace>(
+    `${reportRoot(projectUuid)}/appendix-b/${encodeURIComponent(category.category_code)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        expected_project_revision: projectRevision,
+        expected_revision: category.revision,
+        ...payload
+      })
+    }
+  );
+}
+
+export function createAppendixBRecord(
+  projectUuid: string,
+  categoryCode: string,
+  projectRevision: number,
+  payload: AppendixBRecordInput
+): Promise<AppendixBEvidenceItem> {
+  return request<AppendixBEvidenceItem>(
+    `${reportRoot(projectUuid)}/appendix-b/${encodeURIComponent(categoryCode)}/items`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expected_project_revision: projectRevision, ...payload })
+    }
+  );
+}
+
+export function updateAppendixBRecord(
+  item: AppendixBEvidenceItem,
+  projectRevision: number,
+  payload: AppendixBRecordInput
+): Promise<AppendixBEvidenceItem> {
+  return request<AppendixBEvidenceItem>(`/api/report-evidence-items/${encodeURIComponent(item.item_uuid)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      expected_project_revision: projectRevision,
+      expected_revision: item.revision,
+      ...payload
+    })
+  });
+}
+
+export function updateAppendixBImage(
+  item: AppendixBEvidenceItem,
+  projectRevision: number,
+  payload: { subtype: string; caption: string; alt_text: string; sort_order: number }
+): Promise<AppendixBEvidenceItem> {
+  return request<AppendixBEvidenceItem>(`/api/report-evidence-items/${encodeURIComponent(item.item_uuid)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      expected_project_revision: projectRevision,
+      expected_revision: item.revision,
+      ...payload
+    })
+  });
+}
+
+export function deleteAppendixBItem(
+  item: Pick<AppendixBEvidenceItem, "item_uuid" | "revision">,
+  projectRevision: number
+): Promise<AppendixBEvidenceItem> {
+  const query = new URLSearchParams({
+    expected_project_revision: String(projectRevision),
+    expected_revision: String(item.revision)
+  });
+  return request<AppendixBEvidenceItem>(
+    `/api/report-evidence-items/${encodeURIComponent(item.item_uuid)}?${query.toString()}`,
+    { method: "DELETE" }
+  );
+}
+
+export function reorderAppendixBRecords(
+  projectUuid: string,
+  categoryCode: string,
+  projectRevision: number,
+  itemUuids: string[]
+): Promise<AppendixBEvidenceItem[]> {
+  return request<AppendixBEvidenceItem[]>(
+    `${reportRoot(projectUuid)}/appendix-b/${encodeURIComponent(categoryCode)}/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ expected_project_revision: projectRevision, item_uuids: itemUuids })
+    }
+  );
+}
+
+export function uploadAppendixBImages(
+  parentItemUuid: string,
+  projectRevision: number,
+  payload: { subtype: string; caption: string; alt_text: string; files: File[] }
+): Promise<AppendixBEvidenceItem[]> {
+  const form = new FormData();
+  form.append("expected_project_revision", String(projectRevision));
+  form.append("subtype", payload.subtype);
+  form.append("caption", payload.caption);
+  form.append("alt_text", payload.alt_text);
+  payload.files.forEach((file) => form.append("files", file));
+  return requestFormData<AppendixBEvidenceItem[]>(
+    `/api/report-evidence-items/${encodeURIComponent(parentItemUuid)}/images`, form
+  );
+}
+
+export function replaceAppendixBImage(
+  item: AppendixBEvidenceItem,
+  projectRevision: number,
+  file: File
+): Promise<AppendixBEvidenceItem> {
+  const form = new FormData();
+  form.append("expected_project_revision", String(projectRevision));
+  form.append("expected_revision", String(item.revision));
+  form.append("file", file);
+  return requestFormData<AppendixBEvidenceItem>(
+    `/api/report-evidence-items/${encodeURIComponent(item.item_uuid)}/file`, form
+  );
+}
+
+export function validateAppendixB(projectUuid: string, projectRevision: number): Promise<AppendixBValidation> {
+  return request<AppendixBValidation>(`${reportRoot(projectUuid)}/appendix-b/validations`, {
+    method: "POST",
+    body: JSON.stringify({ expected_project_revision: projectRevision })
+  });
 }
 
 export function previewDerivedGeneration(projectUuid: string): Promise<GenerationImpact> {

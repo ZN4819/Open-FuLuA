@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import shutil
 import sqlite3
@@ -630,6 +631,8 @@ def remove_project_runtime_files(
         for key in project_keys
     ):
         _remove_storage_child(relative_path)
+    if project_uuid:
+        _remove_storage_child(Path("report_evidence") / project_uuid)
 
 
 def _trusted_template_binding(
@@ -1086,7 +1089,11 @@ def _safe_remove_tree(path: Path, allowed_root: Path) -> None:
 
 def _remove_storage_child(relative_path: Path) -> None:
     storage_root = settings.storage_path.resolve()
-    target = (settings.storage_path / relative_path).resolve()
+    unresolved = settings.storage_path / relative_path
+    absolute = Path(os.path.abspath(unresolved))
+    target = unresolved.resolve()
+    if target != absolute:
+        raise RuntimeError("PROJECT_RUNTIME_PATH_UNSAFE")
     if not target.exists() or not _is_relative_to(target, storage_root):
         return
     if target.is_dir():

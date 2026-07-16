@@ -18,6 +18,7 @@ from .api.record_templates import router as record_templates_router
 from .api.report_templates import router as report_templates_router
 from .api.report import router as report_router
 from .api.report_exports import router as report_exports_router
+from .api.report_evidence import router as report_evidence_router
 from .api.render_jobs import router as render_jobs_router
 from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
@@ -171,6 +172,7 @@ app.include_router(record_templates_router, prefix=settings.api_prefix)
 app.include_router(report_templates_router, prefix=settings.api_prefix)
 app.include_router(report_router, prefix=settings.api_prefix)
 app.include_router(report_exports_router, prefix=settings.api_prefix)
+app.include_router(report_evidence_router, prefix=settings.api_prefix)
 app.include_router(record_template_slots_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)

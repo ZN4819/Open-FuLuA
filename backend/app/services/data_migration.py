@@ -25,6 +25,7 @@ from app.report_core.contracts import REPORT_CORE_AUXILIARY_TABLES, REPORT_CORE_
 from app.report_core.schema import audit_report_core_schema
 from app.report_derived.schema import REPORT_DERIVED_TABLES, audit_report_derived_schema
 from app.report_export.schema import REPORT_EXPORT_TABLES, audit_report_export_schema
+from app.report_evidence.schema import REPORT_EVIDENCE_TABLES, audit_report_evidence_schema
 
 
 @dataclass(frozen=True)
@@ -201,9 +202,22 @@ def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]
                 audit_report_export_schema(db)
             except (RuntimeError, sqlite3.Error):
                 return "schema_invalid", 0, 0, ()
+        if schema_version >= 8:
+            try:
+                audit_report_evidence_schema(db)
+            except (RuntimeError, sqlite3.Error):
+                return "schema_invalid", 0, 0, ()
         projects = int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0])
-        rows = tuple(str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images"))
-        return "ok", projects, len(rows), rows
+        rows = [str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images")]
+        if schema_version >= 8:
+            rows.extend(
+                str(row[0])
+                for row in db.execute(
+                    "SELECT file_path FROM report_evidence_items "
+                    "WHERE item_kind = 'image' AND file_path IS NOT NULL"
+                )
+            )
+        return "ok", projects, len(rows), tuple(rows)
     finally:
         db.close()
 
@@ -218,6 +232,31 @@ def _referenced_files(storage_path: Path, references: tuple[str, ...]) -> tuple[
     return tuple(sorted(missing))
 
 
+def _r5_hash_mismatches(database_path: Path, storage_path: Path) -> tuple[str, ...]:
+    db = sqlite3.connect(database_path)
+    try:
+        schema_version = int(db.execute("PRAGMA user_version").fetchone()[0])
+        if schema_version < 8:
+            return ()
+        rows = db.execute(
+            "SELECT file_path, sha256 FROM report_evidence_items "
+            "WHERE item_kind = 'image' AND file_path IS NOT NULL AND sha256 IS NOT NULL"
+        ).fetchall()
+    finally:
+        db.close()
+    resolved_storage = _safe_resolve(storage_path)
+    mismatches: list[str] = []
+    for relative_path, expected_hash in rows:
+        candidate = _safe_resolve(resolved_storage / str(relative_path))
+        if (
+            candidate.is_relative_to(resolved_storage)
+            and candidate.is_file()
+            and _sha256(candidate) != str(expected_hash)
+        ):
+            mismatches.append(str(relative_path))
+    return tuple(sorted(mismatches))
+
+
 def validate_database_and_evidence(database_path: Path, storage_path: Path) -> tuple[bool, str, int, int, tuple[str, ...]]:
     """校验数据库结构、完整性及所有证据文件引用；返回内容安全的摘要。"""
     try:
@@ -229,6 +268,9 @@ def validate_database_and_evidence(database_path: Path, storage_path: Path) -> t
     missing = _referenced_files(storage_path, references)
     if missing:
         return False, "存在缺失的证据图片", projects, images, missing
+    mismatches = _r5_hash_mismatches(database_path, storage_path)
+    if mismatches:
+        return False, "存在哈希不一致的附录 B 证据图片", projects, images, mismatches
     return True, "", projects, images, ()
 
 
@@ -289,6 +331,7 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
                     "sqlite_sequence", *REPORT_CORE_ENTITY_TABLES, *REPORT_CORE_AUXILIARY_TABLES,
                     *REPORT_DERIVED_TABLES,
                     *REPORT_EXPORT_TABLES,
+                    *REPORT_EVIDENCE_TABLES,
                 }
                 if not tables <= allowed or "projects" not in tables:
                     return True
