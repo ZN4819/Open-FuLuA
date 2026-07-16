@@ -174,6 +174,29 @@ def _advance_state(
     return db.execute("SELECT * FROM report_generation_state WHERE id = ?", (state["id"],)).fetchone()
 
 
+def advance_project_revision_for_external_change(
+    db: sqlite3.Connection,
+    project_id: int,
+    project_uuid: str,
+) -> int:
+    """Advance the report revision after a non-R3 report-domain mutation.
+
+    The caller holds the write transaction and has already checked the request's
+    expected project revision. Clearing the current context hash makes the prior
+    R3 context unavailable until the normal generation workflow runs again while
+    retaining the historical run for audit.
+    """
+
+    state = _state(db, project_id)
+    updated = _advance_state(
+        db,
+        state,
+        project_uuid,
+        {"current_context_hash": None},
+    )
+    return int(updated["project_revision"])
+
+
 def _special_snapshot(db: sqlite3.Connection, project_id: int) -> dict[str, Any]:
     standards = [
         dict(row)

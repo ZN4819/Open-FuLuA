@@ -119,6 +119,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                     "projects_identity_insert_guard",
                     "projects_identity_update_guard",
                     "projects_identity_immutable_guard",
+                    "report_evidence_category_project_guard",
                 ):
                     connection.execute(f"DROP TRIGGER IF EXISTS {trigger}")
                 connection.execute("DROP TABLE project_upgrade_operations")

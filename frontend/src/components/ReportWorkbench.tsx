@@ -3,6 +3,7 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } f
 import { ApiError, changeProjectWorkflow, type Project } from "../api/client.ts";
 import { ReportBasicDataWorkspace } from "./ReportBasicDataWorkspace.tsx";
 import { ReportDerivedWorkspace } from "./ReportDerivedWorkspace.tsx";
+import { ReportAppendixBWorkspace } from "./ReportAppendixBWorkspace.tsx";
 import {
   confirmAppendixBindings,
   createAssessmentObject,
@@ -139,6 +140,7 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
   const handleBasicsDirty = useCallback((dirty: boolean) => handleDirty("basics", dirty), [handleDirty]);
   const handleObjectsDirty = useCallback((dirty: boolean) => handleDirty("objects", dirty), [handleDirty]);
   const handleDerivedDirty = useCallback((dirty: boolean) => handleDirty("derived", dirty), [handleDirty]);
+  const handleAppendixBDirty = useCallback((dirty: boolean) => handleDirty("appendix-b", dirty), [handleDirty]);
   const handleSectionDirty = useCallback((dirty: boolean) => {
     if (route.view === "section") {
       handleDirty(`section:${route.sectionKey}`, dirty);
@@ -354,14 +356,24 @@ export function ReportWorkbench({ project, onBack, onOpenAppendix, onProjectUpda
             />
           ) : null}
           {!isLoading && route.view === "section" && activeSection ? (
-            <ReportSectionWorkspace
-              key={`${activeSection.section_uuid}-${editorEpoch}`}
-              projectUuid={project.project_uuid}
-              section={activeSection}
-              onDirtyChange={handleSectionDirty}
-              onOpenAppendix={handleOpenAppendix}
-              onSaved={() => { void loadWorkspace(); void loadValidation(); }}
-            />
+            activeSection.section_type === "appendix_b" ? (
+              <ReportAppendixBWorkspace
+                key={`appendix-b-${activeSection.section_uuid}-${editorEpoch}`}
+                projectUuid={project.project_uuid}
+                focusTableCode={appendixBTableCode(activeSection.section_key)}
+                onDirtyChange={handleAppendixBDirty}
+                onChanged={() => { void loadWorkspace(); void loadValidation(); }}
+              />
+            ) : (
+              <ReportSectionWorkspace
+                key={`${activeSection.section_uuid}-${editorEpoch}`}
+                projectUuid={project.project_uuid}
+                section={activeSection}
+                onDirtyChange={handleSectionDirty}
+                onOpenAppendix={handleOpenAppendix}
+                onSaved={() => { void loadWorkspace(); void loadValidation(); }}
+              />
+            )
           ) : null}
           {!isLoading && route.view === "section" && !activeSection ? (
             <div className="report-empty-state" role="alert">
@@ -1509,6 +1521,11 @@ function completionLabel(status: ReportSection["completion_status"]): string {
 function appendixCodeFromSection(section: ReportSection): string | undefined {
   const match = section.section_key.match(/\.a([1-8])$/i);
   return match ? `A-${match[1]}` : undefined;
+}
+
+function appendixBTableCode(sectionKey: string): string | undefined {
+  const match = sectionKey.match(/^appendix\.b\.([1-9])$/i);
+  return match ? `B-${match[1]}` : undefined;
 }
 
 function blockTypeLabel(type: string): string {

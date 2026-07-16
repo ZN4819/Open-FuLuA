@@ -51,7 +51,7 @@ class DesktopServerTests(unittest.TestCase):
             try:
                 connection.execute("CREATE TABLE sentinel (value TEXT)")
                 connection.execute("INSERT INTO sentinel VALUES ('unchanged')")
-                connection.execute("PRAGMA user_version = 7")
+                connection.execute("PRAGMA user_version = 8")
                 connection.commit()
             finally:
                 connection.close()
@@ -62,7 +62,7 @@ class DesktopServerTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             event = json.loads(result.stdout.strip())
-            self.assertEqual(event, {"event": "FULUA_OFFLINE_INTEGRITY", "integrity": "ok", "schema_version": "7"})
+            self.assertEqual(event, {"event": "FULUA_OFFLINE_INTEGRITY", "integrity": "ok", "schema_version": "8"})
             self.assertEqual(database_path.read_bytes(), before)
             self.assertEqual(database_path.stat().st_mtime_ns, before_mtime)
 

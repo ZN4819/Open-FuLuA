@@ -980,6 +980,198 @@ def _render_appendix_a(
             cursor = element
 
 
+def _appendix_b_values(records: list[dict[str, Any]], key: str) -> str:
+    values: list[str] = []
+    for record in records:
+        value = str(record.get(key) or "").strip()
+        if value and value not in values:
+            values.append(value)
+    return "\n".join(values)
+
+
+def _appendix_b_metadata_values(records: list[dict[str, Any]], key: str) -> str:
+    values: list[str] = []
+    for record in records:
+        value = str(record.get("metadata", {}).get(key) or "").strip()
+        if value and value not in values:
+            values.append(value)
+    return "\n".join(values)
+
+
+def _appendix_b_member_names(records: list[dict[str, Any]]) -> str:
+    values: list[str] = []
+    for record in records:
+        for member in record.get("members", []):
+            value = str(member.get("name") or "").strip()
+            if value and value not in values:
+                values.append(value)
+    return "、".join(values)
+
+
+def _appendix_b_images(
+    projection: dict[str, Any], category_code: str
+) -> list[dict[str, Any]]:
+    return [
+        dict(item)
+        for item in projection.get("evidence_images", [])
+        if item.get("category_code") == category_code
+    ]
+
+
+def _appendix_b_image_elements(
+    table_code: str, images: list[dict[str, Any]]
+) -> tuple[list[etree._Element], dict[str, bytes]]:
+    if not images:
+        return [], {}
+    profile = load_template_profile()
+    document = Document()
+    add_section_images(
+        document,
+        table_code,
+        images,
+        profile,
+        BookmarkWriter(),
+        build_figure_refs(table_code, images),
+    )
+    buffer = io.BytesIO()
+    document.save(buffer)
+    with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as package:
+        temporary_parts = {name: package.read(name) for name in package.namelist()}
+    temporary_document = etree.fromstring(temporary_parts["word/document.xml"])
+    elements = [
+        copy.deepcopy(child)
+        for child in temporary_document.xpath(
+            "/w:document/w:body/*[not(self::w:sectPr)]", namespaces=NS
+        )
+    ]
+    return elements, temporary_parts
+
+
+def _set_value_cell(
+    rows: list[etree._Element], row_index: int, cell_index: int, value: Any
+) -> None:
+    cells = _cells(rows[row_index])
+    if cell_index >= len(cells):
+        raise ReportDomainError(
+            "APPENDIX_B_TEMPLATE_CELL_INVALID",
+            "附录 B 母版单元格结构异常。",
+            status_code=500,
+            details={"row": row_index, "cell": cell_index},
+        )
+    _set_cell_text(cells[cell_index], value)
+
+
+def _render_appendix_b_table(
+    table: etree._Element,
+    table_code: str,
+    table_projection: dict[str, Any],
+    images: list[dict[str, Any]],
+) -> None:
+    records = list(table_projection.get("records") or [])
+    not_applicable = bool(table_projection.get("is_not_applicable"))
+    slash = "/" if not_applicable else ""
+    rows = list(table.xpath("./w:tr", namespaces=NS))
+    image_note = "见后附证明图片" if images else slash
+
+    if table_code == "B-1":
+        record = records[0] if records else {}
+        metadata = record.get("metadata", {})
+        _set_value_cell(rows, 0, 1, metadata.get("file_type") or slash)
+        _set_value_cell(rows, 0, 3, record.get("starts_on") or slash)
+        _set_value_cell(rows, 1, 1, table_projection.get("effective_client_name") or slash)
+        _set_value_cell(rows, 2, 1, metadata.get("amount") or slash)
+        _set_value_cell(rows, 2, 3, metadata.get("unit_price") or slash)
+        _set_value_cell(rows, 3, 0, image_note)
+    elif table_code == "B-2":
+        local_only = bool(records) and all(bool(item.get("metadata", {}).get("is_local")) for item in records)
+        value_slash = "/" if local_only or not_applicable else ""
+        _set_value_cell(rows, 0, 1, _appendix_b_values(records, "starts_on") or value_slash)
+        _set_value_cell(rows, 0, 3, _appendix_b_values(records, "ends_on") or value_slash)
+        _set_value_cell(rows, 1, 1, _appendix_b_values(records, "organization_name") or value_slash)
+        _set_value_cell(rows, 2, 1, _appendix_b_member_names(records) or value_slash)
+        _set_value_cell(rows, 3, 0, f"差旅票证：{image_note or value_slash}")
+        _set_value_cell(rows, 4, 0, f"住宿账单：{image_note or value_slash}")
+        _set_value_cell(rows, 4, 1, f"住宿费发票：{image_note or value_slash}")
+    elif table_code == "B-3":
+        _set_value_cell(rows, 0, 1, _appendix_b_values(records, "starts_on") or slash)
+        _set_value_cell(rows, 0, 3, _appendix_b_values(records, "ends_on") or slash)
+        _set_value_cell(rows, 1, 1, _appendix_b_values(records, "organization_name") or slash)
+        _set_value_cell(rows, 1, 3, _appendix_b_values(records, "location") or slash)
+        _set_value_cell(rows, 2, 1, _appendix_b_member_names(records) or slash)
+        _set_value_cell(rows, 4, 0, f"现场测评签到表：{image_note}")
+        _set_value_cell(rows, 4, 1, f"现场照片：{image_note}")
+        _set_value_cell(rows, 5, 0, f"对接记录：{image_note}")
+        _set_value_cell(rows, 5, 1, f"机房出入记录：{image_note}")
+    elif table_code == "B-4":
+        by_subtype = {str(item.get("subtype")): item for item in records}
+        authorization = by_subtype.get("authorization", {})
+        notice = by_subtype.get("risk_notice", {})
+        auth_date = str(authorization.get("starts_on") or "")
+        notice_date = str(notice.get("starts_on") or "")
+        _set_value_cell(rows, 0, 0, "现场测评授权书" + (f"（签署日期：{auth_date}）" if auth_date else ""))
+        _set_value_cell(rows, 1, 0, image_note if authorization or images else slash)
+        _set_value_cell(rows, 2, 0, "风险告知书" + (f"（签署日期：{notice_date}）" if notice_date else ""))
+        _set_value_cell(rows, 3, 0, image_note if notice or images else slash)
+    elif table_code == "B-5":
+        _set_value_cell(rows, 0, 1, _appendix_b_metadata_values(records, "plan_name") or slash)
+        _set_value_cell(rows, 0, 3, _appendix_b_values(records, "starts_on") or slash)
+        _set_value_cell(rows, 1, 0, f"测评方案评审记录：{image_note}")
+        _set_value_cell(rows, 1, 1, f"测评方案确认记录：{image_note}")
+    elif table_code == "B-6":
+        _set_value_cell(rows, 0, 1, _appendix_b_values(records, "starts_on") or slash)
+        _set_value_cell(rows, 1, 0, image_note)
+    elif table_code == "B-7":
+        role_labels = {
+            "member": "组员",
+            "compiler": "组员、密评报告编制人",
+            "reviewer": "密评报告审核人",
+            "approver": "密评报告批准人",
+        }
+        personnel_rows: list[list[Any]] = []
+        for index, record in enumerate(records, start=1):
+            member = (record.get("members") or [{}])[0]
+            role = str(record.get("metadata", {}).get("role") or "member")
+            personnel_rows.append(
+                [index, member.get("name") or "", role_labels.get(role, role), member.get("qualification_passed_at") or ""]
+            )
+        _replace_rows(table, header_rows=1, source_rows=personnel_rows)
+    elif table_code == "B-8":
+        names = _appendix_b_member_names(records)
+        _set_value_cell(rows, 0, 0, "人员姓名")
+        _set_value_cell(rows, 0, 1, "密评人员考核成绩证明")
+        _set_value_cell(rows, 1, 0, names or slash)
+        _set_value_cell(rows, 1, 1, image_note)
+    elif table_code == "B-9":
+        record = records[0] if records else {}
+        _set_value_cell(rows, 0, 1, record.get("effective_filing_system_name") or slash)
+        _set_value_cell(rows, 1, 1, record.get("starts_on") or slash)
+        difference = str(record.get("metadata", {}).get("difference") or "").strip()
+        note = image_note
+        if difference:
+            note = f"差异说明：{difference}" + (f"；{image_note}" if image_note else "")
+        _set_value_cell(rows, 2, 0, note)
+
+
+def _render_appendix_b(
+    root: etree._Element, context: dict[str, Any], parts: dict[str, bytes]
+) -> None:
+    projection = context.get("appendix_b_projection") or {}
+    tables = projection.get("tables") or {}
+    for number, table_code in zip(range(47, 56), (f"B-{index}" for index in range(1, 10))):
+        table = _table_by_anchor(root, number)
+        table_projection = dict(tables.get(table_code) or {"records": []})
+        category_code = str(table_projection.get("category_code") or "")
+        images = _appendix_b_images(projection, category_code)
+        _render_appendix_b_table(table, table_code, table_projection, images)
+        elements, temporary_parts = _appendix_b_image_elements(table_code, images)
+        if elements:
+            _import_appendix_resources(root, elements, temporary_parts, parts)
+            cursor = table
+            for element in elements:
+                cursor.addnext(element)
+                cursor = element
+
+
 def _set_update_fields(parts: dict[str, bytes]) -> None:
     settings = etree.fromstring(parts["word/settings.xml"])
     updates = settings.xpath("/w:settings/w:updateFields", namespaces=NS)
@@ -1126,6 +1318,7 @@ def render_report(context: dict[str, Any], destination: Path) -> dict[str, Any]:
     _render_overall_score(root, context)
     _render_risks(root, context)
     _render_appendix_a(root, context, parts)
+    _render_appendix_b(root, context, parts)
     if context["project_identity"]["export_mode"] == "draft":
         _add_draft_marker(root)
     parts["word/document.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
