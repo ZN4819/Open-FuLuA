@@ -32,13 +32,14 @@ export function ReportExportWorkspace({
   const [job, setJob] = useState<ReportExportJob>();
   const [jobIssues, setJobIssues] = useState<ReportExportIssueCollection>();
   const [isWorking, setIsWorking] = useState(false);
+  const [activeExportKind, setActiveExportKind] = useState<"draft" | "roundtrip" | "final">();
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const operationRef = useRef(0);
 
   useEffect(() => () => { operationRef.current += 1; }, []);
 
-  async function handleExport(mode: ReportExportMode) {
+  async function handleExport(mode: ReportExportMode, roundtripCapable = false) {
     if (!projectRevision || hasUnsavedChanges || isWorking) return;
     const normalizedVersion = version.trim().toUpperCase();
     setError(undefined);
@@ -52,6 +53,7 @@ export function ReportExportWorkspace({
     }
 
     const operation = ++operationRef.current;
+    setActiveExportKind(roundtripCapable ? "roundtrip" : mode);
     setIsWorking(true);
     try {
       const checked = await validateReportExport(projectUuid, mode);
@@ -68,14 +70,17 @@ export function ReportExportWorkspace({
       const created = await createReportExportJob(projectUuid, {
         mode,
         version: normalizedVersion,
-        expected_project_revision: checked.project_revision
+        expected_project_revision: checked.project_revision,
+        ...(roundtripCapable ? { roundtrip_capable: true } : {})
       });
       if (operation !== operationRef.current) return;
       setVersion(normalizedVersion);
       setJob(created);
-      setMessage(mode === "final"
-        ? "正式版正在由 Microsoft Word 刷新目录、页码和交叉引用。"
-        : "草稿正在装配；若本机 Word 不可用，将保留未刷新字段的草稿。"
+      setMessage(roundtripCapable
+        ? "正在生成带受控签名和不可变快照引用的可回收草稿；仅此档位可用于 Word 回收。"
+        : mode === "final"
+          ? "正式版正在由 Microsoft Word 刷新目录、页码和交叉引用。"
+          : "普通草稿正在装配；该文件不能用于 Word 回收。"
       );
 
       const completed = await pollExportJob(created, operation, operationRef);
@@ -137,10 +142,13 @@ export function ReportExportWorkspace({
         </label>
         <div className="form-actions">
           <button type="button" className="secondary-button" onClick={() => void handleExport("draft")} disabled={blocked}>
-            {isWorking && job?.mode === "draft" ? "正在生成草稿..." : "生成草稿"}
+            {isWorking && activeExportKind === "draft" ? "正在生成草稿..." : "生成草稿"}
+          </button>
+          <button type="button" className="secondary-button" onClick={() => void handleExport("draft", true)} disabled={blocked}>
+            {isWorking && activeExportKind === "roundtrip" ? "正在生成可回收草稿..." : "生成可回收草稿"}
           </button>
           <button type="button" onClick={() => void handleExport("final")} disabled={blocked}>
-            {isWorking && job?.mode === "final" ? "正在生成正式版..." : "生成正式版"}
+            {isWorking && activeExportKind === "final" ? "正在生成正式版..." : "生成正式版"}
           </button>
           {job?.download_available ? (
             <button type="button" className="secondary-button" onClick={() => void handleDownload()}>重新下载 DOCX</button>
@@ -157,6 +165,7 @@ export function ReportExportWorkspace({
           <div><dt>项目 revision</dt><dd>{job.project_revision}</dd></div>
           <div><dt>母版包</dt><dd>{job.template_package_id}</dd></div>
           <div><dt>Word 刷新</dt><dd>{wordStatusLabel(job.word_refresh_status)}</dd></div>
+          <div><dt>Word 回收</dt><dd>{job.roundtrip_capable ? "可回收草稿" : "不可回收"}</dd></div>
           <div><dt>页数</dt><dd>{job.page_count ?? "—"}</dd></div>
           <div><dt>装配上下文</dt><dd>{shortHash(job.assembly_context_hash)}</dd></div>
           <div><dt>输出摘要</dt><dd>{shortHash(job.docx_hash)}</dd></div>

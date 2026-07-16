@@ -723,6 +723,7 @@ export type ReportExportJob = {
   started_at?: string | null;
   finished_at?: string | null;
   download_available: boolean;
+  roundtrip_capable?: boolean;
 };
 
 export type ReportExportIssueCollection = {
@@ -1443,7 +1444,12 @@ export function validateReportExport(
 
 export function createReportExportJob(
   projectUuid: string,
-  payload: { mode: ReportExportMode; version: string; expected_project_revision: number }
+  payload: {
+    mode: ReportExportMode;
+    version: string;
+    expected_project_revision: number;
+    roundtrip_capable?: boolean;
+  }
 ): Promise<ReportExportJob> {
   return request<ReportExportJob>(
     `/api/projects/${encodeURIComponent(projectUuid)}/report-export-jobs`,

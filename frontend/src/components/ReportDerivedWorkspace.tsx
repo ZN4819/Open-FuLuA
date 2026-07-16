@@ -19,6 +19,7 @@ import {
   type ThreatCatalogItem
 } from "../api/reportClient.ts";
 import { ReportExportWorkspace } from "./ReportExportWorkspace.tsx";
+import { ReportRoundtripWorkspace } from "./ReportRoundtripWorkspace.tsx";
 
 type ReportDerivedWorkspaceProps = {
   projectUuid: string;
@@ -44,6 +45,7 @@ export function ReportDerivedWorkspace({
   const consistencyStatus = impact?.has_changes
     ? "stale"
     : review?.latest_consistency?.status ?? "not_generated";
+  const hasUnsavedProjectChanges = [...dirtyKeys].some((key) => key !== "roundtrip:resolution");
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -78,6 +80,10 @@ export function ReportDerivedWorkspace({
       return next;
     });
   }, []);
+  const handleRoundtripDirty = useCallback(
+    (dirty: boolean) => handleEditorDirty("roundtrip:resolution", dirty),
+    [handleEditorDirty]
+  );
 
   async function handleGenerate() {
     if (!impact || dirtyKeys.size) return;
@@ -239,6 +245,13 @@ export function ReportDerivedWorkspace({
         projectUuid={projectUuid}
         projectRevision={review?.project_revision ?? impact?.project_revision}
         hasUnsavedChanges={dirtyKeys.size > 0}
+      />
+      <ReportRoundtripWorkspace
+        projectUuid={projectUuid}
+        projectRevision={review?.project_revision ?? impact?.project_revision}
+        hasUnsavedChanges={hasUnsavedProjectChanges}
+        onDirtyChange={handleRoundtripDirty}
+        onCommitted={async () => { await load(); onChanged(); }}
       />
     </div>
   );

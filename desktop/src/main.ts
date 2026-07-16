@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, session, shell } from "electron";
 import electronUpdater = require("electron-updater");
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,6 +14,7 @@ import { focusExistingWindow, QuitGuard, runSingleInstance } from "./lifecycle.j
 import { MigrationCoordinator, type MigrationOutcome } from "./migrationWindow.js";
 import { RestoreWindowCoordinator } from "./restoreWindow.js";
 import { RuntimeApiClient } from "./runtimeApi.js";
+import { withBackendSessionToken } from "./sessionHeaders.js";
 import { JsonRecoveryMarkerStore, RecoveryCoordinator } from "./recovery.js";
 import { UpdateCoordinator, type AutoUpdaterPort } from "./updater.js";
 import {
@@ -25,7 +26,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const { autoUpdater } = electronUpdater;
-const CURRENT_SCHEMA_VERSION = "9";
+const CURRENT_SCHEMA_VERSION = "10";
 
 const STARTUP_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -50,6 +51,7 @@ let mainWindow: BrowserWindow | undefined;
 let backend: BackendProcessController | undefined;
 let backendOrigin: string | undefined;
 let sessionToken = "";
+let sessionHeaderHookInstalled = false;
 let quitApproved = false;
 const recoveryMarkers = new JsonRecoveryMarkerStore(path.join(dataRoot, "recovery"));
 let updateCoordinator: UpdateCoordinator | undefined;
@@ -115,6 +117,19 @@ async function startBackend(): Promise<string> {
 async function loadBackendPage(): Promise<void> {
   const window = mainWindow ?? createWindow();
   const url = await startBackend();
+  if (!sessionHeaderHookInstalled) {
+    session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+      callback({
+        requestHeaders: withBackendSessionToken(
+          details.url,
+          backendOrigin,
+          sessionToken,
+          details.requestHeaders
+        )
+      });
+    });
+    sessionHeaderHookInstalled = true;
+  }
   await window.loadURL(url);
 }
 
