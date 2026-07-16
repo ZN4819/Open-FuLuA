@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import shutil
-import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ class BackupInfo:
     created_at: str
     database_path: Path
     storage_path: Path
+    private_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,15 @@ def _digest_manifest(manifest: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
 
 
-def _copy_storage(source: Path, destination: Path) -> dict[str, str]:
+def _copy_storage(
+    source: Path,
+    destination: Path,
+    *,
+    hard_link: bool = True,
+) -> dict[str, str]:
     destination.mkdir(parents=True, exist_ok=True)
+    if _is_reparse_point(source):
+        raise ValueError("数据目录包含重解析点")
     source_root = source.resolve(strict=True)
     files: list[Path] = []
     stack = [source_root]
@@ -64,10 +71,27 @@ def _copy_storage(source: Path, destination: Path) -> dict[str, str]:
         target = destination / source_file.relative_to(source_root)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
+            if not hard_link:
+                raise OSError("private backup requires an immutable byte copy")
             os.link(source_file, target)
         except OSError:
             shutil.copy2(source_file, target)
     return file_manifest(destination)
+
+
+def _runtime_private_path(paths: RuntimePaths) -> Path:
+    return paths.database_path.parent / "private"
+
+
+def _copy_private(source: Path, destination: Path) -> dict[str, str]:
+    if not source.exists():
+        destination.mkdir(parents=True, exist_ok=True)
+        return {}
+    if not source.is_dir() or _is_reparse_point(source):
+        raise ValueError("私有数据目录为重解析点或不安全")
+    # Signing keys and quarantined source documents must not share an inode
+    # with live data; an in-place live write must never mutate an old backup.
+    return _copy_storage(source, destination, hard_link=False)
 
 
 def _read_backup(path: Path) -> BackupInfo | None:
@@ -77,22 +101,44 @@ def _read_backup(path: Path) -> BackupInfo | None:
         kind = str(metadata["kind"])
         if kind not in _BACKUP_KINDS:
             return None
-        return BackupInfo(path, kind, str(metadata["created_at"]), path / "data" / "app.db", path / "storage")
+        private_path = path / "private"
+        if not private_path.is_dir():
+            private_path = None
+        return BackupInfo(
+            path,
+            kind,
+            str(metadata["created_at"]),
+            path / "data" / "app.db",
+            path / "storage",
+            private_path,
+        )
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
 
-def _verify_staged_copy(source: BackupInfo, database_path: Path, storage_path: Path) -> None:
+def _verify_staged_copy(
+    source: BackupInfo,
+    database_path: Path,
+    storage_path: Path,
+    private_path: Path,
+) -> None:
     try:
         metadata = json.loads((source.path / "metadata.json").read_text(encoding="utf-8"))
         expected_database = str(metadata["database"]["sha256"])
         expected_files = str(metadata["files"]["sha256"])
+        expected_private = metadata.get("private_files")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise ValueError("备份校验元数据无效") from exc
     if hashlib.sha256(database_path.read_bytes()).hexdigest() != expected_database:
         raise ValueError("备份数据库哈希不匹配")
     if _digest_manifest(file_manifest(storage_path)) != expected_files:
         raise ValueError("备份文件清单哈希不匹配")
+    actual_private = _digest_manifest(file_manifest(private_path))
+    if expected_private is None:
+        if file_manifest(private_path):
+            raise ValueError("旧版备份不应包含私有数据")
+    elif actual_private != str(expected_private["sha256"]):
+        raise ValueError("备份私有文件清单哈希不匹配")
 
 
 def _write_recovery_rollback_metadata(rollback: Path, *, state: str, failed_stage: str = "") -> None:
@@ -104,6 +150,7 @@ def _write_recovery_rollback_metadata(rollback: Path, *, state: str, failed_stag
         pass
     database_path = rollback / "data" / "app.db"
     storage_manifest = file_manifest(rollback / "storage")
+    private_manifest = file_manifest(rollback / "private")
     metadata = {
         "kind": "recovery_rollback",
         "created_at": previous.get("created_at") or _utc_now(),
@@ -111,6 +158,10 @@ def _write_recovery_rollback_metadata(rollback: Path, *, state: str, failed_stag
         "failed_stage": failed_stage,
         "database": {"sha256": hashlib.sha256(database_path.read_bytes()).hexdigest()},
         "files": {"count": len(storage_manifest), "sha256": _digest_manifest(storage_manifest)},
+        "private_files": {
+            "count": len(private_manifest),
+            "sha256": _digest_manifest(private_manifest),
+        },
         "verification": {"snapshot": "preserved", "replay": state},
     }
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -128,6 +179,13 @@ def _replay_rollback_storage(paths: RuntimePaths, rollback: Path) -> None:
     if paths.storage_path.exists():
         shutil.rmtree(paths.storage_path)
     shutil.copytree(rollback / "storage", paths.storage_path, copy_function=shutil.copy2)
+
+
+def _replay_rollback_private(paths: RuntimePaths, rollback: Path) -> None:
+    private = _runtime_private_path(paths)
+    if private.exists():
+        shutil.rmtree(private)
+    shutil.copytree(rollback / "private", private, copy_function=shutil.copy2)
 
 
 def _apply_retention(paths: RuntimePaths, kind: str) -> None:
@@ -162,6 +220,9 @@ def create_backup(paths: RuntimePaths, kind: str) -> BackupInfo:
             database_path = staging / "data" / "app.db"
             sqlite_backup(paths.database_path, database_path)
             storage_manifest = _copy_storage(paths.storage_path, staging / "storage")
+            private_manifest = _copy_private(
+                _runtime_private_path(paths), staging / "private"
+            )
             valid, reason, projects, images, missing = validate_database_and_evidence(database_path, staging / "storage")
             if not valid:
                 raise RuntimeError(reason if not missing else "备份包含缺失的证据图片")
@@ -170,6 +231,10 @@ def create_backup(paths: RuntimePaths, kind: str) -> BackupInfo:
                 "created_at": created_at,
                 "database": {"sha256": hashlib.sha256(database_path.read_bytes()).hexdigest()},
                 "files": {"count": len(storage_manifest), "sha256": _digest_manifest(storage_manifest)},
+                "private_files": {
+                    "count": len(private_manifest),
+                    "sha256": _digest_manifest(private_manifest),
+                },
                 "verification": {"integrity": "ok", "projects": projects, "images": images},
             }
             (staging / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -236,6 +301,16 @@ def _validate_backup_tree(root: Path, candidate: Path) -> Path:
     storage = resolved_candidate / "storage"
     if not metadata.is_file() or not database.is_file() or not storage.is_dir():
         raise ValueError("备份结构不完整")
+    try:
+        metadata_value = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError("备份校验元数据无效") from exc
+    private = resolved_candidate / "private"
+    if metadata_value.get("private_files") is not None:
+        if not private.is_dir() or _is_reparse_point(private):
+            raise ValueError("备份私有数据结构不完整")
+    elif private.exists() and (not private.is_dir() or any(private.iterdir())):
+        raise ValueError("旧版备份包含未声明的私有数据")
     return resolved_candidate
 
 
@@ -286,7 +361,16 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
             # 重写页头，使逻辑等价的数据库产生不同文件哈希。
             shutil.copy2(requested.database_path, staged_database)
             _copy_storage(requested.storage_path, staging / "storage")
-            _verify_staged_copy(requested, staging / "data" / "app.db", staging / "storage")
+            if requested.private_path is None:
+                (staging / "private").mkdir(parents=True, exist_ok=True)
+            else:
+                _copy_private(requested.private_path, staging / "private")
+            _verify_staged_copy(
+                requested,
+                staging / "data" / "app.db",
+                staging / "storage",
+                staging / "private",
+            )
             valid, reason, _, _, missing = validate_database_and_evidence(staging / "data" / "app.db", staging / "storage")
             if not valid:
                 raise RuntimeError(reason if not missing else "备份证据图片不完整")
@@ -302,15 +386,20 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
                 else:
                     sqlite_backup(paths.database_path, rollback / "data" / "app.db")
                 _copy_storage(paths.storage_path, rollback / "storage")
+                _copy_private(_runtime_private_path(paths), rollback / "private")
                 _write_recovery_rollback_metadata(rollback, state="captured")
             remove_sqlite_sidecars(paths.database_path)
             if paths.database_path.exists():
                 paths.database_path.unlink()
             if paths.storage_path.exists():
                 shutil.rmtree(paths.storage_path)
+            live_private = _runtime_private_path(paths)
+            if live_private.exists():
+                shutil.rmtree(live_private)
             paths.database_path.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staging / "data" / "app.db", paths.database_path)
             os.replace(staging / "storage", paths.storage_path)
+            os.replace(staging / "private", live_private)
             valid, reason, _, _, missing = validate_database_and_evidence(paths.database_path, paths.storage_path)
             if not valid:
                 raise RuntimeError(reason if not missing else "恢复后的证据图片校验失败")
@@ -329,6 +418,10 @@ def restore_backup(paths: RuntimePaths, backup_path: Path | str, *, allow_damage
                     _replay_rollback_storage(paths, rollback)
                 except Exception:
                     replay_failures.append("storage")
+                try:
+                    _replay_rollback_private(paths, rollback)
+                except Exception:
+                    replay_failures.append("private")
                 if replay_failures:
                     try:
                         _write_recovery_rollback_metadata(rollback, state="replay_failed", failed_stage=replay_failures[0])

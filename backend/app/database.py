@@ -44,6 +44,10 @@ from .report_evidence.schema import (
     initialize_report_evidence_categories,
 )
 from .report_import.schema import audit_report_import_schema, ensure_report_import_schema
+from .report_roundtrip.schema import (
+    audit_report_roundtrip_schema,
+    ensure_report_roundtrip_schema,
+)
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -151,6 +155,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS assessment_rows (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                row_uuid TEXT UNIQUE,
                 section_id INTEGER NOT NULL,
                 unit TEXT NOT NULL DEFAULT '',
                 object_name TEXT NOT NULL DEFAULT '',
@@ -351,6 +356,47 @@ def init_db() -> None:
         _ensure_column(db, "render_jobs", "page_count", "INTEGER")
         _ensure_column(db, "render_jobs", "log_path", "TEXT")
         _ensure_column(db, "assessment_rows", "subsystem", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "assessment_rows", "row_uuid", "TEXT")
+        row_uuid_sql = (
+            "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || "
+            "hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6)))"
+        )
+        db.execute("DROP TRIGGER IF EXISTS assessment_rows_row_uuid_immutable")
+        db.execute(
+            f"UPDATE assessment_rows SET row_uuid = {row_uuid_sql} "
+            "WHERE row_uuid IS NULL OR TRIM(row_uuid) = ''"
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_assessment_rows_row_uuid "
+            "ON assessment_rows(row_uuid)"
+        )
+        db.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS assessment_rows_assign_row_uuid
+            AFTER INSERT ON assessment_rows
+            WHEN NEW.row_uuid IS NULL OR TRIM(NEW.row_uuid) = ''
+            BEGIN
+                UPDATE assessment_rows
+                SET row_uuid = lower(
+                    hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' ||
+                    hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' ||
+                    hex(randomblob(6))
+                )
+                WHERE id = NEW.id;
+            END
+            """
+        )
+        db.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS assessment_rows_row_uuid_immutable
+            BEFORE UPDATE OF row_uuid ON assessment_rows
+            WHEN OLD.row_uuid IS NOT NULL AND TRIM(OLD.row_uuid) <> ''
+             AND NEW.row_uuid IS NOT OLD.row_uuid
+            BEGIN
+                SELECT RAISE(ABORT, 'ASSESSMENT_ROW_UUID_IMMUTABLE');
+            END
+            """
+        )
         _ensure_column(db, "metric_results", "ra", "TEXT")
         _ensure_column(db, "metric_results", "rk", "TEXT")
         db.execute(
@@ -410,6 +456,9 @@ def init_db() -> None:
         if current_version >= 9:
             audit_report_import_schema(db)
         ensure_report_import_schema(db)
+        ensure_report_roundtrip_schema(db)
+        if current_version >= 10:
+            audit_report_roundtrip_schema(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
@@ -1486,10 +1535,11 @@ def soft_delete_record_template_row(template_key: str) -> sqlite3.Row | None:
 
 
 def get_project_by_id(project_id: int, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    query = "SELECT * FROM projects WHERE id = ?"
     if db is not None:
-        return db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return db.execute(query, (project_id,)).fetchone()
     with connect() as connection:
-        return connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return connection.execute(query, (project_id,)).fetchone()
 
 
 def get_project_by_uuid(project_uuid: str, db: sqlite3.Connection | None = None) -> sqlite3.Row | None:
@@ -1540,13 +1590,160 @@ def delete_project(
     db: sqlite3.Connection | None = None,
 ) -> sqlite3.Row | None:
     if db is not None:
-        existing = get_project_by_id(project_id, db)
-        if existing is None:
-            return None
-        db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-        return existing
+        return _delete_project_locked(project_id, db)[0]
     with connect() as connection:
         return delete_project(project_id, connection)
+
+
+def _delete_project_locked(
+    project_id: int,
+    db: sqlite3.Connection,
+) -> tuple[sqlite3.Row | None, int | None, tuple[int, ...]]:
+    existing = get_project_by_id(project_id, db)
+    if existing is None:
+        return None, False, ()
+    job_ids = tuple(
+        int(row["id"])
+        for row in db.execute(
+            "SELECT id FROM report_import_jobs WHERE project_id=? AND mode='roundtrip'",
+            (project_id,),
+        ).fetchall()
+    )
+    manifest_hashes = [
+        {
+            "manifest_hash": str(row["manifest_hash"]),
+            "baseline_hash": str(row["baseline_hash"]),
+            "structure_contract_hash": str(row["structure_contract_hash"]),
+        }
+        for row in db.execute(
+            """
+            SELECT manifest_hash, baseline_hash, structure_contract_hash
+            FROM report_roundtrip_manifests
+            WHERE project_id=?
+            ORDER BY id
+            """,
+            (project_id,),
+        ).fetchall()
+    ]
+    audit_hashes = [
+        {
+            "source_sha256": str(row["source_sha256"]),
+            "manifest_hash": str(row["manifest_hash"]),
+            "diff_hash": str(row["diff_hash"]),
+            "resolution_hash": str(row["resolution_hash"]),
+            "before_hash": str(row["before_hash"]),
+            "after_hash": str(row["after_hash"]),
+            "base_project_revision": int(row["base_project_revision"]),
+            "committed_project_revision": int(row["committed_project_revision"]),
+        }
+        for row in db.execute(
+            """
+            SELECT source_sha256, manifest_hash, diff_hash, resolution_hash,
+                   before_hash, after_hash, base_project_revision,
+                   committed_project_revision
+            FROM report_import_audits
+            WHERE project_id=?
+            ORDER BY id
+            """,
+            (project_id,),
+        ).fetchall()
+    ]
+    timestamp = utc_now()
+    tombstone_uuid = str(uuid.uuid4())
+    db.execute(
+        """
+        INSERT INTO report_roundtrip_deletion_tombstones (
+            tombstone_uuid, source_project_id, project_uuid,
+            manifest_hashes_json, audit_hashes_json, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            tombstone_uuid,
+            project_id,
+            str(existing["project_uuid"]),
+            json.dumps(
+                manifest_hashes,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            json.dumps(
+                audit_hashes,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            timestamp,
+        ),
+    )
+    cleanup_cursor = db.execute(
+        """
+        INSERT INTO report_roundtrip_cleanup_queue (
+            tombstone_uuid, source_project_id, project_uuid,
+            roundtrip_job_ids_json, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            tombstone_uuid,
+            project_id,
+            str(existing["project_uuid"]),
+            json.dumps(list(job_ids), separators=(",", ":")),
+            timestamp,
+        ),
+    )
+    cleanup_task_id = int(cleanup_cursor.lastrowid)
+
+    # The tombstone trigger authorizes deletion of immutable R7 records only
+    # inside this project-deletion transaction.  It deliberately contains no
+    # report text, field values, user names or document paths.
+    db.execute("DELETE FROM report_import_audits WHERE project_id=?", (project_id,))
+    db.execute("DELETE FROM report_roundtrip_manifests WHERE project_id=?", (project_id,))
+    db.execute(
+        "DELETE FROM report_import_jobs WHERE project_id=? AND mode='roundtrip'",
+        (project_id,),
+    )
+    db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    return existing, cleanup_task_id, job_ids
+
+
+def delete_project_with_policy(
+    project_id: int,
+) -> tuple[sqlite3.Row | None, int | None, tuple[int, ...]]:
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        return _delete_project_locked(project_id, db)
+
+
+def get_roundtrip_cleanup_task(source_project_id: int) -> sqlite3.Row | None:
+    with connect() as db:
+        return db.execute(
+            "SELECT * FROM report_roundtrip_cleanup_queue WHERE source_project_id=?",
+            (source_project_id,),
+        ).fetchone()
+
+
+def list_roundtrip_cleanup_tasks() -> list[sqlite3.Row]:
+    with connect() as db:
+        return db.execute(
+            "SELECT * FROM report_roundtrip_cleanup_queue ORDER BY id"
+        ).fetchall()
+
+
+def complete_roundtrip_cleanup_task(task_id: int) -> None:
+    with connect() as db:
+        db.execute("DELETE FROM report_roundtrip_cleanup_queue WHERE id=?", (task_id,))
+
+
+def fail_roundtrip_cleanup_task(task_id: int, error_code: str) -> None:
+    with connect() as db:
+        db.execute(
+            """
+            UPDATE report_roundtrip_cleanup_queue
+            SET attempts=attempts+1, last_error_code=?, last_attempt_at=?
+            WHERE id=?
+            """,
+            (error_code[:120], utc_now(), task_id),
+        )
 
 
 def list_sections(project_id: int) -> list[sqlite3.Row]:
@@ -1578,6 +1775,7 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
     query = """
         SELECT
             r.id,
+            r.row_uuid,
             r.section_id,
             r.assessment_object_uuid,
             r.unit,
@@ -1913,6 +2111,33 @@ def list_cross_references(section_id: int, db: sqlite3.Connection | None = None)
         return connection.execute(query, (section_id,)).fetchall()
 
 
+def _touch_full_report_project(
+    db: sqlite3.Connection,
+    project_id: int,
+    timestamp: str | None = None,
+) -> None:
+    project = db.execute(
+        "SELECT project_type FROM projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    if project is None or project["project_type"] != "full_report":
+        return
+    timestamp = timestamp or utc_now()
+    db.execute(
+        "UPDATE projects SET workflow_status='draft', updated_at=? WHERE id=?",
+        (timestamp, project_id),
+    )
+    db.execute(
+        """
+        UPDATE report_generation_state
+        SET project_revision=project_revision+1,
+            current_context_hash=NULL,
+            updated_at=?
+        WHERE project_id=?
+        """,
+        (timestamp, project_id),
+    )
+
+
 def replace_section_rows(
     project_id: int,
     code: str,
@@ -2088,6 +2313,8 @@ def replace_section_rows(
         stale_row_ids = set(existing_by_id) - submitted_ids
         for stale_row_id in stale_row_ids:
             db.execute("DELETE FROM assessment_rows WHERE id=? AND section_id=?", (stale_row_id, section["id"]))
+
+        _touch_full_report_project(db, project_id, timestamp)
 
         return get_section(project_id, code, db)
 

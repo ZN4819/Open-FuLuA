@@ -21,6 +21,8 @@ from .api.report_exports import router as report_exports_router
 from .api.report_evidence import router as report_evidence_router
 from .api.report_imports import project_router as report_import_project_router
 from .api.report_imports import router as report_imports_router
+from .api.report_roundtrips import project_router as report_roundtrip_project_router
+from .api.report_roundtrips import router as report_roundtrips_router
 from .api.render_jobs import router as render_jobs_router
 from .api.runtime import router as runtime_router, runtime_operations
 from .api.sections import router as sections_router
@@ -122,7 +124,11 @@ def is_business_write_request(method: str, path: str) -> bool:
 @app.middleware("http")
 async def reject_business_writes_during_maintenance(request: Request, call_next):
     token = os.getenv("FULUA_SESSION_TOKEN")
-    if request.url.path.startswith("/api/runtime") and token and not hmac.compare_digest(request.headers.get("x-fulua-session-token", ""), token):
+    session_protected = request.url.path.startswith("/api/runtime") or (
+        request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.url.path.startswith("/api/")
+    )
+    if session_protected and token and not hmac.compare_digest(request.headers.get("x-fulua-session-token", ""), token):
         return JSONResponse(status_code=403, content={"detail": "本机操作验证失败"})
     if is_business_write_request(request.method, request.url.path):
         try:
@@ -135,8 +141,12 @@ async def reject_business_writes_during_maintenance(request: Request, call_next)
 
 @app.on_event("startup")
 def on_startup() -> None:
-    from .services.projects import recover_abandoned_upgrade_operations
+    from .services.projects import (
+        recover_abandoned_upgrade_operations,
+        recover_pending_project_cleanup_tasks,
+    )
     from .report_core.field_matrix import validate_default_field_matrix
+    from .services.report_roundtrips import recover_abandoned_roundtrip_jobs
 
     runtime_paths = ensure_runtime_directories()
     _bind_files_directory(runtime_paths.storage_path)
@@ -146,6 +156,12 @@ def on_startup() -> None:
     recovered = recover_abandoned_upgrade_operations()
     if recovered:
         logger.warning("已回收 %s 个上次异常中断的项目升级操作", recovered)
+    recovered_roundtrips = recover_abandoned_roundtrip_jobs()
+    if recovered_roundtrips:
+        logger.warning("已回收 %s 个上次异常中断的 Word 回收任务", recovered_roundtrips)
+    recovered_cleanups = recover_pending_project_cleanup_tasks()
+    if recovered_cleanups:
+        logger.warning("已完成 %s 个上次未完成的项目文件清理任务", recovered_cleanups)
 
 
 def _bind_files_directory(storage_path) -> None:
@@ -177,6 +193,8 @@ app.include_router(report_exports_router, prefix=settings.api_prefix)
 app.include_router(report_evidence_router, prefix=settings.api_prefix)
 app.include_router(report_imports_router, prefix=settings.api_prefix)
 app.include_router(report_import_project_router, prefix=settings.api_prefix)
+app.include_router(report_roundtrip_project_router, prefix=settings.api_prefix)
+app.include_router(report_roundtrips_router, prefix=settings.api_prefix)
 app.include_router(record_template_slots_router, prefix=settings.api_prefix)
 app.include_router(render_jobs_router, prefix=settings.api_prefix)
 app.include_router(sections_router, prefix=settings.api_prefix)

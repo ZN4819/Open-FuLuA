@@ -221,8 +221,8 @@ R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8
 | R3 | [正文生成与一致性链路](R3-正文生成与一致性链路实施方案.md) | 已完成；[PR #31](https://github.com/ZN4819/Open-FuLuA/pull/31) 已合入 `main`；详见 [R3 实施验收记录](R3-实施验收记录.md) | 落实 R0 基线的确定性正文和派生规则矩阵、问题/风险候选、过期检测、R4 上下文 | R2 数据模型和字段关联矩阵通过追溯验收 |
 | R4 | [完整报告 DOCX 装配](R4-完整报告DOCX装配实施方案.md) | 已完成；[PR #32](https://github.com/ZN4819/Open-FuLuA/pull/32) 已合入 `main`；详见 [R4 实施验收记录](R4-实施验收记录.md) | 白名单母版装配、完整报告草稿/最终版、Word 字段刷新、导出快照基座 | R0、R2、R3 完成且两份关联矩阵通过追溯验收 |
 | R5 | [附录B证据模块](R5-附录B证据模块实施方案.md) | 已完成；[PR #33](https://github.com/ZN4819/Open-FuLuA/pull/33) 已合入 `main`；详见 [R5 实施验收记录](R5-实施验收记录.md) | 九类结构化证据、人员日期关联、安全图片、不可变投影和 DOCX 九表装配 | R4 装配接口稳定 |
-| R6 | [既有完整报告迁移](R6-既有完整报告迁移实施方案.md) | 已完成；[PR #34](https://github.com/ZN4819/Open-FuLuA/pull/34) 待审阅合入；详见 [R6 实施验收记录](R6-实施验收记录.md) | 模板兼容报告迁移、待确认映射、附录A合并 | R2、R4、R5 完成 |
-| R7 | [受控 Word 回收](R7-受控Word回收实施方案.md) | 未开始 | 同源校验、三方差异、冲突解决 | R4 快照、R6 导入基座完成 |
+| R6 | [既有完整报告迁移](R6-既有完整报告迁移实施方案.md) | 已完成；[PR #34](https://github.com/ZN4819/Open-FuLuA/pull/34) 已合入 `main`；详见 [R6 实施验收记录](R6-实施验收记录.md) | 模板兼容报告迁移、待确认映射、附录A合并 | R2、R4、R5 完成 |
+| R7 | [受控 Word 回收](R7-受控Word回收实施方案.md) | 已完成；[PR #35](https://github.com/ZN4819/Open-FuLuA/pull/35) 已创建（草稿）；详见 [R7 实施验收记录](R7-实施验收记录.md) | 同源校验、三方差异、冲突解决 | R4 快照、R6 导入基座完成 |
 | R8 | [客户端更名、打包与交付](R8-客户端更名打包与交付实施方案.md) | 未开始 | 产品更名、资源白名单、桌面验收 | R0 至 R7 验收通过 |
 
 允许提前开展的探索：
@@ -280,8 +280,11 @@ R4、R6、R7 共用的导出/导入实体统一使用：
 - `report_import_issues`
 - `report_import_resolutions`
 - `report_field_sources`
+- `report_roundtrip_manifests`
 - `report_sync_conflicts`
 - `report_import_audits`
+- `report_roundtrip_deletion_tombstones`
+- `report_roundtrip_cleanup_queue`
 
 每个阶段的详细方案必须给出字段、约束、索引、外键、删除语义和迁移顺序；不得仅用一个无约束 JSON 大字段代替核心关系。
 
@@ -317,7 +320,8 @@ R4、R6、R7 共用的导出/导入实体统一使用：
 - R3 已通过 [PR #31](https://github.com/ZN4819/Open-FuLuA/pull/31) 合入 `main`，完成 schema 6、三份结果投影、41 项统计、双向修正、风险和结论权威链路、33 个正文块、精确失效传播、一致性闸门及 `R3ProjectionContext v1`。
 - R4 已通过 [PR #32](https://github.com/ZN4819/Open-FuLuA/pull/32) 合入 `main`，完成 schema 7、稳定 R2/R3 装配上下文、17 分节/55 表白名单 DOCX 装配、Word 原生字段刷新、不可变快照、草稿/正式版闸门、导出工作台和 Windows 隔离安装态验收。
 - R5 已通过 [PR #33](https://github.com/ZN4819/Open-FuLuA/pull/33) 合入 `main`，完成 schema 8、表 B-1～B-9 九类结构化证据、R2 人员/日期/单位同源关联、PNG/JPEG 安全图片与补偿恢复、不可变 `AppendixBProjection`、九表工作台、DOCX 装配和 Windows 安装态验收。
-- R6 已在 `codex/r6-full-report-migration` 完成 schema 9、完整报告只读解析与模板指纹、字段来源和歧义决议、附录 A 两类来源、原子创建、迁移后审阅、源文件保护和 Windows 安装态验收；[PR #34](https://github.com/ZN4819/Open-FuLuA/pull/34) 待审阅合入，交付详情见 [R6 实施验收记录](R6-实施验收记录.md)。
+- R6 已通过 [PR #34](https://github.com/ZN4819/Open-FuLuA/pull/34) 合入 `main`，完成 schema 9、完整报告只读解析与模板指纹、字段来源和歧义决议、附录 A 两类来源、原子创建、迁移后审阅及源文件保护；交付详情见 [R6 实施验收记录](R6-实施验收记录.md)。
+- R7 已在 `codex/r7-controlled-word-roundtrip` 完成并提交 [PR #35](https://github.com/ZN4819/Open-FuLuA/pull/35)：schema 10、签名同源清单、当前策略再校验、不可信 DOCX 预检、既有行结构契约、三方差异、冲突决议、原子写回与权威重算、哈希审计、失败源文件限额及中断恢复、项目删除哈希墓碑与持久文件清理队列、桌面会话令牌和独立回收工作台；Microsoft Word 实机导出 67 页并将 142 个未修改槽位全部判定为 `unchanged`，交付详情见 [R7 实施验收记录](R7-实施验收记录.md)。
 - 完整报告 DOCX 的结构、分页、字段刷新和兼容性只以 Microsoft Word 为权威；LibreOffice 不作为分析或验收工具。
 - 当前产品仍为附录A编写工具；“密评报告工具”名称在 R8 完成前只作为规划目标。
 - 两份完整报告 DOCX 和源 XLSX 仅为本地分析输入，不属于仓库交付物。

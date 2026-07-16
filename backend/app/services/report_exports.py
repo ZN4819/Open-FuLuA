@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
 import shutil
 import sqlite3
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,23 @@ from ..report_derived.rules import canonical_json
 from ..report_export.context import build_assembly_context, validate_for_export
 from ..report_export.renderer import render_report, validate_rendered_report
 from ..report_export.word import WordRefreshError, refresh_with_word
+from ..report_core.field_matrix import FIELD_DICTIONARY_RELATIVE_PATH
+from ..report_roundtrip.contracts import value_hash
+from ..report_roundtrip.key_store import load_or_create_signing_key
+from ..report_roundtrip.manifest import (
+    build_signed_manifest,
+    canonical_json_bytes as manifest_json_bytes,
+    verify_signed_manifest,
+)
+from ..report_roundtrip.package import (
+    embed_manifest,
+    extract_manifest,
+    read_safe_opc,
+    validate_roundtrip_opc,
+)
+from ..report_roundtrip.structure import extract_roundtrip_structure, readonly_document_hash
+from ..report_roundtrip.writable_contract import build_writable_contract
+from ..resource_paths import resolve_resource_path
 from ..report_schemas import ReportExportJobWrite
 from . import report_context, report_evidence
 from .report_domain.common import require_report_project
@@ -90,7 +109,11 @@ def report_filename(
         _safe_component(scalars.get("system_name")) or "未填写系统名称",
     )
     version = _safe_component(identity["export_version"])
-    suffix = "-草稿" if identity["export_mode"] == "draft" else ""
+    suffix = (
+        "-可回收草稿"
+        if identity.get("roundtrip_capable")
+        else "-草稿" if identity["export_mode"] == "draft" else ""
+    )
     base = f"{components[0]}-{components[1]}-{components[2]}商用密码应用安全性评估报告"
     stem = f"{base}{version}{suffix}"
     filename = f"{stem}.docx"
@@ -136,6 +159,10 @@ def _job_result(row: sqlite3.Row) -> dict[str, Any]:
         "docx_hash": row["docx_hash"],
         "page_count": row["page_count"],
         "word_refresh_status": row["word_refresh_status"],
+        "roundtrip_capable": bool(row["roundtrip_capable"]),
+        "document_instance_id": row["document_instance_id"],
+        "manifest_hash": row["manifest_hash"],
+        "structure_contract_hash": row["structure_contract_hash"],
         "issues": _loads(row["issues_json"], []),
         "error_code": row["error_code"],
         "error_message": row["error_message"],
@@ -177,13 +204,13 @@ def create_export_job(project_uuid: str, payload: ReportExportJobWrite) -> dict[
                 INSERT INTO report_export_jobs (
                     job_uuid, project_id, export_mode, export_version, status,
                     project_revision, template_package_id, template_asset_set_hash,
-                    template_docx_hash, created_at
-                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
+                    template_docx_hash, roundtrip_capable, created_at
+                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_uuid, project["id"], payload.mode, version,
                     current_revision, package.package_id, package.asset_set_hash,
-                    template_hash, timestamp,
+                    template_hash, int(payload.roundtrip_capable), timestamp,
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -229,6 +256,178 @@ def _write_snapshot(context: dict[str, Any], job_uuid: str) -> tuple[str, str, s
     return snapshot_uuid, relative, hashlib.sha256(data).hexdigest()
 
 
+def _write_docx_parts(path: Path, parts: dict[str, bytes]) -> None:
+    temporary = path.with_suffix(".manifest.tmp")
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as package:
+        for name in sorted(parts):
+            package.writestr(name, parts[name])
+    os.replace(temporary, path)
+
+
+def _prepare_roundtrip_document(
+    path: Path,
+    context: dict[str, Any],
+    *,
+    job_uuid: str,
+    snapshot_uuid: str,
+    snapshot_hash: str,
+) -> tuple[dict[str, Any], dict[str, Any], Any]:
+    package = read_safe_opc(path)
+    contract = build_writable_contract(context, document_parts=package.parts)
+    signing_key = load_or_create_signing_key()
+    identity = context["project_identity"]
+    template = context["template_binding"]
+    field_dictionary_hash = hashlib.sha256(
+        resolve_resource_path(*FIELD_DICTIONARY_RELATIVE_PATH).read_bytes()
+    ).hexdigest()
+    core = {
+        "manifest_version": "1",
+        "signature_algorithm": "HMAC-SHA256",
+        "key_id": signing_key.key_id,
+        "document_instance_id": str(uuid.uuid4()),
+        "project_uuid": identity["project_uuid"],
+        "project_type": "full_report",
+        "export_job_uuid": job_uuid,
+        "snapshot_uuid": snapshot_uuid,
+        "project_revision": int(identity["project_revision"]),
+        "template_package_id": template["package_id"],
+        "template_edition": template["template_edition"],
+        "template_revision": template["template_revision"],
+        "template_hash": template["runtime_template_sha256"],
+        "field_dictionary_hash": field_dictionary_hash,
+        "snapshot_hash": snapshot_hash,
+        "writable_contract_hash": contract["writable_contract_hash"],
+        "structure_contract_hash": contract["structure_contract_hash"],
+        "scoring_engine_version": str(
+            context["r3_context"].get("rule_set_id") or "score-rule-v1"
+        ),
+        "issued_at": database.utc_now(),
+        "roundtrip_capable": True,
+        "export_mode": "draft",
+        "writable_fields": contract["writable_fields"],
+        "writable_rows": contract["writable_rows"],
+        "baseline_value_hashes": contract["baseline_value_hashes"],
+    }
+    manifest = build_signed_manifest(core, signing_key)
+    _write_docx_parts(path, embed_manifest(package.parts, manifest))
+    return manifest, contract, signing_key
+
+
+def _validate_roundtrip_document(
+    path: Path,
+    manifest: dict[str, Any],
+    contract: dict[str, Any],
+    signing_key: Any,
+) -> None:
+    package = read_safe_opc(path)
+    validate_roundtrip_opc(package)
+    verified = verify_signed_manifest(
+        extract_manifest(package.parts), {signing_key.key_id: signing_key}
+    )
+    if not hmac.compare_digest(
+        hashlib.sha256(manifest_json_bytes(verified)).hexdigest(),
+        hashlib.sha256(manifest_json_bytes(manifest)).hexdigest(),
+    ):
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_MANIFEST_CHANGED",
+            "Microsoft Word 保存后受控清单发生变化。",
+            status_code=500,
+        )
+    structure = extract_roundtrip_structure(package.parts)
+    baseline = contract["baseline"]
+    if not hmac.compare_digest(
+        readonly_document_hash(package.parts),
+        baseline["structure_contract"]["readonly_document_hash"],
+    ):
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_READONLY_CONTENT_CHANGED",
+            "Microsoft Word 保存后只读正文或表格结构发生变化。",
+            status_code=500,
+        )
+    expected_rows = {item["row_token"]: item for item in baseline["rows"]}
+    actual_rows = {item.token: item for item in structure.rows}
+    if set(expected_rows) != set(actual_rows):
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_ROW_SET_CHANGED",
+            "Microsoft Word 保存后业务行集合发生变化。",
+            status_code=500,
+        )
+    for token, expected in expected_rows.items():
+        actual = actual_rows[token]
+        if (
+            actual.block_token != expected["block_token"]
+            or actual.sort_order != expected["sort_order"]
+            or actual.slot_tokens != tuple(expected["writable_slot_ids"])
+            or actual.geometry_hash != expected["geometry_hash"]
+        ):
+            raise ReportDomainError(
+                "REPORT_ROUNDTRIP_STRUCTURE_CHANGED",
+                "Microsoft Word 保存后受控表格结构发生变化。",
+                status_code=500,
+            )
+    actual_slots = {item.token: item.value for item in structure.slots}
+    expected_slots = {item["slot_id"]: item for item in baseline["slots"]}
+    if set(actual_slots) != set(expected_slots):
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_SLOT_SET_CHANGED",
+            "Microsoft Word 保存后可写字段槽位发生变化。",
+            status_code=500,
+        )
+    for token, expected in expected_slots.items():
+        try:
+            digest = value_hash(expected, actual_slots[token])
+        except ValueError as exc:
+            raise ReportDomainError(
+                "REPORT_ROUNDTRIP_VALUE_CHANGED_DURING_EXPORT",
+                "Microsoft Word 保存后白名单字段值不合法。",
+                status_code=500,
+            ) from exc
+        if not hmac.compare_digest(digest, expected["value_hash"]):
+            raise ReportDomainError(
+                "REPORT_ROUNDTRIP_VALUE_CHANGED_DURING_EXPORT",
+                "Microsoft Word 保存后白名单字段值发生意外变化。",
+                status_code=500,
+            )
+
+
+def _record_roundtrip_contract(
+    job_uuid: str,
+    snapshot_uuid: str,
+    context: dict[str, Any],
+    manifest: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    baseline = contract["baseline"]
+    with database.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            """
+            INSERT INTO report_roundtrip_manifests (
+                document_instance_id, project_id, snapshot_uuid, export_job_uuid,
+                manifest_json, baseline_json, manifest_hash, baseline_hash,
+                structure_contract_hash, signing_key_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                manifest["document_instance_id"], context["project_identity"]["project_id"],
+                snapshot_uuid, job_uuid, manifest_json_bytes(manifest).decode("utf-8"),
+                canonical_json(baseline), manifest["manifest_hash"], baseline["baseline_hash"],
+                contract["structure_contract_hash"], manifest["key_id"], database.utc_now(),
+            ),
+        )
+        db.execute(
+            """
+            UPDATE report_export_jobs
+            SET document_instance_id=?, manifest_hash=?, structure_contract_hash=?, signing_key_id=?
+            WHERE job_uuid=? AND status='running'
+            """,
+            (
+                manifest["document_instance_id"], manifest["manifest_hash"],
+                contract["structure_contract_hash"], manifest["key_id"], job_uuid,
+            ),
+        )
+
+
 def _insert_snapshot(
     context: dict[str, Any],
     job_uuid: str,
@@ -248,8 +447,8 @@ def _insert_snapshot(
                 template_package_id, template_asset_set_hash, template_docx_hash,
                 r2_context_hash, r3_schema_version, r3_rule_set_id,
                 r3_rule_set_hash, r3_context_hash, validation_summary_json,
-                warning_summary_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                warning_summary_json, roundtrip_capable, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_uuid, identity["project_id"], job_uuid, identity["project_revision"],
@@ -258,7 +457,8 @@ def _insert_snapshot(
                 context["r2_context_hash"], str(r3.get("schema_version") or "1.0"),
                 str(r3.get("rule_set_id") or "unavailable"), str(r3.get("rule_set_hash") or "0" * 64),
                 context["r3_context_hash"], _json(context["validation_summary"]),
-                _json(context["warning_summary"]), database.utc_now(),
+                _json(context["warning_summary"]),
+                int(bool(identity.get("roundtrip_capable"))), database.utc_now(),
             ),
         )
         db.execute(
@@ -328,9 +528,11 @@ def process_export_job(job_uuid: str) -> None:
             mode = str(job["export_mode"])
             version = str(job["export_version"])
             revision = int(job["project_revision"])
+            roundtrip_capable = bool(job["roundtrip_capable"])
 
         context = build_assembly_context(
-            project_uuid, mode=mode, version=version, expected_project_revision=revision
+            project_uuid, mode=mode, version=version, expected_project_revision=revision,
+            roundtrip_capable=roundtrip_capable,
         )
         snapshot_uuid, snapshot_path, snapshot_hash = _write_snapshot(context, job_uuid)
         _insert_snapshot(context, job_uuid, snapshot_uuid, snapshot_path, snapshot_hash)
@@ -364,6 +566,17 @@ def process_export_job(job_uuid: str) -> None:
                     (_json(issues), job_uuid),
                 )
         render_report(context, initial)
+        roundtrip_manifest: dict[str, Any] | None = None
+        roundtrip_contract: dict[str, Any] | None = None
+        roundtrip_key = None
+        if roundtrip_capable:
+            roundtrip_manifest, roundtrip_contract, roundtrip_key = _prepare_roundtrip_document(
+                initial,
+                context,
+                job_uuid=job_uuid,
+                snapshot_uuid=snapshot_uuid,
+                snapshot_hash=snapshot_hash,
+            )
 
         word_status = "not_started"
         page_count = None
@@ -373,9 +586,18 @@ def process_export_job(job_uuid: str) -> None:
             )
             word_status = "succeeded"
             page_count = int(state.get("page_count") or 0) or None
-            validate_rendered_report(refreshed, final=mode == "final")
+            validate_rendered_report(
+                refreshed,
+                final=mode == "final",
+                roundtrip_capable=roundtrip_capable,
+            )
+            if roundtrip_capable:
+                assert roundtrip_manifest is not None and roundtrip_contract is not None
+                _validate_roundtrip_document(
+                    refreshed, roundtrip_manifest, roundtrip_contract, roundtrip_key
+                )
         except WordRefreshError as exc:
-            if mode == "final":
+            if mode == "final" or roundtrip_capable:
                 raise
             word_status = "skipped"
             shutil.copy2(initial, refreshed)
@@ -403,6 +625,15 @@ def process_export_job(job_uuid: str) -> None:
                 "附录 B 在 Word 刷新期间发生变化，请重新导出。",
                 status_code=409,
                 project_uuid=project_uuid,
+            )
+        if roundtrip_capable:
+            assert roundtrip_manifest is not None and roundtrip_contract is not None
+            _record_roundtrip_contract(
+                job_uuid,
+                snapshot_uuid,
+                context,
+                roundtrip_manifest,
+                roundtrip_contract,
             )
         initial.unlink(missing_ok=True)
         status_file = staging / "word-status.json"

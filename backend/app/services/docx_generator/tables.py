@@ -11,7 +11,17 @@ from docx.oxml.ns import nsdecls, qn
 from docx.table import _Cell, Table
 
 from ..scoring import calculate_flat_technical_rows
-from .content_controls import wrap_cell_paragraph_with_dropdown
+from ...report_roundtrip.contracts import (
+    ROUNDTRIP_TAG_PREFIX,
+    block_token,
+    row_token,
+    slot_id,
+    slot_tag,
+)
+from .content_controls import (
+    wrap_cell_paragraph_with_dropdown,
+    wrap_cell_paragraph_with_plain_text,
+)
 from .fields import add_complex_field
 from .styles import (
     apply_run_font,
@@ -69,7 +79,64 @@ def add_assessment_table(
 
     configure_table_geometry(table, [float(column["width_in"]) for column in columns], profile)
     _merge_repeated_unit_cells(table, output_rows, header_row_count, profile, columns)
+    if mode == "roundtrip":
+        _wrap_roundtrip_table(table, section["code"], output_rows, header_row_count)
     return table
+
+
+def _roundtrip_sdt(tag: str, content_element) -> OxmlElement:
+    sdt = OxmlElement("w:sdt")
+    properties = OxmlElement("w:sdtPr")
+    alias = OxmlElement("w:alias")
+    alias.set(qn("w:val"), tag)
+    properties.append(alias)
+    tag_element = OxmlElement("w:tag")
+    tag_element.set(qn("w:val"), tag)
+    properties.append(tag_element)
+    lock = OxmlElement("w:lock")
+    lock.set(qn("w:val"), "sdtLocked")
+    properties.append(lock)
+    content = OxmlElement("w:sdtContent")
+    content.append(content_element)
+    sdt.append(properties)
+    sdt.append(content)
+    return sdt
+
+
+def _wrap_roundtrip_table(
+    table: Table,
+    section_code: str,
+    rows: list[Any],
+    header_row_count: int,
+) -> None:
+    table_element = table._tbl
+    raw_rows = list(table_element.findall(qn("w:tr")))
+    body_rows = raw_rows[header_row_count:]
+    if len(body_rows) != len(rows):
+        raise ValueError("roundtrip table row count mismatch")
+    for raw_row, source in zip(body_rows, rows):
+        row_uuid = _value(source, "source_row_uuid")
+        if not row_uuid:
+            raise ValueError("roundtrip row is missing source_row_uuid")
+        index = table_element.index(raw_row)
+        table_element.remove(raw_row)
+        wrapper = _roundtrip_sdt(
+            f"{ROUNDTRIP_TAG_PREFIX}:r:{row_token(row_uuid)}",
+            raw_row,
+        )
+        table_element.insert(index, wrapper)
+    parent = table_element.getparent()
+    if parent is None:
+        raise ValueError("roundtrip table has no parent")
+    index = parent.index(table_element)
+    parent.remove(table_element)
+    parent.insert(
+        index,
+        _roundtrip_sdt(
+            f"{ROUNDTRIP_TAG_PREFIX}:b:{block_token(section_code)}",
+            table_element,
+        ),
+    )
 
 
 def _add_header_rows(table: Table, columns: list[Any], table_type: str, profile: dict[str, Any]) -> None:
@@ -131,10 +198,18 @@ def _fill_body_cell(
 ) -> None:
     if key == "record_text":
         _set_record_cell(cell, _value(row, key), profile, figure_refs)
+        if mode == "roundtrip" and "[[FIG:" not in _value(row, key):
+            _wrap_roundtrip_text(cell, row, key, multiline=True)
         return
 
     if key == "unit":
         _set_unit_cell(cell, _value(row, key), profile)
+        return
+
+    if key == "object_name":
+        set_cell_text(cell, _value(row, key), profile, "body", "center")
+        if mode == "roundtrip":
+            _wrap_roundtrip_text(cell, row, key)
         return
 
     if key in {"d", "a", "k"}:
@@ -142,10 +217,14 @@ def _fill_body_cell(
         _set_metric_cell(
             cell=cell,
             value=value,
-            tag=f"{section_code.replace('-', '')}.row{row_index}.{key.upper()}",
+            tag=(
+                slot_tag(slot_id(_value(row, "source_row_uuid"), key))
+                if mode == "roundtrip"
+                else f"{section_code.replace('-', '')}.row{row_index}.{key.upper()}"
+            ),
             options=profile["content_controls"]["technical_metric"]["options"],
             profile=profile,
-            mode=mode,
+            mode=("final" if key in set(row.get("roundtrip_locked_columns") or []) else mode),
         )
         return
 
@@ -154,7 +233,11 @@ def _fill_body_cell(
         _set_metric_cell(
             cell=cell,
             value=value,
-            tag=f"{section_code.replace('-', '')}.row{row_index}.compliance",
+            tag=(
+                slot_tag(slot_id(_value(row, "source_row_uuid"), key))
+                if mode == "roundtrip"
+                else f"{section_code.replace('-', '')}.row{row_index}.compliance"
+            ),
             options=profile["content_controls"]["management_compliance"]["options"],
             profile=profile,
             mode=mode,
@@ -179,8 +262,21 @@ def _set_metric_cell(
     mode: str,
 ) -> None:
     set_cell_text(cell, value, profile, "body", "center")
-    if mode == "editable":
-        wrap_cell_paragraph_with_dropdown(cell, tag, value, options)
+    if mode in {"editable", "roundtrip"}:
+        wrap_cell_paragraph_with_dropdown(
+            cell, tag, value, options, lock_control=mode == "roundtrip"
+        )
+
+
+def _wrap_roundtrip_text(cell: _Cell, row: Any, key: str, *, multiline: bool = False) -> None:
+    row_uuid = _value(row, "source_row_uuid")
+    if not row_uuid:
+        raise ValueError("roundtrip row is missing source_row_uuid")
+    wrap_cell_paragraph_with_plain_text(
+        cell,
+        slot_tag(slot_id(row_uuid, key)),
+        multiline=multiline,
+    )
 
 
 def _set_record_cell(

@@ -166,6 +166,39 @@ class BackupTests(unittest.TestCase):
             self.assertEqual((backup.storage_path / "evidence" / "photo.png").read_bytes(), b"initial image")
             self.assertNotIn("初始项目", (backup.path / "metadata.json").read_text(encoding="utf-8"))
 
+    def test_backup_restore_preserves_roundtrip_private_key_and_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = _runtime_paths(Path(temp_dir))
+            _create_live_data(paths)
+            private = paths.database_path.parent / "private" / "roundtrip"
+            private.joinpath("imports", "job-1").mkdir(parents=True)
+            private.joinpath("signing-key.v1").write_bytes(b"protected-key-v1")
+            private.joinpath("imports", "job-1", "source.docx").write_bytes(
+                b"signed-roundtrip-source"
+            )
+
+            backup = create_backup(paths, "daily")
+            private.joinpath("signing-key.v1").write_bytes(b"replacement-key")
+            private.joinpath("imports", "job-1", "source.docx").write_bytes(
+                b"replacement-source"
+            )
+
+            result = restore_backup(paths, backup.path)
+
+            self.assertTrue(result.restored, result.reason)
+            restored = paths.database_path.parent / "private" / "roundtrip"
+            self.assertEqual(
+                restored.joinpath("signing-key.v1").read_bytes(),
+                b"protected-key-v1",
+            )
+            self.assertEqual(
+                restored.joinpath("imports", "job-1", "source.docx").read_bytes(),
+                b"signed-roundtrip-source",
+            )
+            metadata = (backup.path / "metadata.json").read_text(encoding="utf-8")
+            self.assertIn('"private_files"', metadata)
+            self.assertNotIn("protected-key-v1", metadata)
+
     def test_retention_keeps_daily_limit_and_never_removes_pre_restore(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = _runtime_paths(Path(temp_dir))

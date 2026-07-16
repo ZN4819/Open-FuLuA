@@ -150,6 +150,7 @@ class CrossReferenceWrite(BaseModel):
 
 class AssessmentRowRead(BaseModel):
     id: int
+    row_uuid: str
     section_id: int
     assessment_object_uuid: str | None = None
     unit: str

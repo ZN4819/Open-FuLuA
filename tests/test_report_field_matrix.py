@@ -61,7 +61,7 @@ class ReportFieldMatrixTests(unittest.TestCase):
         validate_default_field_matrix()
         matrix = load_default_field_matrix()
 
-        self.assertEqual(matrix.matrix_version, "R2.2-2026-07-15.1")
+        self.assertEqual(matrix.matrix_version, "R2.3-2026-07-16.1")
         self.assertEqual(matrix.package_id, "report-2023-2025.12.08")
         self.assertEqual((len(matrix.fields), len(matrix.relations)), (99, 70))
         self.assertEqual(len(matrix.sha256), 64)

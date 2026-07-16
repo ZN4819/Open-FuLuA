@@ -297,9 +297,16 @@ def build_assembly_context(
     mode: ExportMode,
     version: str,
     expected_project_revision: int,
+    roundtrip_capable: bool = False,
 ) -> dict[str, Any]:
     if mode not in {"draft", "final"}:
         raise ReportDomainError("REPORT_EXPORT_MODE_INVALID", "导出模式无效。", status_code=422)
+    if roundtrip_capable and mode != "draft":
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_MODE_INVALID",
+            "只有草稿可以启用受控 Word 回收。",
+            status_code=422,
+        )
     package = report_template_registry.load()
     matrix = load_default_field_matrix()
     template_docx_hash = hashlib.sha256(package.runtime_template_bytes).hexdigest()
@@ -386,6 +393,7 @@ def build_assembly_context(
             "project_revision": expected_project_revision,
             "export_mode": mode,
             "export_version": version,
+            "roundtrip_capable": roundtrip_capable,
         },
         "template_binding": {
             "package_id": package.package_id,

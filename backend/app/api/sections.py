@@ -30,6 +30,7 @@ def section_to_schema(row) -> SectionRead:
 def assessment_row_to_schema(row) -> AssessmentRowRead:
     return AssessmentRowRead(
         id=row["id"],
+        row_uuid=row["row_uuid"],
         section_id=row["section_id"],
         assessment_object_uuid=row["assessment_object_uuid"],
         unit=row["unit"],

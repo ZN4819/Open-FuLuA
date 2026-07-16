@@ -187,8 +187,33 @@ def require_cas_updated(
     )
 
 
-def touch_project(db: sqlite3.Connection, project_id: int) -> None:
-    db.execute("UPDATE projects SET workflow_status = 'draft', updated_at = ? WHERE id = ?", (database.utc_now(), project_id))
+def touch_project(
+    db: sqlite3.Connection,
+    project_id: int,
+    *,
+    advance_revision: bool = True,
+) -> None:
+    """Mark report facts changed and advance the single project revision.
+
+    Entity-level CAS still protects the individual write.  This project-level
+    monotonic revision invalidates R3/R4/R7 snapshots for every R2 fact write.
+    """
+    timestamp = database.utc_now()
+    db.execute(
+        "UPDATE projects SET workflow_status = 'draft', updated_at = ? WHERE id = ?",
+        (timestamp, project_id),
+    )
+    if advance_revision:
+        db.execute(
+            """
+            UPDATE report_generation_state
+            SET project_revision = project_revision + 1,
+                current_context_hash = NULL,
+                updated_at = ?
+            WHERE project_id = ?
+            """,
+            (timestamp, project_id),
+        )
 
 
 def ensure_uuid_in_project(

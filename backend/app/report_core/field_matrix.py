@@ -95,6 +95,7 @@ _TOP_LEVEL_REQUIRED = frozenset(
         "template_edition",
         "template_revision",
         "source_contracts",
+        "word_roundtrip_policy",
         "closed_sets",
         "field_catalog",
         "relations",
@@ -189,6 +190,7 @@ class FieldMatrix:
     template_revision: str
     fields: tuple[FieldBinding, ...]
     relations: tuple[FieldRelation, ...]
+    roundtrip_policy: dict[str, Any]
     sha256: str
 
     def relation(self, relation_id: str) -> FieldRelation:
@@ -209,6 +211,53 @@ def _fail(
     details: dict[str, Any] | None = None,
 ) -> None:
     raise FieldMatrixValidationError(code, location=location, details=details)
+
+
+def _validate_roundtrip_policy(
+    value: Any,
+    fields_by_id: dict[str, FieldBinding],
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "policy_version", "scalar_slots", "appendix_a_columns", "forbidden_entity_paths"
+    }:
+        _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location="word_roundtrip_policy")
+    if value.get("policy_version") != "R7.1":
+        _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location="word_roundtrip_policy.policy_version")
+    forbidden = _require_string_list(
+        value.get("forbidden_entity_paths"),
+        location="word_roundtrip_policy.forbidden_entity_paths",
+    )
+    if set(forbidden) != {
+        "metric_results[*].ra", "metric_results[*].rk",
+        "metric_results[*].object_score", "metric_results[*].unit_score",
+    }:
+        _fail("FIELD_MATRIX_ROUNDTRIP_FORBIDDEN_SET_INVALID", location="word_roundtrip_policy")
+    entries = []
+    for group in ("scalar_slots", "appendix_a_columns"):
+        items = value.get(group)
+        if not isinstance(items, list) or not items:
+            _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location=f"word_roundtrip_policy.{group}")
+        entries.extend(items)
+    seen_paths: set[str] = set()
+    for index, item in enumerate(entries):
+        location = f"word_roundtrip_policy.entry[{index}]"
+        if not isinstance(item, dict):
+            _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location=location)
+        field_id = _require_string(item.get("authority_field_id"), location=f"{location}.authority_field_id")
+        binding = fields_by_id.get(field_id)
+        if binding is None or not binding.editable or binding.source_kind != "manual":
+            _fail("FIELD_MATRIX_ROUNDTRIP_AUTHORITY_INVALID", location=field_id)
+        path = _require_string(item.get("entity_path"), location=f"{location}.entity_path")
+        if path in forbidden or path in seen_paths:
+            _fail("FIELD_MATRIX_ROUNDTRIP_PATH_INVALID", location=path)
+        if any(token in path.lower() for token in (".ra", ".rk", "object_score", "unit_score")):
+            _fail("FIELD_MATRIX_ROUNDTRIP_PATH_INVALID", location=path)
+        if item.get("value_type") not in {"text", "multiline", "date", "enum"}:
+            _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location=f"{location}.value_type")
+        if item.get("normalizer_id") not in {"exact_v1", "trim_v1", "multiline_v1", "date_iso_v1", "enum_v1"}:
+            _fail("FIELD_MATRIX_ROUNDTRIP_POLICY_INVALID", location=f"{location}.normalizer_id")
+        seen_paths.add(path)
+    return value
 
 
 def _load_json_object(path: Path, *, asset: str) -> tuple[dict[str, Any], bytes]:
@@ -601,15 +650,19 @@ def load_field_matrix(
             },
         )
 
+    roundtrip_policy = _validate_roundtrip_policy(
+        matrix.get("word_roundtrip_policy"), fields_by_id
+    )
     return FieldMatrix(
-        _require_string(matrix.get("matrix_id"), location="matrix_id"),
-        _require_string(matrix.get("matrix_version"), location="matrix_version"),
-        str(matrix["package_id"]),
-        str(matrix["template_edition"]),
-        str(matrix["template_revision"]),
-        tuple(fields),
-        tuple(relations),
-        hashlib.sha256(matrix_raw).hexdigest(),
+        matrix_id=_require_string(matrix.get("matrix_id"), location="matrix_id"),
+        matrix_version=_require_string(matrix.get("matrix_version"), location="matrix_version"),
+        package_id=str(matrix["package_id"]),
+        template_edition=str(matrix["template_edition"]),
+        template_revision=str(matrix["template_revision"]),
+        fields=tuple(fields),
+        relations=tuple(relations),
+        roundtrip_policy=roundtrip_policy,
+        sha256=hashlib.sha256(matrix_raw).hexdigest(),
     )
 
 
