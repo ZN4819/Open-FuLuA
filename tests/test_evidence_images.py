@@ -148,6 +148,8 @@ class EvidenceImagesTest(unittest.TestCase):
 
         reordered = database.reorder_evidence_images(project["id"], "A-1", [second["id"], first["id"]])
 
+        self.assertTrue(first["evidence_uuid"])
+        self.assertNotEqual(first["evidence_uuid"], second["evidence_uuid"])
         self.assertEqual([row["id"] for row in reordered], [second["id"], first["id"]])
         self.assertEqual([row["sort_order"] for row in reordered], [1, 2])
 
@@ -250,6 +252,7 @@ class EvidenceImagesTest(unittest.TestCase):
         )
 
         self.assertEqual(updated.id, image["id"])
+        self.assertEqual(updated.evidence_uuid, image["evidence_uuid"])
         self.assertEqual(updated.figure_label, "图A-1-1")
         self.assertEqual(updated.caption, "旧题注")
         self.assertEqual(updated.sort_order, 1)

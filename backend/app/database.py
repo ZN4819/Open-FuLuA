@@ -21,6 +21,11 @@ from .contracts import (
     WORKFLOW_STATUSES,
 )
 from .runtime import SCHEMA_VERSION
+from .report_core.initializer import (
+    initialize_existing_full_report_projects,
+    initialize_report_domain,
+)
+from .report_core.schema import audit_report_core_schema, ensure_report_core_schema
 from .services.scoring import (
     MANAGEMENT_SECTION_CODES,
     TECHNICAL_SECTION_CODES,
@@ -36,6 +41,10 @@ FIG_TOKEN_RE = re.compile(r"\[\[FIG:(\d+)\]\]")
 PROJECT_UUID_NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL,
     "https://github.com/ZN4819/Open-FuLuA/projects",
+)
+EVIDENCE_UUID_NAMESPACE = uuid.uuid5(
+    uuid.NAMESPACE_URL,
+    "https://github.com/ZN4819/Open-FuLuA/evidence-images",
 )
 
 
@@ -157,6 +166,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS evidence_images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evidence_uuid TEXT,
                 project_id INTEGER NOT NULL,
                 section_code TEXT NOT NULL,
                 file_path TEXT NOT NULL,
@@ -361,6 +371,11 @@ def init_db() -> None:
             """
         )
         _ensure_project_identity_schema(db, audit_existing=current_version >= 4)
+        _ensure_evidence_identity_schema(db)
+        if current_version >= 5:
+            audit_report_core_schema(db)
+        ensure_report_core_schema(db)
+        initialize_existing_full_report_projects(db)
         if current_version < 3:
             _migrate_management_unit_scores(db)
         db.execute(f"PRAGMA user_version = {target_version}")
@@ -399,6 +414,51 @@ def _ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, co
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
     if column_name not in columns:
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def new_evidence_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _ensure_evidence_identity_schema(db: sqlite3.Connection) -> None:
+    _ensure_column(db, "evidence_images", "evidence_uuid", "TEXT")
+    rows = db.execute(
+        """
+        SELECT e.id, e.project_id, e.evidence_uuid, p.project_uuid
+        FROM evidence_images e
+        JOIN projects p ON p.id = e.project_id
+        ORDER BY e.id
+        """
+    ).fetchall()
+    seen: set[str] = set()
+    for row in rows:
+        value = str(row["evidence_uuid"] or "").strip()
+        if value:
+            try:
+                uuid.UUID(value)
+            except ValueError as exc:
+                raise RuntimeError("EVIDENCE_UUID_INVALID") from exc
+            if value in seen:
+                raise RuntimeError("EVIDENCE_UUID_DUPLICATE")
+        else:
+            value = str(
+                uuid.uuid5(
+                    EVIDENCE_UUID_NAMESPACE,
+                    f"{row['project_uuid']}:{row['id']}",
+                )
+            )
+            db.execute(
+                "UPDATE evidence_images SET evidence_uuid = ? WHERE id = ?",
+                (value, row["id"]),
+            )
+        seen.add(value)
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_images_uuid
+        ON evidence_images(evidence_uuid)
+        WHERE evidence_uuid IS NOT NULL
+        """
+    )
 
 
 def _ensure_project_identity_schema(
@@ -752,6 +812,8 @@ def _insert_project(
             for code, title, table_title, sort_order in SECTION_SEED
         ],
     )
+    if project_type == "full_report":
+        initialize_report_domain(db, project_id=project_id)
     project = get_project_by_id(project_id, db)
     if project is None:
         raise RuntimeError("PROJECT_CREATE_FAILED")
@@ -1481,6 +1543,7 @@ def list_assessment_rows(section_id: int, db: sqlite3.Connection | None = None) 
         SELECT
             r.id,
             r.section_id,
+            r.assessment_object_uuid,
             r.unit,
             r.object_name,
             r.subsystem,
@@ -1544,6 +1607,7 @@ def list_evidence_images(project_id: int, section_code: str, db: sqlite3.Connect
     query = """
         SELECT
             id,
+            evidence_uuid,
             project_id,
             section_code,
             file_path,
@@ -1573,6 +1637,7 @@ def list_project_evidence_images(project_id: int, db: sqlite3.Connection | None 
     query = """
         SELECT
             e.id,
+            e.evidence_uuid,
             e.project_id,
             e.section_code,
             e.file_path,
@@ -1605,6 +1670,7 @@ def get_evidence_image(image_id: int, db: sqlite3.Connection | None = None) -> s
     query = """
         SELECT
             id,
+            evidence_uuid,
             project_id,
             section_code,
             file_path,
@@ -1651,6 +1717,7 @@ def create_evidence_image(project_id: int, section_code: str, image: dict[str, A
             """
             INSERT INTO evidence_images
                 (
+                    evidence_uuid,
                     project_id,
                     section_code,
                     file_path,
@@ -1667,9 +1734,10 @@ def create_evidence_image(project_id: int, section_code: str, image: dict[str, A
                     created_at,
                     updated_at
                 )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                new_evidence_uuid(),
                 project_id,
                 section_code,
                 image["file_path"],
@@ -1755,6 +1823,19 @@ def delete_evidence_image(image_id: int) -> sqlite3.Row | None:
         existing = get_evidence_image(image_id, db)
         if existing is None:
             return None
+        evidence_uuid = str(existing["evidence_uuid"] or "").strip()
+        report_blocks_exist = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_blocks'"
+        ).fetchone()
+        if evidence_uuid and report_blocks_exist:
+            reference_count = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM report_blocks WHERE project_id=? AND instr(payload_json,?)>0",
+                    (existing["project_id"], evidence_uuid),
+                ).fetchone()[0]
+            )
+            if reference_count:
+                raise ValueError("该图片仍被报告章节引用，不能删除。")
         db.execute("DELETE FROM evidence_images WHERE id = ?", (image_id,))
         return existing
 
@@ -1825,7 +1906,12 @@ def replace_section_rows(
                 (title, table_title, section["id"]),
             )
 
-        db.execute("DELETE FROM assessment_rows WHERE section_id = ?", (section["id"],))
+        existing_rows = db.execute(
+            "SELECT id, assessment_object_uuid FROM assessment_rows WHERE section_id = ?",
+            (section["id"],),
+        ).fetchall()
+        existing_by_id = {int(row["id"]): row for row in existing_rows}
+        submitted_ids: set[int] = set()
         db.execute(
             "DELETE FROM section_subsystems WHERE project_id = ? AND section_code = ?",
             (project_id, code),
@@ -1844,30 +1930,90 @@ def replace_section_rows(
         for index, row in enumerate(rows, start=1):
             sort_order = int(row.get("sort_order") or index)
             record_text = "" if row.get("record_text") is None else str(row.get("record_text"))
-            cursor = db.execute(
-                """
-                INSERT INTO assessment_rows
-                    (section_id, unit, object_name, subsystem, record_text, sort_order, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    section["id"],
-                    row.get("unit", ""),
-                    row.get("object_name", ""),
-                    row.get("subsystem", ""),
-                    record_text,
-                    sort_order,
-                    timestamp,
-                    timestamp,
-                ),
-            )
-            row_id = int(cursor.lastrowid)
+            submitted_id = row.get("id")
+            if submitted_id is None:
+                cursor = db.execute(
+                    """
+                    INSERT INTO assessment_rows
+                        (section_id, unit, object_name, subsystem, record_text, sort_order, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        section["id"],
+                        row.get("unit", ""),
+                        row.get("object_name", ""),
+                        row.get("subsystem", ""),
+                        record_text,
+                        sort_order,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                row_id = int(cursor.lastrowid)
+            else:
+                row_id = int(submitted_id)
+                if row_id in submitted_ids:
+                    raise ValueError("同一测评记录不能在一次保存中重复提交。")
+                existing = existing_by_id.get(row_id)
+                if existing is None:
+                    raise ValueError("测评记录标识无效或不属于当前章节。")
+                db.execute(
+                    """
+                    UPDATE assessment_rows
+                    SET unit=?, object_name=?, subsystem=?, record_text=?, sort_order=?, updated_at=?
+                    WHERE id=? AND section_id=?
+                    """,
+                    (
+                        row.get("unit", ""),
+                        row.get("object_name", ""),
+                        row.get("subsystem", ""),
+                        record_text,
+                        sort_order,
+                        timestamp,
+                        row_id,
+                        section["id"],
+                    ),
+                )
+                object_uuid = str(existing["assessment_object_uuid"] or "").strip()
+                if object_uuid:
+                    db.execute(
+                        """
+                        UPDATE assessment_objects
+                        SET name_snapshot=?, source_section_code=?, source_row_id=?,
+                            revision=revision+1, updated_at=?
+                        WHERE project_id=? AND object_uuid=?
+                          AND (
+                              name_snapshot<>? OR source_section_code IS NOT ? OR source_row_id IS NOT ?
+                          )
+                        """,
+                        (
+                            row.get("object_name", ""),
+                            code,
+                            row_id,
+                            timestamp,
+                            project_id,
+                            object_uuid,
+                            row.get("object_name", ""),
+                            code,
+                            row_id,
+                        ),
+                    )
+            submitted_ids.add(row_id)
             metric = row.get("metric_result") or {}
             db.execute(
                 """
                 INSERT INTO metric_results
                     (row_id, d, a, k, ra, rk, object_score, unit_score, compliance)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(row_id) DO UPDATE SET
+                    d=excluded.d,
+                    a=excluded.a,
+                    k=excluded.k,
+                    ra=excluded.ra,
+                    rk=excluded.rk,
+                    object_score=excluded.object_score,
+                    unit_score=excluded.unit_score,
+                    compliance=excluded.compliance
                 """,
                 (
                     row_id,
@@ -1883,6 +2029,7 @@ def replace_section_rows(
             )
             active_reference_tokens = _active_reference_tokens(record_text)
             inserted_reference_tokens: set[str] = set()
+            db.execute("DELETE FROM cross_references WHERE source_row_id = ?", (row_id,))
             for reference in row.get("cross_references") or []:
                 token = "" if reference.get("token") is None else str(reference.get("token")).strip()
                 if token not in active_reference_tokens or token in inserted_reference_tokens:
@@ -1901,6 +2048,10 @@ def replace_section_rows(
                         reference.get("display_text", ""),
                     ),
                 )
+
+        stale_row_ids = set(existing_by_id) - submitted_ids
+        for stale_row_id in stale_row_ids:
+            db.execute("DELETE FROM assessment_rows WHERE id=? AND section_id=?", (stale_row_id, section["id"]))
 
         return get_section(project_id, code, db)
 
@@ -1945,6 +2096,7 @@ def append_section_to_project(
                 """
                 INSERT INTO evidence_images
                     (
+                        evidence_uuid,
                         project_id,
                         section_code,
                         file_path,
@@ -1961,9 +2113,10 @@ def append_section_to_project(
                         created_at,
                         updated_at
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    new_evidence_uuid(),
                     target_project_id,
                     code,
                     target_relative_path,

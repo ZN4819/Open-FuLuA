@@ -1,0 +1,3912 @@
+{
+  "schema_version": "1.0",
+  "matrix_id": "report-field-relation-matrix",
+  "matrix_version": "R2.2-2026-07-15.1",
+  "package_id": "report-2023-2025.12.08",
+  "template_edition": "2023",
+  "template_revision": "2025-12-08",
+  "source_contracts": {
+    "field_dictionary_sha256": "1c4c6fdeb9f6a1ecbe6825c73c73e55f5e582d468ec188a41628f0845888c808",
+    "manifest_sha256": "dc7f3dbdde0972af7638fcff6a312fec19de121f8e2627c4fa2707242f614bf8"
+  },
+  "closed_sets": {
+    "source_kind": [
+      "derived",
+      "manual",
+      "template_constant"
+    ],
+    "relation_type": [
+      "aggregation_input",
+      "conditional_requirement",
+      "derived_output_slot",
+      "referential_integrity",
+      "repeated_projection",
+      "staleness",
+      "validation"
+    ],
+    "missing_behavior": [
+      "allow_draft_block_final",
+      "allow_empty",
+      "derive_or_block_final",
+      "render_empty_structure",
+      "template_package_unavailable"
+    ],
+    "conflict_behavior": [
+      "preserve_and_warn",
+      "recompute_from_authority",
+      "reject",
+      "require_confirmation",
+      "template_package_unavailable"
+    ],
+    "implemented_in": [
+      "R2",
+      "R3",
+      "R4",
+      "R5"
+    ],
+    "confirmation_status": [
+      "confirmed"
+    ]
+  },
+  "field_catalog": [
+    {
+      "field_id": "report.appendix_a.a4_subsystems",
+      "entity_paths": [
+        "assessment_object_subsystems[*].binding_uuid",
+        "assessment_object_subsystems[*].subsystem_name"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_a.algorithm_match",
+      "entity_paths": [
+        "report_blocks[appendix_a_algorithm_match].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.correction_scores",
+      "entity_paths": [
+        "report_blocks[result_correction_scores].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.final_object_conclusions",
+      "entity_paths": [
+        "report_blocks[final_object_conclusions].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.final_projection",
+      "entity_paths": [
+        "report_blocks[appendix_a_final_projection].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.management_inputs",
+      "entity_paths": [
+        "metric_results[*].compliance"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_a.management_scores",
+      "entity_paths": [
+        "metric_results[*].unit_score"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.original_object_scores",
+      "entity_paths": [
+        "metric_results[*].object_score"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.original_projection",
+      "entity_paths": [
+        "metric_results[*].object_score",
+        "metric_results[*].unit_score"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_a.records",
+      "entity_paths": [
+        "assessment_rows[*].id"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_a.result_correction_relations",
+      "entity_paths": [
+        "result_correction_relations[*].correction_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_a.technical_inputs",
+      "entity_paths": [
+        "metric_results[*].d",
+        "metric_results[*].a",
+        "metric_results[*].k",
+        "metric_results[*].ra",
+        "metric_results[*].rk"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_a.technical_scores",
+      "entity_paths": [
+        "metric_results[*].object_score"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.appendix_b.filing_materials",
+      "entity_paths": [
+        "report_blocks[appendix_b9_filing_materials].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_b.onsite_records",
+      "entity_paths": [
+        "report_phase_dates.site_visit_records_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_b.plan_review",
+      "entity_paths": [
+        "report_phase_dates.scheme_review_at"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_b.report_review",
+      "entity_paths": [
+        "report_phase_dates.report_review_at"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.appendix_b.travel_records",
+      "entity_paths": [
+        "report_phase_dates.travel_records_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.approval.approved_date",
+      "entity_paths": [
+        "report_phase_dates.approved_at"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.approval.compiled_date",
+      "entity_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.approval.review_date",
+      "entity_paths": [
+        "report_phase_dates.report_review_at"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.assessment.additional_reference_standards",
+      "entity_paths": [
+        "report_standards[manual].standard_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.end_date",
+      "entity_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.assessment.fixed_reference_standards",
+      "entity_paths": [
+        "report_standards[fixed].standard_uuid"
+      ],
+      "source_kind": "template_constant",
+      "editable": false
+    },
+    {
+      "field_id": "report.assessment.method_notes",
+      "entity_paths": [
+        "report_blocks[chapter3_assessment_methods].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.methods",
+      "entity_paths": [
+        "report_blocks[chapter3_assessment_methods].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.period",
+      "entity_paths": [
+        "report_phase_dates.fieldwork_start",
+        "report_phase_dates.fieldwork_end"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.assessment.preparation_period",
+      "entity_paths": [
+        "report_phase_dates.preparation_start",
+        "report_phase_dates.preparation_end"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.report_period",
+      "entity_paths": [
+        "report_phase_dates.analysis_start",
+        "report_phase_dates.analysis_end"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.special_indicator_standard_relations",
+      "entity_paths": [
+        "special_indicators[*].manual_standard_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.special_indicator_summary",
+      "entity_paths": [
+        "report_blocks[special_indicator_summary].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.assessment.special_indicators",
+      "entity_paths": [
+        "special_indicators[*].indicator_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.assessment.start_date",
+      "entity_paths": [
+        "report_phase_dates.preparation_start"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.cover.organization_lines",
+      "entity_paths": [
+        "report_blocks[cover_organizations].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.distribution.assessment_copies",
+      "entity_paths": [
+        "report_distribution.assessment_organization_copies"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.distribution.client_copies",
+      "entity_paths": [
+        "report_distribution.client_copies"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.distribution.regulator_copies",
+      "entity_paths": [
+        "report_distribution.regulator_copies"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.distribution.total_copies",
+      "entity_paths": [
+        "report_distribution.regulator_copies",
+        "report_distribution.client_copies",
+        "report_distribution.assessment_organization_copies"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.export.filename",
+      "entity_paths": [
+        "export_records.filename"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.export.snapshot",
+      "entity_paths": [
+        "export_records.snapshot_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.export.version",
+      "entity_paths": [
+        "report_metadata.default_export_version"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.filing.system_name",
+      "entity_paths": [
+        "report_blocks[appendix_b9_filing_materials].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.findings.items",
+      "entity_paths": [
+        "report_blocks[security_findings].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.identity.date",
+      "entity_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.identity.number",
+      "entity_paths": [
+        "report_metadata.report_number"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.members.approver",
+      "entity_paths": [
+        "report_metadata.approver_member_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.members.assessment_team",
+      "entity_paths": [
+        "report_members[*].member_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.members.compiler",
+      "entity_paths": [
+        "report_metadata.compiler_member_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.members.reviewer",
+      "entity_paths": [
+        "report_metadata.reviewer_member_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.narrative.chapter7_conclusion",
+      "entity_paths": [
+        "report_blocks[chapter7_conclusion].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.confirmation_state",
+      "entity_paths": [
+        "report_blocks[*].confirmation_status"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.generated_baseline",
+      "entity_paths": [
+        "report_blocks[*].baseline_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.improvement_suggestions",
+      "entity_paths": [
+        "report_blocks[improvement_suggestions].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.manual_override",
+      "entity_paths": [
+        "report_blocks[*].override_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.narrative.overall_evaluation",
+      "entity_paths": [
+        "report_blocks[overall_evaluation].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.security_issues",
+      "entity_paths": [
+        "report_blocks[security_issues].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.source_hashes",
+      "entity_paths": [
+        "report_blocks[*].source_hash"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.narrative.system_summary",
+      "entity_paths": [
+        "report_blocks[system_summary].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.organization.assessed_name",
+      "entity_paths": [
+        "report_organizations[assessed].name"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.organization.assessment_contact",
+      "entity_paths": [
+        "template_constants.assessment_organization_contact"
+      ],
+      "source_kind": "template_constant",
+      "editable": false
+    },
+    {
+      "field_id": "report.organization.assessment_name",
+      "entity_paths": [
+        "template_constants.assessment_organization_name"
+      ],
+      "source_kind": "template_constant",
+      "editable": false
+    },
+    {
+      "field_id": "report.organization.client_name",
+      "entity_paths": [
+        "report_organizations[client].name"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.organization.effective_client_name",
+      "entity_paths": [
+        "report_organizations[client].name",
+        "report_organizations[assessed].name"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.organization.operator_name",
+      "entity_paths": [
+        "report_organizations[assessed].name"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.result.conclusion",
+      "entity_paths": [
+        "report_blocks[assessment_conclusion].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.result.final_indicator_conclusions",
+      "entity_paths": [
+        "report_blocks[final_indicator_conclusions].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.result.not_applicable_indicators",
+      "entity_paths": [
+        "report_blocks[not_applicable_indicators].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.result.overall_score",
+      "entity_paths": [
+        "report_blocks[overall_score].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.result.overall_statistics",
+      "entity_paths": [
+        "report_blocks[overall_statistics].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risk.high_count",
+      "entity_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risk.high_risk_judgement",
+      "entity_paths": [
+        "report_blocks[high_risk_judgement].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risk.overall_level",
+      "entity_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risk.total_count",
+      "entity_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risks.items",
+      "entity_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.risks.level",
+      "entity_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.risks.problem_description",
+      "entity_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.risks.threat_catalog",
+      "entity_paths": [
+        "template_constants.threat_catalog"
+      ],
+      "source_kind": "template_constant",
+      "editable": false
+    },
+    {
+      "field_id": "report.risks.threat_ids",
+      "entity_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.scope.application_catalog",
+      "entity_paths": [
+        "report_blocks[table_2_7_application_catalog].payload_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.scope.chapter3_a1_a3_projection",
+      "entity_paths": [
+        "assessment_objects[*].object_uuid"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.scope.chapter3_a4_projection",
+      "entity_paths": [
+        "assessment_object_subsystems[*].binding_uuid",
+        "assessment_object_subsystems[*].subsystem_name"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.scope.chapter4_indicator_filter",
+      "entity_paths": [
+        "report_blocks[chapter4_indicator_filter].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.scope.chapter4_projection",
+      "entity_paths": [
+        "report_blocks[chapter4_projection].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.scope.overall_evaluation_objects",
+      "entity_paths": [
+        "assessment_objects[*].object_uuid"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.scope.table_4_6_projection",
+      "entity_paths": [
+        "report_blocks[table_4_6_projection].payload_json"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.system.basic_information",
+      "entity_paths": [
+        "system_profiles.system_name",
+        "system_profiles.system_summary",
+        "system_profiles.critical_infrastructure_status",
+        "system_profiles.critical_infrastructure_department",
+        "system_profiles.level_filing_status",
+        "system_profiles.level_filing_s",
+        "system_profiles.level_filing_a",
+        "system_profiles.level_filing_g",
+        "system_profiles.level_filing_number",
+        "system_profiles.level_filing_consistent",
+        "system_profiles.level_filing_difference",
+        "system_profiles.level_assessment_status",
+        "system_profiles.level_assessment_organization",
+        "system_profiles.level_assessment_period",
+        "system_profiles.level_assessment_conclusion",
+        "system_profiles.service_scope_json",
+        "system_profiles.platform_json",
+        "system_profiles.operation_json",
+        "system_profiles.interconnection_json",
+        "system_profiles.cloud_platform_json",
+        "system_profiles.crypto_plan_json",
+        "system_profiles.no_crypto_products",
+        "system_profiles.selected_algorithms_json",
+        "system_profiles.level_match_evidence_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.cloud_dependency",
+      "entity_paths": [
+        "system_profiles.cloud_platform_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.critical_infrastructure",
+      "entity_paths": [
+        "system_profiles.critical_infrastructure_status",
+        "system_profiles.critical_infrastructure_department"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.crypto_algorithms",
+      "entity_paths": [
+        "system_profiles.selected_algorithms_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.crypto_plan",
+      "entity_paths": [
+        "system_profiles.crypto_plan_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.crypto_product_statistics",
+      "entity_paths": [
+        "system_crypto_products[*].classification"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.system.crypto_product_total",
+      "entity_paths": [
+        "system_crypto_products[*].normalized_quantity"
+      ],
+      "source_kind": "derived",
+      "editable": false
+    },
+    {
+      "field_id": "report.system.crypto_products",
+      "entity_paths": [
+        "system_crypto_products[*].product_uuid"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.level_assessment",
+      "entity_paths": [
+        "system_profiles.level_assessment_status",
+        "system_profiles.level_assessment_organization",
+        "system_profiles.level_assessment_period",
+        "system_profiles.level_assessment_conclusion"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.level_filing",
+      "entity_paths": [
+        "system_profiles.level_filing_status",
+        "system_profiles.level_filing_s",
+        "system_profiles.level_filing_a",
+        "system_profiles.level_filing_g",
+        "system_profiles.level_filing_number",
+        "system_profiles.level_filing_consistent",
+        "system_profiles.level_filing_difference"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.name",
+      "entity_paths": [
+        "system_profiles.system_name"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.operation_status",
+      "entity_paths": [
+        "system_profiles.operation_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.overview",
+      "entity_paths": [
+        "system_profiles.system_summary"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    },
+    {
+      "field_id": "report.system.service_scope",
+      "entity_paths": [
+        "system_profiles.service_scope_json"
+      ],
+      "source_kind": "manual",
+      "editable": true
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "FRM-3.6.1.01",
+      "readme_rule_ref": "3.6.1.01",
+      "authority_field_id": "report.system.name",
+      "authority_paths": [
+        "system_profiles.system_name"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "slot:report.system.name"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "single_source(system_profiles.system_name)",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.01-authority",
+        "TV-3.6.1.01-missing",
+        "TV-3.6.1.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.01-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.02",
+      "readme_rule_ref": "3.6.1.02",
+      "authority_field_id": "report.identity.number",
+      "authority_paths": [
+        "report_metadata.report_number"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "slot:report.identity.number",
+        "slot:report.header.report_number"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "preview_or(non_empty(report_number)); final=>global_unique(report_number)",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.02-authority",
+        "TV-3.6.1.02-missing",
+        "TV-3.6.1.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.02-01",
+        "EM-3.6.1.02-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.03",
+      "readme_rule_ref": "3.6.1.03",
+      "authority_field_id": "report.organization.effective_client_name",
+      "authority_paths": [
+        "report_organizations[client].name",
+        "report_organizations[assessed].name"
+      ],
+      "reference_field_ids": [
+        "report.organization.assessed_name",
+        "report.organization.client_name"
+      ],
+      "reference_paths": [
+        "report_organizations[assessed].name",
+        "report_organizations[client].name"
+      ],
+      "target_ids": [
+        "field:report.organization.effective_client_name"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "assessed.required && effective_client=coalesce(client,assessed)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.03-authority",
+        "TV-3.6.1.03-missing",
+        "TV-3.6.1.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.03-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.04",
+      "readme_rule_ref": "3.6.1.04",
+      "authority_field_id": "report.cover.organization_lines",
+      "authority_paths": [
+        "report_blocks[cover_organizations].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.organization.assessed_name",
+        "report.organization.client_name"
+      ],
+      "reference_paths": [
+        "report_organizations[assessed].name",
+        "report_organizations[client].name"
+      ],
+      "target_ids": [
+        "block:report.cover.organizations"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "cover.assessed=assessed && (client!=null && client!=assessed=>show_client)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.04-authority",
+        "TV-3.6.1.04-missing",
+        "TV-3.6.1.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.04-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.05",
+      "readme_rule_ref": "3.6.1.05",
+      "authority_field_id": "report.organization.effective_client_name",
+      "authority_paths": [
+        "report_organizations[client].name",
+        "report_organizations[assessed].name"
+      ],
+      "reference_field_ids": [
+        "report.organization.assessed_name"
+      ],
+      "reference_paths": [
+        "report_organizations[assessed].name"
+      ],
+      "target_ids": [
+        "block:report.narrative.organization_references"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "narrative.client=effective_client && narrative.assessed=assessed",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.05-authority",
+        "TV-3.6.1.05-missing",
+        "TV-3.6.1.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.05-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.06",
+      "readme_rule_ref": "3.6.1.06",
+      "authority_field_id": "report.organization.operator_name",
+      "authority_paths": [
+        "report_organizations[assessed].name"
+      ],
+      "reference_field_ids": [
+        "report.organization.assessed_name"
+      ],
+      "reference_paths": [
+        "report_organizations[assessed].name"
+      ],
+      "target_ids": [
+        "field:report.organization.operator_name"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "operator=assessed && operator.editable=false",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.06-authority",
+        "TV-3.6.1.06-missing",
+        "TV-3.6.1.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.06-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.07",
+      "readme_rule_ref": "3.6.1.07",
+      "authority_field_id": "report.organization.assessment_name",
+      "authority_paths": [
+        "template_constants.assessment_organization_name"
+      ],
+      "reference_field_ids": [
+        "report.organization.assessment_contact"
+      ],
+      "reference_paths": [
+        "template_constants.assessment_organization_contact"
+      ],
+      "target_ids": [
+        "block:report.template.assessment_organization"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "template_constant",
+      "editable": false,
+      "constraint_expression": "assessment_organization=template_constant && project_override=false",
+      "missing_behavior": {
+        "action": "template_package_unavailable",
+        "code": "TEMPLATE_PACKAGE_UNAVAILABLE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "template_package_unavailable",
+        "code": "TEMPLATE_PACKAGE_UNAVAILABLE",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.07-authority",
+        "TV-3.6.1.07-missing",
+        "TV-3.6.1.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.07-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.08",
+      "readme_rule_ref": "3.6.1.08",
+      "authority_field_id": "report.export.version",
+      "authority_paths": [
+        "report_metadata.default_export_version"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "export:report.version"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "default_export_version=manual(default=V1.0) && body_version_slot=absent",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.08-authority",
+        "TV-3.6.1.08-missing",
+        "TV-3.6.1.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.08-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.09",
+      "readme_rule_ref": "3.6.1.09",
+      "authority_field_id": "report.export.filename",
+      "authority_paths": [
+        "export_records.filename"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "export:report.filename"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "filename=report_number+assessed+system_name+report_title+version && excludes(customer_review)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.09-authority",
+        "TV-3.6.1.09-missing",
+        "TV-3.6.1.09-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.09-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.1.10",
+      "readme_rule_ref": "3.6.1.10",
+      "authority_field_id": "report.export.snapshot",
+      "authority_paths": [
+        "export_records.snapshot_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "export:report.snapshot"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "every_export=>immutable_snapshot && repeated_version_allowed",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.1.10-authority",
+        "TV-3.6.1.10-missing",
+        "TV-3.6.1.10-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.1.10-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.01",
+      "readme_rule_ref": "3.6.2.01",
+      "authority_field_id": "report.assessment.end_date",
+      "authority_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "reference_field_ids": [
+        "report.assessment.preparation_period",
+        "report.assessment.report_period",
+        "report.assessment.start_date"
+      ],
+      "reference_paths": [
+        "report_phase_dates.preparation_start",
+        "report_phase_dates.preparation_end",
+        "report_phase_dates.analysis_start",
+        "report_phase_dates.analysis_end",
+        "report_phase_dates.preparation_start"
+      ],
+      "target_ids": [
+        "field:report.assessment.range"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "assessment_start=preparation_start && assessment_end=analysis_end",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.01-authority",
+        "TV-3.6.2.01-missing",
+        "TV-3.6.2.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.01-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.02",
+      "readme_rule_ref": "3.6.2.02",
+      "authority_field_id": "report.approval.compiled_date",
+      "authority_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "reference_field_ids": [
+        "report.assessment.end_date",
+        "report.identity.date"
+      ],
+      "reference_paths": [
+        "report_phase_dates.analysis_end",
+        "report_phase_dates.analysis_end"
+      ],
+      "target_ids": [
+        "slot:report.identity.date",
+        "field:report.approval.compiled_date"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "cover_date=declaration_date=compiled_date=analysis_end",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.02-authority",
+        "TV-3.6.2.02-missing",
+        "TV-3.6.2.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.02-01",
+        "EM-3.6.2.02-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.03",
+      "readme_rule_ref": "3.6.2.03",
+      "authority_field_id": "report.approval.review_date",
+      "authority_paths": [
+        "report_phase_dates.report_review_at"
+      ],
+      "reference_field_ids": [
+        "report.approval.compiled_date",
+        "report.approval.approved_date"
+      ],
+      "reference_paths": [
+        "report_phase_dates.analysis_end",
+        "report_phase_dates.approved_at"
+      ],
+      "target_ids": [
+        "table:report.basic_information.approval_dates"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "compiled<=review<=approved for non_null dates; review,approved optional",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.03-authority",
+        "TV-3.6.2.03-missing",
+        "TV-3.6.2.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.03-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.04",
+      "readme_rule_ref": "3.6.2.04",
+      "authority_field_id": "report.approval.review_date",
+      "authority_paths": [
+        "report_phase_dates.report_review_at"
+      ],
+      "reference_field_ids": [
+        "report.appendix_b.report_review",
+        "report.appendix_b.plan_review"
+      ],
+      "reference_paths": [
+        "report_phase_dates.report_review_at",
+        "report_phase_dates.scheme_review_at"
+      ],
+      "target_ids": [
+        "table:report.appendix_b5",
+        "table:report.appendix_b6"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "review_date=appendix_b6.report_review_at && plan_review<fieldwork_start",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R5",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.04-authority",
+        "TV-3.6.2.04-missing",
+        "TV-3.6.2.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.04-01",
+        "EM-3.6.2.04-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.05",
+      "readme_rule_ref": "3.6.2.05",
+      "authority_field_id": "report.members.assessment_team",
+      "authority_paths": [
+        "report_members[*].member_uuid"
+      ],
+      "reference_field_ids": [
+        "report.members.compiler"
+      ],
+      "reference_paths": [
+        "report_metadata.compiler_member_uuid"
+      ],
+      "target_ids": [
+        "table:report.basic_information.compiler",
+        "table:report.appendix_b4.compiler"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "final=>compiler in team && role=member && qualified && !leader",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.05-authority",
+        "TV-3.6.2.05-missing",
+        "TV-3.6.2.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.05-01",
+        "EM-3.6.2.05-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.06",
+      "readme_rule_ref": "3.6.2.06",
+      "authority_field_id": "report.members.reviewer",
+      "authority_paths": [
+        "report_metadata.reviewer_member_uuid"
+      ],
+      "reference_field_ids": [
+        "report.members.approver"
+      ],
+      "reference_paths": [
+        "report_metadata.approver_member_uuid"
+      ],
+      "target_ids": [
+        "table:report.basic_information.reviewers"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "reviewer,approver optional; appendix_b4 assignments project to basic_information",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.06-authority",
+        "TV-3.6.2.06-missing",
+        "TV-3.6.2.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.06-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.07",
+      "readme_rule_ref": "3.6.2.07",
+      "authority_field_id": "report.members.compiler",
+      "authority_paths": [
+        "report_metadata.compiler_member_uuid"
+      ],
+      "reference_field_ids": [
+        "report.members.reviewer",
+        "report.members.approver"
+      ],
+      "reference_paths": [
+        "report_metadata.reviewer_member_uuid",
+        "report_metadata.approver_member_uuid"
+      ],
+      "target_ids": [
+        "service:report.approval_role_validation"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "distinct_non_null(compiler,reviewer,approver) && max_one_per_approval_role",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.07-authority",
+        "TV-3.6.2.07-missing",
+        "TV-3.6.2.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.07-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.08",
+      "readme_rule_ref": "3.6.2.08",
+      "authority_field_id": "report.members.assessment_team",
+      "authority_paths": [
+        "report_members[*].member_uuid"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "service:report.team_qualification_validation"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "count(active_team where qualified)>=2 && appendix_b2_b3_members subset team",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.08-authority",
+        "TV-3.6.2.08-missing",
+        "TV-3.6.2.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.08-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.09",
+      "readme_rule_ref": "3.6.2.09",
+      "authority_field_id": "report.assessment.period",
+      "authority_paths": [
+        "report_phase_dates.fieldwork_start",
+        "report_phase_dates.fieldwork_end"
+      ],
+      "reference_field_ids": [
+        "report.appendix_b.onsite_records",
+        "report.appendix_b.travel_records"
+      ],
+      "reference_paths": [
+        "report_phase_dates.site_visit_records_json",
+        "report_phase_dates.travel_records_json"
+      ],
+      "target_ids": [
+        "field:report.assessment.period",
+        "table:report.appendix_b2",
+        "table:report.appendix_b3"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "fieldwork=minmax(site_visits); travel covers site_visit or explicit_not_applicable",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R5",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.09-authority",
+        "TV-3.6.2.09-missing",
+        "TV-3.6.2.09-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.09-01",
+        "EM-3.6.2.09-02",
+        "EM-3.6.2.09-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.10",
+      "readme_rule_ref": "3.6.2.10",
+      "authority_field_id": "report.filing.system_name",
+      "authority_paths": [
+        "report_blocks[appendix_b9_filing_materials].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.system.name",
+        "report.appendix_b.filing_materials"
+      ],
+      "reference_paths": [
+        "system_profiles.system_name",
+        "report_blocks[appendix_b9_filing_materials].payload_json"
+      ],
+      "target_ids": [
+        "table:report.appendix_b9"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "same_filing_system=>filing_name=system_name; otherwise name && difference required",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R5",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.10-authority",
+        "TV-3.6.2.10-missing",
+        "TV-3.6.2.10-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.10-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.2.11",
+      "readme_rule_ref": "3.6.2.11",
+      "authority_field_id": "report.distribution.total_copies",
+      "authority_paths": [
+        "report_distribution.regulator_copies",
+        "report_distribution.client_copies",
+        "report_distribution.assessment_organization_copies"
+      ],
+      "reference_field_ids": [
+        "report.distribution.regulator_copies",
+        "report.distribution.client_copies",
+        "report.distribution.assessment_copies"
+      ],
+      "reference_paths": [
+        "report_distribution.regulator_copies",
+        "report_distribution.client_copies",
+        "report_distribution.assessment_organization_copies"
+      ],
+      "target_ids": [
+        "block:report.distribution"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "total=regulator+client+assessment && each>=0 && total>0",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.2.11-authority",
+        "TV-3.6.2.11-missing",
+        "TV-3.6.2.11-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.2.11-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.01",
+      "readme_rule_ref": "3.6.3.01",
+      "authority_field_id": "report.system.basic_information",
+      "authority_paths": [
+        "system_profiles.system_name",
+        "system_profiles.system_summary",
+        "system_profiles.critical_infrastructure_status",
+        "system_profiles.critical_infrastructure_department",
+        "system_profiles.level_filing_status",
+        "system_profiles.level_filing_s",
+        "system_profiles.level_filing_a",
+        "system_profiles.level_filing_g",
+        "system_profiles.level_filing_number",
+        "system_profiles.level_filing_consistent",
+        "system_profiles.level_filing_difference",
+        "system_profiles.level_assessment_status",
+        "system_profiles.level_assessment_organization",
+        "system_profiles.level_assessment_period",
+        "system_profiles.level_assessment_conclusion",
+        "system_profiles.service_scope_json",
+        "system_profiles.platform_json",
+        "system_profiles.operation_json",
+        "system_profiles.interconnection_json",
+        "system_profiles.cloud_platform_json",
+        "system_profiles.crypto_plan_json",
+        "system_profiles.no_crypto_products",
+        "system_profiles.selected_algorithms_json",
+        "system_profiles.level_match_evidence_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "persist_and_export_all_template_options_and_entered_branch_values",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.01-authority",
+        "TV-3.6.3.01-missing",
+        "TV-3.6.3.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.01-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.02",
+      "readme_rule_ref": "3.6.3.02",
+      "authority_field_id": "report.system.basic_information",
+      "authority_paths": [
+        "system_profiles.system_name",
+        "system_profiles.system_summary",
+        "system_profiles.critical_infrastructure_status",
+        "system_profiles.critical_infrastructure_department",
+        "system_profiles.level_filing_status",
+        "system_profiles.level_filing_s",
+        "system_profiles.level_filing_a",
+        "system_profiles.level_filing_g",
+        "system_profiles.level_filing_number",
+        "system_profiles.level_filing_consistent",
+        "system_profiles.level_filing_difference",
+        "system_profiles.level_assessment_status",
+        "system_profiles.level_assessment_organization",
+        "system_profiles.level_assessment_period",
+        "system_profiles.level_assessment_conclusion",
+        "system_profiles.service_scope_json",
+        "system_profiles.platform_json",
+        "system_profiles.operation_json",
+        "system_profiles.interconnection_json",
+        "system_profiles.cloud_platform_json",
+        "system_profiles.crypto_plan_json",
+        "system_profiles.no_crypto_products",
+        "system_profiles.selected_algorithms_json",
+        "system_profiles.level_match_evidence_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "service:report.basic_information_branch_validation"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "selected_branch_missing=>error; unselected_branch_has_value=>confirmable_warning",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.02-authority",
+        "TV-3.6.3.02-missing",
+        "TV-3.6.3.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.02-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.03",
+      "readme_rule_ref": "3.6.3.03",
+      "authority_field_id": "report.system.level_filing",
+      "authority_paths": [
+        "system_profiles.level_filing_status",
+        "system_profiles.level_filing_s",
+        "system_profiles.level_filing_a",
+        "system_profiles.level_filing_g",
+        "system_profiles.level_filing_number",
+        "system_profiles.level_filing_consistent",
+        "system_profiles.level_filing_difference"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.level_filing"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "template_level=3 && S,A manual && G nullable && filing_branch_values_preserved",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.03-authority",
+        "TV-3.6.3.03-missing",
+        "TV-3.6.3.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.03-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.04",
+      "readme_rule_ref": "3.6.3.04",
+      "authority_field_id": "report.system.critical_infrastructure",
+      "authority_paths": [
+        "system_profiles.critical_infrastructure_status",
+        "system_profiles.critical_infrastructure_department"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.critical_infrastructure"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "recognized=>department.required; not_recognized_with_department=>warning",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.04-authority",
+        "TV-3.6.3.04-missing",
+        "TV-3.6.3.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.04-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.05",
+      "readme_rule_ref": "3.6.3.05",
+      "authority_field_id": "report.system.level_assessment",
+      "authority_paths": [
+        "system_profiles.level_assessment_status",
+        "system_profiles.level_assessment_organization",
+        "system_profiles.level_assessment_period",
+        "system_profiles.level_assessment_conclusion"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.level_assessment"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "assessed=>agency,date,result required; assessing=>agency required; unassessed=>none",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.05-authority",
+        "TV-3.6.3.05-missing",
+        "TV-3.6.3.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.05-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.06",
+      "readme_rule_ref": "3.6.3.06",
+      "authority_field_id": "report.system.cloud_dependency",
+      "authority_paths": [
+        "system_profiles.cloud_platform_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.cloud"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "depends_on_cloud=>cloud_name,status required && status_branch_requirements",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.06-authority",
+        "TV-3.6.3.06-missing",
+        "TV-3.6.3.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.06-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.07",
+      "readme_rule_ref": "3.6.3.07",
+      "authority_field_id": "report.system.crypto_plan",
+      "authority_paths": [
+        "system_profiles.crypto_plan_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.crypto_plan"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "approved_plan=>approved_at,method required && delegated=>agency required",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.07-authority",
+        "TV-3.6.3.07-missing",
+        "TV-3.6.3.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.07-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.08",
+      "readme_rule_ref": "3.6.3.08",
+      "authority_field_id": "report.identity.date",
+      "authority_paths": [
+        "report_phase_dates.analysis_end"
+      ],
+      "reference_field_ids": [
+        "report.system.operation_status"
+      ],
+      "reference_paths": [
+        "system_profiles.operation_json"
+      ],
+      "target_ids": [
+        "table:report.basic_information.operation"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "operating=>operation_month<=report_date; not_operating=>construction_stage.required",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.08-authority",
+        "TV-3.6.3.08-missing",
+        "TV-3.6.3.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.08-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.09",
+      "readme_rule_ref": "3.6.3.09",
+      "authority_field_id": "report.system.service_scope",
+      "authority_paths": [
+        "system_profiles.service_scope_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.basic_information.service_scope"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "scope in enum && cross_region=>positive_count && other=>description.required",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.09-authority",
+        "TV-3.6.3.09-missing",
+        "TV-3.6.3.09-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.09-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.10",
+      "readme_rule_ref": "3.6.3.10",
+      "authority_field_id": "report.system.crypto_product_total",
+      "authority_paths": [
+        "system_crypto_products[*].normalized_quantity"
+      ],
+      "reference_field_ids": [
+        "report.system.crypto_products"
+      ],
+      "reference_paths": [
+        "system_crypto_products[*].product_uuid"
+      ],
+      "target_ids": [
+        "field:report.system.crypto_product_total",
+        "table:report.table_2_3"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "normalized_quantity(integer)=integer; normalized_quantity(literal:several)=1",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.10-authority",
+        "TV-3.6.3.10-missing",
+        "TV-3.6.3.10-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.10-01",
+        "EM-3.6.3.10-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.11",
+      "readme_rule_ref": "3.6.3.11",
+      "authority_field_id": "report.system.crypto_product_statistics",
+      "authority_paths": [
+        "system_crypto_products[*].classification"
+      ],
+      "reference_field_ids": [
+        "report.system.crypto_products"
+      ],
+      "reference_paths": [
+        "system_crypto_products[*].product_uuid"
+      ],
+      "target_ids": [
+        "service:report.crypto_product_invariants"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "total=sum(products)=exclusive+shared=certified+uncertified_domestic+foreign",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.11-authority",
+        "TV-3.6.3.11-missing",
+        "TV-3.6.3.11-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.11-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.12",
+      "readme_rule_ref": "3.6.3.12",
+      "authority_field_id": "report.system.crypto_products",
+      "authority_paths": [
+        "system_crypto_products[*].product_uuid"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.table_2_3"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "no_crypto_product && total>0=>confirmable_warning; template_columns_unchanged",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.12-authority",
+        "TV-3.6.3.12-missing",
+        "TV-3.6.3.12-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.12-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.13",
+      "readme_rule_ref": "3.6.3.13",
+      "authority_field_id": "report.appendix_a.algorithm_match",
+      "authority_paths": [
+        "report_blocks[appendix_a_algorithm_match].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.system.crypto_algorithms"
+      ],
+      "reference_paths": [
+        "system_profiles.selected_algorithms_json"
+      ],
+      "target_ids": [
+        "service:report.algorithm_export_validation"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "final=>each(selected_algorithm) matches normalized appendix_a text without OCR",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.13-authority",
+        "TV-3.6.3.13-missing",
+        "TV-3.6.3.13-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.13-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.14",
+      "readme_rule_ref": "3.6.3.14",
+      "authority_field_id": "report.appendix_a.algorithm_match",
+      "authority_paths": [
+        "report_blocks[appendix_a_algorithm_match].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.system.crypto_algorithms"
+      ],
+      "reference_paths": [
+        "system_profiles.selected_algorithms_json"
+      ],
+      "target_ids": [
+        "service:report.algorithm_warning_validation"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "appendix_a_algorithm_not_selected=>warning; other_algorithm=>exact_name_match",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "preserve_and_warn",
+        "code": "UNSELECTED_BRANCH_VALUE_PRESENT",
+        "severity": "warning"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.14-authority",
+        "TV-3.6.3.14-missing",
+        "TV-3.6.3.14-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.14-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.15",
+      "readme_rule_ref": "3.6.3.15",
+      "authority_field_id": "report.assessment.fixed_reference_standards",
+      "authority_paths": [
+        "report_standards[fixed].standard_uuid"
+      ],
+      "reference_field_ids": [
+        "report.assessment.additional_reference_standards",
+        "report.assessment.special_indicator_standard_relations"
+      ],
+      "reference_paths": [
+        "report_standards[manual].standard_uuid",
+        "special_indicators[*].manual_standard_uuid"
+      ],
+      "target_ids": [
+        "block:report.reference_standards"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "template_constant",
+      "editable": false,
+      "constraint_expression": "fixed_standard_count=5; special_indicator=>exactly_one(manual_standard); referenced_not_deletable",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.15-authority",
+        "TV-3.6.3.15-missing",
+        "TV-3.6.3.15-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.15-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.3.16",
+      "readme_rule_ref": "3.6.3.16",
+      "authority_field_id": "report.assessment.special_indicator_summary",
+      "authority_paths": [
+        "report_blocks[special_indicator_summary].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.assessment.special_indicators"
+      ],
+      "reference_paths": [
+        "special_indicators[*].indicator_uuid"
+      ],
+      "target_ids": [
+        "block:report.special_indicators"
+      ],
+      "relation_type": "conditional_requirement",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "special_indicator excluded_from(fixed41,score,result_count,risk_count); empty=>none_and_zero",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.3.16-authority",
+        "TV-3.6.3.16-missing",
+        "TV-3.6.3.16-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.3.16-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.01",
+      "readme_rule_ref": "3.6.4.01",
+      "authority_field_id": "report.appendix_a.records",
+      "authority_paths": [
+        "assessment_rows[*].id"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "service:report.appendix_a_authority"
+      ],
+      "relation_type": "validation",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "appendix_a_records is sole_authority; chapter2 independent; chapter3_4 readonly_projection",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.01-authority",
+        "TV-3.6.4.01-missing",
+        "TV-3.6.4.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.01-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.02",
+      "readme_rule_ref": "3.6.4.02",
+      "authority_field_id": "report.appendix_a.technical_scores",
+      "authority_paths": [
+        "metric_results[*].object_score"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.technical_inputs"
+      ],
+      "reference_paths": [
+        "metric_results[*].d",
+        "metric_results[*].a",
+        "metric_results[*].k",
+        "metric_results[*].ra",
+        "metric_results[*].rk"
+      ],
+      "target_ids": [
+        "table:report.appendix_a_technical",
+        "export:report.xlsx_technical"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "A1_A4 retain D,A,K,Ra,Rk and backend_score; Ra,Rk excluded_from Word",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.02-authority",
+        "TV-3.6.4.02-missing",
+        "TV-3.6.4.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.02-01",
+        "EM-3.6.4.02-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.03",
+      "readme_rule_ref": "3.6.4.03",
+      "authority_field_id": "report.appendix_a.management_scores",
+      "authority_paths": [
+        "metric_results[*].unit_score"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.management_inputs"
+      ],
+      "reference_paths": [
+        "metric_results[*].compliance"
+      ],
+      "target_ids": [
+        "table:report.appendix_a_management",
+        "export:report.xlsx_management"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "management_score=mean(valid_mapping) || slash_if_all_na; invalid_or_missing=>not_computed",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.03-authority",
+        "TV-3.6.4.03-missing",
+        "TV-3.6.4.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.03-01",
+        "EM-3.6.4.03-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.04",
+      "readme_rule_ref": "3.6.4.04",
+      "authority_field_id": "report.scope.chapter3_a1_a3_projection",
+      "authority_paths": [
+        "assessment_objects[*].object_uuid"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.records"
+      ],
+      "reference_paths": [
+        "assessment_rows[*].id"
+      ],
+      "target_ids": [
+        "table:report.table_3_4",
+        "table:report.table_3_5",
+        "table:report.table_3_6"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "table_3_4=A1.objects; table_3_5=A2.objects; table_3_6=A3.objects; readonly",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.04-authority",
+        "TV-3.6.4.04-missing",
+        "TV-3.6.4.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.04-01",
+        "EM-3.6.4.04-02",
+        "EM-3.6.4.04-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.05",
+      "readme_rule_ref": "3.6.4.05",
+      "authority_field_id": "report.scope.chapter3_a4_projection",
+      "authority_paths": [
+        "assessment_object_subsystems[*].binding_uuid",
+        "assessment_object_subsystems[*].subsystem_name"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.a4_subsystems"
+      ],
+      "reference_paths": [
+        "assessment_object_subsystems[*].binding_uuid",
+        "assessment_object_subsystems[*].subsystem_name"
+      ],
+      "target_ids": [
+        "table:report.table_3_7"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "each_A4_object=>exactly_one(subsystem); table_3_7=distinct(referenced_subsystems)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.05-authority",
+        "TV-3.6.4.05-missing",
+        "TV-3.6.4.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.05-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.06",
+      "readme_rule_ref": "3.6.4.06",
+      "authority_field_id": "report.scope.application_catalog",
+      "authority_paths": [
+        "report_blocks[table_2_7_application_catalog].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.a4_subsystems"
+      ],
+      "reference_paths": [
+        "assessment_object_subsystems[*].binding_uuid",
+        "assessment_object_subsystems[*].subsystem_name"
+      ],
+      "target_ids": [
+        "service:report.a4_application_subset_validation"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "A4_subsystems subset unique(table_2_7.application_names)",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.06-authority",
+        "TV-3.6.4.06-missing",
+        "TV-3.6.4.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.06-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.07",
+      "readme_rule_ref": "3.6.4.07",
+      "authority_field_id": "report.assessment.methods",
+      "authority_paths": [
+        "report_blocks[chapter3_assessment_methods].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.assessment.method_notes"
+      ],
+      "reference_paths": [
+        "report_blocks[chapter3_assessment_methods].payload_json"
+      ],
+      "target_ids": [
+        "table:report.chapter3_methods"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "methods subset fixed5 && notes independent && orphaned_values_retained_not_exported",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.07-authority",
+        "TV-3.6.4.07-missing",
+        "TV-3.6.4.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.07-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.08",
+      "readme_rule_ref": "3.6.4.08",
+      "authority_field_id": "report.scope.overall_evaluation_objects",
+      "authority_paths": [
+        "assessment_objects[*].object_uuid"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.records"
+      ],
+      "reference_paths": [
+        "assessment_rows[*].id"
+      ],
+      "target_ids": [
+        "block:report.overall_evaluation.objects"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "overall_evaluation_objects=distinct(actual_appendix_a_references)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.08-authority",
+        "TV-3.6.4.08-missing",
+        "TV-3.6.4.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.08-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.09",
+      "readme_rule_ref": "3.6.4.09",
+      "authority_field_id": "report.scope.chapter4_projection",
+      "authority_paths": [
+        "report_blocks[chapter4_projection].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.records"
+      ],
+      "reference_paths": [
+        "assessment_rows[*].id"
+      ],
+      "target_ids": [
+        "table:report.table_4_1_to_4_11"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "tables_4_1_to_4_11=projection(appendix_a_records); table_4_4 group_by subsystem+indicator",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.09-authority",
+        "TV-3.6.4.09-missing",
+        "TV-3.6.4.09-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.09-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.10",
+      "readme_rule_ref": "3.6.4.10",
+      "authority_field_id": "report.scope.chapter4_indicator_filter",
+      "authority_paths": [
+        "report_blocks[chapter4_indicator_filter].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.records"
+      ],
+      "reference_paths": [
+        "assessment_rows[*].id"
+      ],
+      "target_ids": [
+        "table:report.table_4_5",
+        "table:report.table_4_6",
+        "table:report.table_4_7"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "table_4_5 identity_only; table_4_6 five_indicators; table_4_7 non_repudiation_only",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.10-authority",
+        "TV-3.6.4.10-missing",
+        "TV-3.6.4.10-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.10-01",
+        "EM-3.6.4.10-02",
+        "EM-3.6.4.10-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.4.11",
+      "readme_rule_ref": "3.6.4.11",
+      "authority_field_id": "report.scope.table_4_6_projection",
+      "authority_paths": [
+        "report_blocks[table_4_6_projection].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.records"
+      ],
+      "reference_paths": [
+        "assessment_rows[*].id"
+      ],
+      "target_ids": [
+        "table:report.table_4_6"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "access_control_integrity maps storage_integrity; missing_record=>NA; mutual_exclusion(storage_integrity)",
+      "missing_behavior": {
+        "action": "render_empty_structure",
+        "code": "EMPTY_STRUCTURE_REQUIRED",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.4.11-authority",
+        "TV-3.6.4.11-missing",
+        "TV-3.6.4.11-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.4.11-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.01",
+      "readme_rule_ref": "3.6.5.01",
+      "authority_field_id": "report.result.final_indicator_conclusions",
+      "authority_paths": [
+        "report_blocks[final_indicator_conclusions].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.final_object_conclusions"
+      ],
+      "reference_paths": [
+        "report_blocks[final_object_conclusions].payload_json"
+      ],
+      "target_ids": [
+        "service:report.indicator_conclusion_aggregation"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "aggregate_object_conclusions_by_confirmed_precedence; invalid_or_missing=>block",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.01-authority",
+        "TV-3.6.5.01-missing",
+        "TV-3.6.5.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.01-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.02",
+      "readme_rule_ref": "3.6.5.02",
+      "authority_field_id": "report.appendix_a.result_correction_relations",
+      "authority_paths": [
+        "result_correction_relations[*].correction_uuid"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "service:report.correction_relation_validation"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "correction_pairs only A2_integrity<->A4_transport_integrity or A2_confidentiality<->A4_transport_confidentiality",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.02-authority",
+        "TV-3.6.5.02-missing",
+        "TV-3.6.5.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.02-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.03",
+      "readme_rule_ref": "3.6.5.03",
+      "authority_field_id": "report.appendix_a.result_correction_relations",
+      "authority_paths": [
+        "result_correction_relations[*].correction_uuid"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "service:report.correction_relation_cardinality"
+      ],
+      "relation_type": "referential_integrity",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "A2_channel=>one_or_more(A4); each_A4=>at_most_one(A2); same_dimension_only",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R2",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.03-authority",
+        "TV-3.6.5.03-missing",
+        "TV-3.6.5.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.03-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.04",
+      "readme_rule_ref": "3.6.5.04",
+      "authority_field_id": "report.appendix_a.correction_scores",
+      "authority_paths": [
+        "report_blocks[result_correction_scores].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.original_object_scores"
+      ],
+      "reference_paths": [
+        "metric_results[*].object_score"
+      ],
+      "target_ids": [
+        "service:report.bidirectional_score_correction"
+      ],
+      "relation_type": "validation",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "A2_final=max(A2_original,0.5*min(A4_valid_original)); A4_final=max(A4_original,0.5*A2_original)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.04-authority",
+        "TV-3.6.5.04-missing",
+        "TV-3.6.5.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.04-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.05",
+      "readme_rule_ref": "3.6.5.05",
+      "authority_field_id": "report.appendix_a.correction_scores",
+      "authority_paths": [
+        "report_blocks[result_correction_scores].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.original_object_scores"
+      ],
+      "reference_paths": [
+        "metric_results[*].object_score"
+      ],
+      "target_ids": [
+        "service:report.correction_slash_handling"
+      ],
+      "relation_type": "validation",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "slash excluded_from min_and_correction; all_slash=>unchanged; invalid_or_empty=>block",
+      "missing_behavior": {
+        "action": "allow_empty",
+        "code": "FIELD_OPTIONAL",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.05-authority",
+        "TV-3.6.5.05-missing",
+        "TV-3.6.5.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.05-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.06",
+      "readme_rule_ref": "3.6.5.06",
+      "authority_field_id": "report.appendix_a.correction_scores",
+      "authority_paths": [
+        "report_blocks[result_correction_scores].payload_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "table:report.table_5_1"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "table_5_1 includes final>original only; none=>single_slash_row",
+      "missing_behavior": {
+        "action": "render_empty_structure",
+        "code": "EMPTY_STRUCTURE_REQUIRED",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.06-authority",
+        "TV-3.6.5.06-missing",
+        "TV-3.6.5.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.06-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.07",
+      "readme_rule_ref": "3.6.5.07",
+      "authority_field_id": "report.appendix_a.final_projection",
+      "authority_paths": [
+        "report_blocks[appendix_a_final_projection].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.original_projection"
+      ],
+      "reference_paths": [
+        "metric_results[*].object_score",
+        "metric_results[*].unit_score"
+      ],
+      "target_ids": [
+        "table:report.chapter4",
+        "table:report.table_5_1",
+        "table:report.table_5_2",
+        "export:report.appendix_a",
+        "export:report.xlsx"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "chapter4=original; table_5_1=delta; table_5_2,appendix_a,summary,risk,score,conclusion,xlsx=final",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.07-authority",
+        "TV-3.6.5.07-missing",
+        "TV-3.6.5.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.07-01",
+        "EM-3.6.5.07-02",
+        "EM-3.6.5.07-03",
+        "EM-3.6.5.07-04",
+        "EM-3.6.5.07-05"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.5.08",
+      "readme_rule_ref": "3.6.5.08",
+      "authority_field_id": "report.appendix_a.final_projection",
+      "authority_paths": [
+        "report_blocks[appendix_a_final_projection].payload_json"
+      ],
+      "reference_field_ids": [],
+      "reference_paths": [],
+      "target_ids": [
+        "export:report.appendix_a.corrected_display",
+        "export:report.xlsx.numeric_display"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "corrected_word_row D=A=K=slash && object_score=format4(final)+star; xlsx numeric_no_star",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R4",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.5.08-authority",
+        "TV-3.6.5.08-missing",
+        "TV-3.6.5.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.5.08-01",
+        "EM-3.6.5.08-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.01",
+      "readme_rule_ref": "3.6.6.01",
+      "authority_field_id": "report.result.overall_statistics",
+      "authority_paths": [
+        "report_blocks[overall_statistics].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.result.final_indicator_conclusions"
+      ],
+      "reference_paths": [
+        "report_blocks[final_indicator_conclusions].payload_json"
+      ],
+      "target_ids": [
+        "block:report.assessment_summary",
+        "block:report.overall_evaluation",
+        "block:report.assessment_conclusion"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "sum(final_indicator_status_counts)=41 && all_summary_consumers share same_statistics",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.01-authority",
+        "TV-3.6.6.01-missing",
+        "TV-3.6.6.01-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.01-01",
+        "EM-3.6.6.01-02",
+        "EM-3.6.6.01-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.02",
+      "readme_rule_ref": "3.6.6.02",
+      "authority_field_id": "report.risks.items",
+      "authority_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.result.final_indicator_conclusions"
+      ],
+      "reference_paths": [
+        "report_blocks[final_indicator_conclusions].payload_json"
+      ],
+      "target_ids": [
+        "service:report.risk_count_invariants"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "risk_total=partial_count+noncompliant_count && high+medium+low=risk_total && one_risk_per_problem_indicator",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.02-authority",
+        "TV-3.6.6.02-missing",
+        "TV-3.6.6.02-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.02-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.03",
+      "readme_rule_ref": "3.6.6.03",
+      "authority_field_id": "report.risks.problem_description",
+      "authority_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.risks.level"
+      ],
+      "reference_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "target_ids": [
+        "table:report.risk_analysis"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "manual",
+      "editable": true,
+      "constraint_expression": "risk_rows group_by indicator; merge noncompliant_objects; partial_objects itemized; one_overall_level",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.03-authority",
+        "TV-3.6.6.03-missing",
+        "TV-3.6.6.03-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.03-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.04",
+      "readme_rule_ref": "3.6.6.04",
+      "authority_field_id": "report.risks.threat_catalog",
+      "authority_paths": [
+        "template_constants.threat_catalog"
+      ],
+      "reference_field_ids": [
+        "report.risks.threat_ids"
+      ],
+      "reference_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "target_ids": [
+        "table:report.threat_catalog",
+        "table:report.risk_analysis.threats"
+      ],
+      "relation_type": "repeated_projection",
+      "source_kind": "template_constant",
+      "editable": false,
+      "constraint_expression": "threat_ids subset immutable_full_template_threat_catalog && export_full_catalog",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "reject",
+        "code": "FIELD_RELATION_CONFLICT",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.04-authority",
+        "TV-3.6.6.04-missing",
+        "TV-3.6.6.04-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.04-01",
+        "EM-3.6.6.04-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.05",
+      "readme_rule_ref": "3.6.6.05",
+      "authority_field_id": "report.risk.high_risk_judgement",
+      "authority_paths": [
+        "report_blocks[high_risk_judgement].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.risk.high_count"
+      ],
+      "reference_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "target_ids": [
+        "slot:report.risk.high_risk_judgement"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "high_count>0=>exists_high_risk else no_high_risk; incomplete_risk=>block",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.05-authority",
+        "TV-3.6.6.05-missing",
+        "TV-3.6.6.05-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.05-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.06",
+      "readme_rule_ref": "3.6.6.06",
+      "authority_field_id": "report.risk.overall_level",
+      "authority_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.risks.items"
+      ],
+      "reference_paths": [
+        "report_blocks[risk_analysis].payload_json"
+      ],
+      "target_ids": [
+        "block:report.assessment_summary.risk",
+        "block:report.risk_analysis.summary",
+        "block:report.assessment_conclusion.risk"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "assessment_summary,risk_summary,conclusion share overall_risk_level",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.06-authority",
+        "TV-3.6.6.06-missing",
+        "TV-3.6.6.06-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.06-01",
+        "EM-3.6.6.06-02",
+        "EM-3.6.6.06-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.07",
+      "readme_rule_ref": "3.6.6.07",
+      "authority_field_id": "report.result.conclusion",
+      "authority_paths": [
+        "report_blocks[assessment_conclusion].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.appendix_a.final_projection",
+        "report.risk.high_count",
+        "report.result.overall_score"
+      ],
+      "reference_paths": [
+        "report_blocks[appendix_a_final_projection].payload_json",
+        "report_blocks[risk_statistics].payload_json",
+        "report_blocks[overall_score].payload_json"
+      ],
+      "target_ids": [
+        "service:report.final_conclusion",
+        "slot:report.result.overall_score",
+        "slot:report.result.conclusion"
+      ],
+      "relation_type": "aggregation_input",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "display_score=round_half_up(final_score,2); conclusion by display_score and high_count",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.07-authority",
+        "TV-3.6.6.07-missing",
+        "TV-3.6.6.07-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.07-01",
+        "EM-3.6.6.07-02",
+        "EM-3.6.6.07-03"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.08",
+      "readme_rule_ref": "3.6.6.08",
+      "authority_field_id": "report.narrative.chapter7_conclusion",
+      "authority_paths": [
+        "report_blocks[chapter7_conclusion].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.risk.total_count"
+      ],
+      "reference_paths": [
+        "report_blocks[risk_statistics].payload_json"
+      ],
+      "target_ids": [
+        "block:report.chapter7.conclusion"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "risk_total=0=>chapter7_no_security_risk && conclusion=compliant",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.08-authority",
+        "TV-3.6.6.08-missing",
+        "TV-3.6.6.08-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.08-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.09",
+      "readme_rule_ref": "3.6.6.09",
+      "authority_field_id": "report.narrative.overall_evaluation",
+      "authority_paths": [
+        "report_blocks[overall_evaluation].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.scope.overall_evaluation_objects",
+        "report.result.overall_statistics"
+      ],
+      "reference_paths": [
+        "assessment_objects[*].object_uuid",
+        "report_blocks[overall_statistics].payload_json"
+      ],
+      "target_ids": [
+        "block:report.overall_evaluation"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "overall_evaluation preserves template_first_last && generates eight_layers && requires_confirmation",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.09-authority",
+        "TV-3.6.6.09-missing",
+        "TV-3.6.6.09-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.09-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.10",
+      "readme_rule_ref": "3.6.6.10",
+      "authority_field_id": "report.narrative.improvement_suggestions",
+      "authority_paths": [
+        "report_blocks[improvement_suggestions].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.findings.items",
+        "report.narrative.security_issues"
+      ],
+      "reference_paths": [
+        "report_blocks[security_findings].payload_json",
+        "report_blocks[security_issues].payload_json"
+      ],
+      "target_ids": [
+        "block:report.security_issues",
+        "block:report.improvement_suggestions"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "findings group_by layer_then_indicator; omit_empty_layers; suggestions share numbering",
+      "missing_behavior": {
+        "action": "render_empty_structure",
+        "code": "EMPTY_STRUCTURE_REQUIRED",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.10-authority",
+        "TV-3.6.6.10-missing",
+        "TV-3.6.6.10-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.10-01",
+        "EM-3.6.6.10-02"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.11",
+      "readme_rule_ref": "3.6.6.11",
+      "authority_field_id": "report.result.not_applicable_indicators",
+      "authority_paths": [
+        "report_blocks[not_applicable_indicators].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.result.final_indicator_conclusions"
+      ],
+      "reference_paths": [
+        "report_blocks[final_indicator_conclusions].payload_json"
+      ],
+      "target_ids": [
+        "table:report.not_applicable_indicators"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "not_applicable iff all_objects_NA; empty=>header_plus_slash_row",
+      "missing_behavior": {
+        "action": "render_empty_structure",
+        "code": "EMPTY_STRUCTURE_REQUIRED",
+        "severity": "warning"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.11-authority",
+        "TV-3.6.6.11-missing",
+        "TV-3.6.6.11-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.11-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.12",
+      "readme_rule_ref": "3.6.6.12",
+      "authority_field_id": "report.narrative.system_summary",
+      "authority_paths": [
+        "report_blocks[system_summary].payload_json"
+      ],
+      "reference_field_ids": [
+        "report.system.overview"
+      ],
+      "reference_paths": [
+        "system_profiles.system_summary"
+      ],
+      "target_ids": [
+        "block:report.assessment_conclusion.system_summary"
+      ],
+      "relation_type": "derived_output_slot",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "system_summary=confirmed_summary(system_profiles.system_overview)",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.12-authority",
+        "TV-3.6.6.12-missing",
+        "TV-3.6.6.12-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.12-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.13",
+      "readme_rule_ref": "3.6.6.13",
+      "authority_field_id": "report.narrative.confirmation_state",
+      "authority_paths": [
+        "report_blocks[*].confirmation_status"
+      ],
+      "reference_field_ids": [
+        "report.narrative.source_hashes"
+      ],
+      "reference_paths": [
+        "report_blocks[*].source_hash"
+      ],
+      "target_ids": [
+        "service:report.narrative_staleness"
+      ],
+      "relation_type": "staleness",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "upstream_change=>dependent_generation_status=stale && confirmation_status=pending",
+      "missing_behavior": {
+        "action": "derive_or_block_final",
+        "code": "DERIVED_INPUT_INCOMPLETE",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "recompute_from_authority",
+        "code": "DERIVED_VALUE_STALE",
+        "severity": "error"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.13-authority",
+        "TV-3.6.6.13-missing",
+        "TV-3.6.6.13-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.13-01"
+      ],
+      "export_stage": "R4"
+    },
+    {
+      "relation_id": "FRM-3.6.6.14",
+      "readme_rule_ref": "3.6.6.14",
+      "authority_field_id": "report.narrative.confirmation_state",
+      "authority_paths": [
+        "report_blocks[*].confirmation_status"
+      ],
+      "reference_field_ids": [
+        "report.narrative.generated_baseline",
+        "report.narrative.manual_override"
+      ],
+      "reference_paths": [
+        "report_blocks[*].baseline_json",
+        "report_blocks[*].override_json"
+      ],
+      "target_ids": [
+        "service:report.narrative_confirmation"
+      ],
+      "relation_type": "staleness",
+      "source_kind": "derived",
+      "editable": false,
+      "constraint_expression": "never_overwrite_manual_override; regenerate_or_confirm_diff; stale_or_unconfirmed=>block_final",
+      "missing_behavior": {
+        "action": "allow_draft_block_final",
+        "code": "FIELD_REQUIRED_FOR_FINAL",
+        "severity": "error"
+      },
+      "conflict_behavior": {
+        "action": "require_confirmation",
+        "code": "FIELD_CONFIRMATION_REQUIRED",
+        "severity": "warning"
+      },
+      "implemented_in": "R3",
+      "confirmation_status": "confirmed",
+      "test_vector_ids": [
+        "TV-3.6.6.14-authority",
+        "TV-3.6.6.14-missing",
+        "TV-3.6.6.14-conflict"
+      ],
+      "export_mapping_ids": [
+        "EM-3.6.6.14-01"
+      ],
+      "export_stage": "R4"
+    }
+  ]
+}

@@ -3,6 +3,13 @@ export type WorkflowStatus = "draft" | "ready_for_review" | "confirmed";
 export type ProjectCreationOperation = "create" | "migration_import" | "roundtrip_import" | "upgrade_copy";
 export type ProjectWorkspaceView = "report_home" | "appendix_a";
 
+export type ReportWorkspaceRoute =
+  | { view: "overview" }
+  | { view: "basics" }
+  | { view: "objects" }
+  | { view: "section"; sectionKey: string }
+  | { view: "appendix_a"; sectionCode?: string };
+
 export const FULL_REPORT_TEMPLATE_IDENTITY = Object.freeze({
   template_package_id: "report-2023-2025.12.08",
   template_edition: "2023",
@@ -72,4 +79,60 @@ export function defaultProjectWorkspace(projectType: ProjectType): ProjectWorksp
 
 export function canUpgradeProject(projectType: ProjectType): boolean {
   return projectType === "appendix_a";
+}
+
+export function projectWorkspacePath(projectUuid: string, route: ReportWorkspaceRoute): string {
+  const root = `/projects/${encodeURIComponent(projectUuid)}`;
+  if (route.view === "overview") {
+    return `${root}/overview`;
+  }
+  if (route.view === "basics") {
+    return `${root}/basics`;
+  }
+  if (route.view === "objects") {
+    return `${root}/objects`;
+  }
+  if (route.view === "appendix_a") {
+    return route.sectionCode
+      ? `${root}/appendix-a/${encodeURIComponent(route.sectionCode)}`
+      : `${root}/appendix-a`;
+  }
+  return `${root}/report/${encodeURIComponent(route.sectionKey)}`;
+}
+
+export function parseProjectWorkspacePath(pathname: string): {
+  projectUuid: string;
+  route: ReportWorkspaceRoute;
+} | null {
+  const segments = pathname.split("/").filter(Boolean).map((segment) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  });
+  if (segments.length < 3 || segments[0] !== "projects" || !segments[1]) {
+    return null;
+  }
+
+  const projectUuid = segments[1];
+  if (segments[2] === "overview" && segments.length === 3) {
+    return { projectUuid, route: { view: "overview" } };
+  }
+  if (segments[2] === "basics" && segments.length === 3) {
+    return { projectUuid, route: { view: "basics" } };
+  }
+  if (segments[2] === "objects" && segments.length === 3) {
+    return { projectUuid, route: { view: "objects" } };
+  }
+  if (segments[2] === "report" && segments[3] && segments.length === 4) {
+    return { projectUuid, route: { view: "section", sectionKey: segments[3] } };
+  }
+  if (segments[2] === "appendix-a" && segments.length <= 4) {
+    return {
+      projectUuid,
+      route: { view: "appendix_a", sectionCode: segments[3] || undefined }
+    };
+  }
+  return null;
 }

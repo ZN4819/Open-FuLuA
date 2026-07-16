@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from app import database
 from app.config import settings
+from app.runtime import SCHEMA_VERSION
 from app.contracts import (
     FULL_REPORT_TEMPLATE_EDITION,
     FULL_REPORT_TEMPLATE_PACKAGE_ID,
@@ -78,7 +79,7 @@ class R1ProjectTests(unittest.TestCase):
             **self._full_report_arguments(),
         )
 
-        self.assertEqual(database.read_schema_version(), "4")
+        self.assertEqual(database.read_schema_version(), SCHEMA_VERSION)
         self.assertEqual(legacy["project_type"], "appendix_a")
         self.assertEqual(legacy["workflow_status"], "draft")
         self.assertIsNone(legacy["template_package_id"])
@@ -128,11 +129,15 @@ class R1ProjectTests(unittest.TestCase):
             project_type="full_report",
             **self._full_report_arguments(),
         )
-        for action in ("ready-for-review", "confirm"):
-            with self.subTest(action=action), self.assertRaises(ProjectServiceError) as error:
-                transition_workflow(project["project_uuid"], action)
-            self.assertEqual(error.exception.code, "REPORT_VALIDATION_NOT_AVAILABLE")
-            self.assertEqual(error.exception.status_code, 409)
+        with self.assertRaises(ProjectServiceError) as ready_error:
+            transition_workflow(project["project_uuid"], "ready-for-review")
+        self.assertEqual(ready_error.exception.code, "REPORT_VALIDATION_FAILED")
+        self.assertEqual(ready_error.exception.status_code, 409)
+
+        with self.assertRaises(ProjectServiceError) as confirm_error:
+            transition_workflow(project["project_uuid"], "confirm")
+        self.assertEqual(confirm_error.exception.code, "REPORT_VALIDATION_NOT_AVAILABLE")
+        self.assertEqual(confirm_error.exception.status_code, 409)
 
         database.update_project_workflow(project["project_uuid"], "ready_for_review")
         reopened = transition_workflow(project["project_uuid"], "reopen")

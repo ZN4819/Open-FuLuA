@@ -151,6 +151,7 @@ class CrossReferenceWrite(BaseModel):
 class AssessmentRowRead(BaseModel):
     id: int
     section_id: int
+    assessment_object_uuid: str | None = None
     unit: str
     object_name: str
     subsystem: str = ""
@@ -160,6 +161,7 @@ class AssessmentRowRead(BaseModel):
 
 
 class AssessmentRowWrite(BaseModel):
+    id: int | None = Field(default=None, ge=1)
     unit: str = Field(default="", max_length=500)
     object_name: str = Field(default="", max_length=500)
     subsystem: str = Field(default="", max_length=500)
@@ -171,6 +173,7 @@ class AssessmentRowWrite(BaseModel):
 
 class EvidenceImageRead(BaseModel):
     id: int
+    evidence_uuid: str
     project_image_no: int | None = None
     project_id: int
     section_code: str

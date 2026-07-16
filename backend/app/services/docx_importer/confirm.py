@@ -164,6 +164,7 @@ def _copy_and_insert_image(db: Any, project_id: int, image: dict[str, Any], time
         """
         INSERT INTO evidence_images
             (
+                evidence_uuid,
                 project_id,
                 section_code,
                 file_path,
@@ -180,9 +181,10 @@ def _copy_and_insert_image(db: Any, project_id: int, image: dict[str, Any], time
                 created_at,
                 updated_at
             )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            database.new_evidence_uuid(),
             project_id,
             section_code,
             relative_path.as_posix(),

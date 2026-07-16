@@ -201,7 +201,10 @@ class DatabaseSchemaTests(unittest.TestCase):
                     (project["id"],),
                 ).fetchone()
                 self.assertEqual(stored, ("evil", "f" * 64))
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+                self.assertEqual(
+                    connection.execute("PRAGMA user_version").fetchone()[0],
+                    int(SCHEMA_VERSION),
+                )
             finally:
                 connection.close()
 
@@ -219,10 +222,15 @@ class DatabaseSchemaTests(unittest.TestCase):
                 connection = sqlite3.connect(path)
                 try:
                     columns = {row[1] for row in connection.execute("PRAGMA table_info(metric_results)")}
+                    evidence_columns = {
+                        row[1]
+                        for row in connection.execute("PRAGMA table_info(evidence_images)")
+                    }
                 finally:
                     connection.close()
                 self.assertIn("ra", columns)
                 self.assertIn("rk", columns)
+                self.assertIn("evidence_uuid", evidence_columns)
                 project_connection = sqlite3.connect(path)
                 try:
                     project_columns = {
