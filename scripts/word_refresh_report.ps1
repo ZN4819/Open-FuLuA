@@ -53,10 +53,12 @@ function Get-OwnedWordProcessId($Application, [int[]]$ExistingProcessIds) {
 $word = $null
 $document = $null
 $pidValue = 0
+$stage = 'startup'
 $existingWordProcessIds = @(
     Get-Process -Name WINWORD -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id
 )
 try {
+    $stage = 'create_application'
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
     $word.DisplayAlerts = 0
@@ -64,10 +66,13 @@ try {
     $pidValue = Get-OwnedWordProcessId $word $existingWordProcessIds
     Write-Status @{ status = 'running'; pid = $pidValue; started_at = [DateTime]::UtcNow.ToString('o') }
 
+    $stage = 'resolve_paths'
     $resolvedInput = (Resolve-Path -LiteralPath $InputPath).Path
     $resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
+    $stage = 'open_document'
     $document = $word.Documents.Open($resolvedInput, $false, $false, $false)
 
+    $stage = 'update_story_fields'
     foreach ($story in $document.StoryRanges) {
         $range = $story
         while ($null -ne $range) {
@@ -75,15 +80,22 @@ try {
             $range = $range.NextStoryRange
         }
     }
+    $stage = 'update_toc'
     foreach ($toc in $document.TablesOfContents) { $toc.Update() | Out-Null }
+    $stage = 'update_tof'
     foreach ($tof in $document.TablesOfFigures) { $tof.Update() | Out-Null }
+    $stage = 'update_document_fields'
     if ($document.Fields.Count -gt 0) { $document.Fields.Update() | Out-Null }
+    $stage = 'repaginate'
     $document.Repaginate()
     foreach ($toc in $document.TablesOfContents) { $toc.UpdatePageNumbers() | Out-Null }
     foreach ($tof in $document.TablesOfFigures) { $tof.UpdatePageNumbers() | Out-Null }
 
+    $stage = 'save_as_docx'
     $document.SaveAs2($resolvedOutput, 16)
+    $stage = 'compute_pages'
     $pageCount = [int]$document.ComputeStatistics(2)
+    $stage = 'close_document'
     $document.Close(0)
     $document = $null
     $word.Quit()
@@ -109,6 +121,7 @@ catch {
         status = 'failed'
         pid = $pidValue
         error = $message
+        stage = $stage
         finished_at = [DateTime]::UtcNow.ToString('o')
     }
     exit 1

@@ -129,6 +129,7 @@ def _read_rows(db: sqlite3.Connection, project_id: int) -> list[dict[str, Any]]:
         SELECT
             s.code AS section_code,
             r.id AS source_row_id,
+            r.row_uuid AS source_row_uuid,
             r.assessment_object_uuid AS object_uuid,
             r.unit,
             r.object_name,
@@ -162,7 +163,7 @@ def source_rows_snapshot(db: sqlite3.Connection, project_id: int) -> list[dict[s
         {
             key: row.get(key)
             for key in (
-                "section_code", "source_row_id", "object_uuid", "unit", "object_name",
+                "section_code", "source_row_id", "source_row_uuid", "object_uuid", "unit", "object_name",
                 "subsystem", "record_text", "sort_order", "d", "a", "k", "ra", "rk", "compliance",
             )
         }
@@ -246,6 +247,7 @@ def _calculate_original_rows(
         grouped[indicator.code].append(
             {
                 "source_row_id": row_id,
+                "source_row_uuid": str(raw.get("source_row_uuid") or ""),
                 "object_uuid": object_uuid,
                 "object_name": str(raw.get("object_name") or "").strip(),
                 "subsystem": str(raw.get("subsystem") or "").strip(),

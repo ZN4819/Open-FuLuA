@@ -1,13 +1,142 @@
 {
   "schema_version": "1.0",
   "matrix_id": "report-field-relation-matrix",
-  "matrix_version": "R2.2-2026-07-15.1",
+  "matrix_version": "R2.3-2026-07-16.1",
   "package_id": "report-2023-2025.12.08",
   "template_edition": "2023",
   "template_revision": "2025-12-08",
   "source_contracts": {
     "field_dictionary_sha256": "1c4c6fdeb9f6a1ecbe6825c73c73e55f5e582d468ec188a41628f0845888c808",
     "manifest_sha256": "dc7f3dbdde0972af7638fcff6a312fec19de121f8e2627c4fa2707242f614bf8"
+  },
+  "word_roundtrip_policy": {
+    "policy_version": "R7.1",
+    "scalar_slots": [
+      {
+        "authority_field_id": "report.identity.number",
+        "entity_path": "report_metadata.report_number",
+        "context_key": "report_number",
+        "slot_tags": ["report.identity.number"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "authority_field_id": "report.organization.assessed_name",
+        "entity_path": "report_organizations[assessed].name",
+        "context_key": "assessed_name",
+        "slot_tags": ["report.organization.assessed_name"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "authority_field_id": "report.system.name",
+        "entity_path": "system_profiles.system_name",
+        "context_key": "system_name",
+        "slot_tags": ["report.cover.system_name", "report.system.name", "report.declaration.system_name"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "authority_field_id": "report.system.overview",
+        "entity_path": "system_profiles.system_summary",
+        "context_key": "system_overview",
+        "slot_tags": ["report.system.overview"],
+        "value_type": "multiline",
+        "normalizer_id": "multiline_v1"
+      },
+      {
+        "authority_field_id": "report.distribution.regulator_copies",
+        "entity_path": "report_distribution.regulator_copies",
+        "context_key": "regulator_copies",
+        "slot_tags": ["report.distribution.regulator_copies"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "authority_field_id": "report.distribution.client_copies",
+        "entity_path": "report_distribution.client_copies",
+        "context_key": "client_copies",
+        "slot_tags": ["report.distribution.client_copies"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "authority_field_id": "report.distribution.assessment_copies",
+        "entity_path": "report_distribution.assessment_organization_copies",
+        "context_key": "assessment_copies",
+        "slot_tags": ["report.distribution.assessment_copies"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      }
+    ],
+    "appendix_a_columns": [
+      {
+        "column_id": "object_name",
+        "authority_field_id": "report.appendix_a.records",
+        "entity_path": "assessment_objects[*].name_snapshot",
+        "sections": ["A-1", "A-2", "A-3", "A-4", "A-5", "A-6", "A-7", "A-8"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "column_id": "subsystem",
+        "authority_field_id": "report.appendix_a.a4_subsystems",
+        "entity_path": "assessment_object_subsystems[*].subsystem_name",
+        "sections": ["A-4"],
+        "value_type": "text",
+        "normalizer_id": "trim_v1"
+      },
+      {
+        "column_id": "record_text",
+        "authority_field_id": "report.appendix_a.records",
+        "entity_path": "assessment_rows[*].record_text",
+        "sections": ["A-1", "A-2", "A-3", "A-4", "A-5", "A-6", "A-7", "A-8"],
+        "value_type": "multiline",
+        "normalizer_id": "multiline_v1"
+      },
+      {
+        "column_id": "d",
+        "authority_field_id": "report.appendix_a.technical_inputs",
+        "entity_path": "metric_results[*].d",
+        "sections": ["A-1", "A-2", "A-3", "A-4"],
+        "value_type": "enum",
+        "normalizer_id": "enum_v1",
+        "options": ["√", "×", "/"]
+      },
+      {
+        "column_id": "a",
+        "authority_field_id": "report.appendix_a.technical_inputs",
+        "entity_path": "metric_results[*].a",
+        "sections": ["A-1", "A-2", "A-3", "A-4"],
+        "value_type": "enum",
+        "normalizer_id": "enum_v1",
+        "options": ["√", "×", "/"]
+      },
+      {
+        "column_id": "k",
+        "authority_field_id": "report.appendix_a.technical_inputs",
+        "entity_path": "metric_results[*].k",
+        "sections": ["A-1", "A-2", "A-3", "A-4"],
+        "value_type": "enum",
+        "normalizer_id": "enum_v1",
+        "options": ["√", "×", "/"]
+      },
+      {
+        "column_id": "compliance",
+        "authority_field_id": "report.appendix_a.management_inputs",
+        "entity_path": "metric_results[*].compliance",
+        "sections": ["A-5", "A-6", "A-7", "A-8"],
+        "value_type": "enum",
+        "normalizer_id": "enum_v1",
+        "options": ["符合", "部分符合", "不符合", "不适用"]
+      }
+    ],
+    "forbidden_entity_paths": [
+      "metric_results[*].ra",
+      "metric_results[*].rk",
+      "metric_results[*].object_score",
+      "metric_results[*].unit_score"
+    ]
   },
   "closed_sets": {
     "source_kind": [

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,7 +62,7 @@ class StructuredDataTest(unittest.TestCase):
             path.mkdir(parents=True, exist_ok=True)
             (path / "sample.txt").write_text("runtime", encoding="utf-8")
 
-        deleted = delete_project_schema(project["id"])
+        deleted = delete_project_schema(project["id"], Response())
 
         self.assertEqual(deleted.id, project["id"])
         self.assertIsNone(database.get_project_by_id(project["id"]))

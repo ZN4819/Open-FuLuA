@@ -363,3 +363,10 @@ class ReportExportJobWrite(ReportModel):
     mode: Literal["draft", "final"]
     version: str = Field(default="V1.0", min_length=3, max_length=40)
     expected_project_revision: int = Field(ge=1)
+    roundtrip_capable: bool = False
+
+    @model_validator(mode="after")
+    def validate_roundtrip_mode(self) -> "ReportExportJobWrite":
+        if self.roundtrip_capable and self.mode != "draft":
+            raise ValueError("只有草稿可以启用受控 Word 回收")
+        return self

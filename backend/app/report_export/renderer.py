@@ -20,6 +20,11 @@ from ..services.docx_generator.tables import add_assessment_table
 from ..services.report_domain.errors import ReportDomainError
 from ..services.report_templates.registry import report_template_registry
 from ..services.template_profile import load_template_profile
+from ..report_roundtrip.contracts import (
+    roundtrip_policy,
+    slot_id,
+    slot_tag,
+)
 
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -273,6 +278,52 @@ def _render_semantic_slots(parts: dict[str, bytes], scalars: dict[str, Any]) -> 
             parts[name] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
 
 
+def _activate_roundtrip_scalar_slots(parts: dict[str, bytes]) -> None:
+    configured = {
+        tag: item
+        for item in roundtrip_policy()["scalar_slots"]
+        for tag in item["slot_tags"]
+    }
+    found: set[str] = set()
+    for name in list(parts):
+        if name != "word/document.xml" and not re.fullmatch(r"word/(?:header|footer)\d+\.xml", name):
+            continue
+        root = etree.fromstring(parts[name])
+        changed = False
+        for sdt in root.xpath("//w:sdt", namespaces=NS):
+            properties = sdt.find(Q("sdtPr"))
+            if properties is None:
+                continue
+            tag_node = properties.find(Q("tag"))
+            semantic_tag = str(tag_node.get(Q("val")) if tag_node is not None else "")
+            policy = configured.get(semantic_tag)
+            for old_lock in list(properties.findall(Q("lock"))):
+                properties.remove(old_lock)
+            lock = etree.Element(Q("lock"))
+            if policy is None:
+                lock.set(Q("val"), "sdtContentLocked")
+            else:
+                token = slot_id("scalar", semantic_tag)
+                tag_node.set(Q("val"), slot_tag(token))
+                alias = properties.find(Q("alias"))
+                if alias is not None:
+                    alias.set(Q("val"), policy["authority_field_id"])
+                lock.set(Q("val"), "sdtLocked")
+                found.add(semantic_tag)
+            properties.append(lock)
+            changed = True
+        if changed:
+            parts[name] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
+    missing = sorted(set(configured) - found)
+    if missing:
+        raise ReportDomainError(
+            "REPORT_ROUNDTRIP_SCALAR_SLOT_MISSING",
+            "受控 Word 草稿缺少白名单字段槽位。",
+            status_code=500,
+            details={"slot_tags": missing},
+        )
+
+
 def _render_cover(table: etree._Element, context: dict[str, Any]) -> None:
     scalars = context["scalar_slot_values"]
     if not scalars.get("has_separate_client"):
@@ -401,7 +452,17 @@ def _render_assessment_conclusion_table(table: etree._Element, context: dict[str
     blocks = context["chapter_blocks"]
     scalars = context["scalar_slot_values"]
     rows = list(table.xpath("./w:tr", namespaces=NS))
-    _set_cell_text(_cells(rows[1])[1], blocks.get("conclusion.system_summary", {}).get("text") or scalars.get("system_overview") or "/")
+    overview_cell = _cells(rows[1])[1]
+    overview = blocks.get("conclusion.system_summary", {}).get("text") or scalars.get("system_overview") or "/"
+    if overview_cell.xpath(
+        ".//w:sdt[w:sdtPr/w:tag/@w:val='report.system.overview']",
+        namespaces=NS,
+    ):
+        # Preserve the frozen master's semantic SDT.  R7 later narrows this
+        # exact slot to an opaque signed whitelist token.
+        _set_sdt_text(overview_cell, "report.system.overview", overview)
+    else:
+        _set_cell_text(overview_cell, overview)
     _set_cell_text(_cells(rows[2])[1], blocks.get("conclusion.assessment_summary", {}).get("text") or "/")
     cells = _cells(rows[3])
     if len(cells) >= 4:
@@ -777,8 +838,11 @@ def _appendix_content(
         score = str(source.get("final_object_score") or source.get("object_score") or "")
         rows.append(
             {
+                "source_row_uuid": source.get("source_row_uuid") or "",
+                "object_uuid": source.get("object_uuid") or "",
                 "unit": source.get("indicator_name") or "",
                 "object_name": source.get("object_name") or "",
+                "subsystem": source.get("subsystem") or "",
                 "record_text": source.get("record_text") or "",
                 "d": "/" if corrected and section_code in {"A-1", "A-2", "A-3", "A-4"} else source.get("d"),
                 "a": "/" if corrected and section_code in {"A-1", "A-2", "A-3", "A-4"} else source.get("a"),
@@ -786,6 +850,7 @@ def _appendix_content(
                 "object_score": f"{score}*" if corrected and score != "/" else score,
                 "unit_score": source.get("unit_score") or "",
                 "compliance": source.get("object_result") or "不适用",
+                "roundtrip_locked_columns": ["d", "a", "k"] if corrected else [],
             }
         )
     document = Document()
@@ -794,7 +859,7 @@ def _appendix_content(
         {"code": section_code},
         rows,
         profile,
-        "final",
+        "roundtrip" if context["project_identity"].get("roundtrip_capable") else "final",
         figure_refs,
         authoritative_scores=True,
     )
@@ -815,7 +880,8 @@ def _appendix_content(
         copy.deepcopy(child)
         for child in temporary_document.xpath("/w:document/w:body/*[not(self::w:sectPr)]", namespaces=NS)
     ]
-    if not body_children or body_children[0].tag != Q("tbl"):
+    expected_tag = Q("sdt") if context["project_identity"].get("roundtrip_capable") else Q("tbl")
+    if not body_children or body_children[0].tag != expected_tag:
         raise ReportDomainError(
             "APPENDIX_A_EMBED_RENDER_INVALID",
             "附录 A 嵌入式渲染未生成预期表格。",
@@ -1326,6 +1392,8 @@ def render_report(context: dict[str, Any], destination: Path) -> dict[str, Any]:
     # semantic SDTs only after those deterministic replacements so a scalar
     # value cannot invalidate a later master fingerprint.
     _render_semantic_slots(parts, context["scalar_slot_values"])
+    if context["project_identity"].get("roundtrip_capable"):
+        _activate_roundtrip_scalar_slots(parts)
     _set_update_fields(parts)
     allowlist_result = _assert_template_mutation_allowlist(original_parts, parts)
 
@@ -1340,7 +1408,12 @@ def render_report(context: dict[str, Any], destination: Path) -> dict[str, Any]:
     return {**validation, **allowlist_result}
 
 
-def validate_rendered_report(path: Path, *, final: bool) -> dict[str, Any]:
+def validate_rendered_report(
+    path: Path,
+    *,
+    final: bool,
+    roundtrip_capable: bool = False,
+) -> dict[str, Any]:
     with zipfile.ZipFile(path) as package:
         names = package.namelist()
         root = etree.fromstring(package.read("word/document.xml"))
@@ -1362,7 +1435,8 @@ def validate_rendered_report(path: Path, *, final: bool) -> dict[str, Any]:
         )
     forbidden_parts = [
         name for name in names
-        if name.startswith(("word/activeX/", "word/embeddings/", "customXml/", "_xmlsignatures/"))
+        if name.startswith(("word/activeX/", "word/embeddings/", "_xmlsignatures/"))
+        or (name.startswith("customXml/") and not roundtrip_capable)
         or "comments" in name.lower() or name.endswith("vbaProject.bin")
     ]
     external = sum(len(root.xpath("/pr:Relationships/pr:Relationship[@TargetMode='External']", namespaces=NS)) for root in relationship_roots)
@@ -1434,6 +1508,10 @@ def validate_rendered_report(path: Path, *, final: bool) -> dict[str, Any]:
             status_code=500,
             details={"missing_targets": missing_targets[:50]},
         )
+    if roundtrip_capable:
+        from ..report_roundtrip.package import read_safe_opc, validate_roundtrip_opc
+
+        validate_roundtrip_opc(read_safe_opc(path))
     return {
         "section_count": len(sections),
         "table_count": len(tables),

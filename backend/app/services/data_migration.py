@@ -28,6 +28,8 @@ from app.report_export.schema import REPORT_EXPORT_TABLES, audit_report_export_s
 from app.report_evidence.schema import REPORT_EVIDENCE_TABLES, audit_report_evidence_schema
 from app.report_import.contracts import REPORT_IMPORT_TABLES
 from app.report_import.schema import audit_report_import_schema
+from app.report_roundtrip.contracts import REPORT_ROUNDTRIP_TABLES
+from app.report_roundtrip.schema import audit_report_roundtrip_schema
 
 
 @dataclass(frozen=True)
@@ -214,6 +216,11 @@ def _database_check(database_path: Path) -> tuple[str, int, int, tuple[str, ...]
                 audit_report_import_schema(db)
             except (RuntimeError, sqlite3.Error):
                 return "schema_invalid", 0, 0, ()
+        if schema_version >= 10:
+            try:
+                audit_report_roundtrip_schema(db)
+            except (RuntimeError, sqlite3.Error):
+                return "schema_invalid", 0, 0, ()
         projects = int(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0])
         rows = [str(row[0]) for row in db.execute("SELECT file_path FROM evidence_images")]
         if schema_version >= 8:
@@ -340,10 +347,16 @@ def _target_has_user_data(paths: RuntimePaths) -> bool:
                     *REPORT_EXPORT_TABLES,
                     *REPORT_EVIDENCE_TABLES,
                     *REPORT_IMPORT_TABLES,
+                    *REPORT_ROUNDTRIP_TABLES,
                 }
                 if not tables <= allowed or "projects" not in tables:
                     return True
-                for table in ("projects", "appendix_sections", "assessment_rows", "metric_results", "evidence_images", "cross_references", "render_jobs", "validation_issues", "docx_import_jobs", "report_import_jobs", "section_subsystems"):
+                for table in (
+                    "projects", "appendix_sections", "assessment_rows", "metric_results",
+                    "evidence_images", "cross_references", "render_jobs", "validation_issues",
+                    "docx_import_jobs", "report_import_jobs", "section_subsystems",
+                    "report_roundtrip_deletion_tombstones", "report_roundtrip_cleanup_queue",
+                ):
                     if table in tables and int(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) > 0:
                         return True
                 if "record_templates" in tables and int(db.execute("SELECT COUNT(*) FROM record_templates WHERE source_type != 'system' OR deleted_at IS NOT NULL").fetchone()[0]) > 0:

@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import Response
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -95,7 +97,7 @@ class DocxImportJobsTest(unittest.TestCase):
             path.mkdir(parents=True, exist_ok=True)
             (path / "sample.txt").write_text("runtime", encoding="utf-8")
 
-        delete_project_schema(project["id"])
+        delete_project_schema(project["id"], Response())
 
         self.assertTrue(import_dir.exists())
         self.assertTrue(source_path.exists())
@@ -110,7 +112,7 @@ class DocxImportJobsTest(unittest.TestCase):
         )
         database.update_docx_import_job(job["id"], {"created_project_id": project["id"]})
 
-        delete_project_schema(project["id"])
+        delete_project_schema(project["id"], Response())
         reloaded = database.get_docx_import_job(job["id"])
 
         self.assertIsNotNone(reloaded)

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, HTTPException, Response
 
 from .. import database
 from ..schemas import (
@@ -10,13 +12,14 @@ from ..schemas import (
 )
 from ..services.projects import (
     ProjectServiceError,
+    cleanup_deleted_project_files,
     create_typed_project,
-    remove_project_runtime_files,
     transition_workflow,
     upgrade_project_copy,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 
 def section_to_schema(row) -> SectionRead:
@@ -112,13 +115,28 @@ def update_project(project_id: int, payload: ProjectUpdate) -> ProjectRead:
 
 
 @router.delete("/{project_id}", response_model=ProjectRead)
-def delete_project(project_id: int) -> ProjectRead:
+def delete_project(project_id: int, response: Response) -> ProjectRead:
     project = database.get_project_by_id(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     deleted = project_to_schema(project)
-    database.delete_project(project_id)
-    remove_project_runtime_files(project_id, str(project["project_uuid"]))
+    _removed, _cleanup_task_id, _roundtrip_job_ids = database.delete_project_with_policy(
+        project_id
+    )
+    # Database deletion is authoritative.  File cleanup attempts public and
+    # private stores independently; a durable queue is retried on startup and
+    # prevents an open Word file from turning a successful deletion into an
+    # unrecoverable 500/404 sequence.
+    cleanup_completed = False
+    try:
+        cleanup_completed = cleanup_deleted_project_files(project_id)
+    except Exception:  # noqa: BLE001 - DB deletion already committed; startup retries queue
+        logger.warning(
+            "项目已删除，但文件清理状态暂不可确认，将在下次启动重试（project_id=%s）",
+            project_id,
+        )
+    if not cleanup_completed:
+        response.headers["X-FuLua-Cleanup-Pending"] = "true"
     return deleted
 
 

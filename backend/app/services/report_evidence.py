@@ -138,7 +138,7 @@ def _mark_project_changed(
     revision = advance_project_revision_for_external_change(
         db, project_id, project_uuid
     )
-    touch_project(db, project_id)
+    touch_project(db, project_id, advance_revision=False)
     return revision
 
 

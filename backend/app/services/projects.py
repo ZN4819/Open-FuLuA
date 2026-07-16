@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -633,6 +634,60 @@ def remove_project_runtime_files(
         _remove_storage_child(relative_path)
     if project_uuid:
         _remove_storage_child(Path("report_evidence") / project_uuid)
+
+
+def cleanup_deleted_project_files(source_project_id: int) -> bool:
+    """Best-effort both public and private cleanup with a durable retry row."""
+
+    task = database.get_roundtrip_cleanup_task(source_project_id)
+    if task is None:
+        return True
+    errors: list[str] = []
+    try:
+        remove_project_runtime_files(
+            int(task["source_project_id"]),
+            str(task["project_uuid"]),
+        )
+    except Exception as exc:  # noqa: BLE001 - cleanup must continue to private files
+        errors.append(type(exc).__name__)
+
+    job_ids: tuple[int, ...] = ()
+    try:
+        raw_job_ids = json.loads(str(task["roundtrip_job_ids_json"]))
+        if not isinstance(raw_job_ids, list) or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 1
+            for value in raw_job_ids
+        ):
+            raise ValueError("invalid cleanup job ids")
+        job_ids = tuple(raw_job_ids)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(type(exc).__name__)
+    else:
+        try:
+            from .report_roundtrips import remove_roundtrip_job_files
+
+            remove_roundtrip_job_files(job_ids)
+        except Exception as exc:  # noqa: BLE001 - retain queue for startup retry
+            errors.append(type(exc).__name__)
+
+    if errors:
+        code = "PROJECT_FILE_CLEANUP_PENDING:" + "+".join(sorted(set(errors)))
+        database.fail_roundtrip_cleanup_task(int(task["id"]), code)
+        logger.warning(
+            "项目删除后的文件清理尚未完成，将在下次启动重试（project_id=%s）",
+            source_project_id,
+        )
+        return False
+    database.complete_roundtrip_cleanup_task(int(task["id"]))
+    return True
+
+
+def recover_pending_project_cleanup_tasks() -> int:
+    completed = 0
+    for task in database.list_roundtrip_cleanup_tasks():
+        if cleanup_deleted_project_files(int(task["source_project_id"])):
+            completed += 1
+    return completed
 
 
 def _trusted_template_binding(

@@ -701,118 +701,87 @@ def impact_preview(project_uuid: str) -> dict[str, Any]:
         }
 
 
-def create_generation_run(project_uuid: str, payload: GenerationRunWrite) -> dict[str, Any]:
+def _create_generation_run_locked(
+    db: sqlite3.Connection,
+    project_uuid: str,
+    expected_project_revision: int,
+    *,
+    fail_on_issues: bool = False,
+) -> dict[str, Any]:
+    """Regenerate R3 using the caller's write transaction.
+
+    R7 uses this entrypoint after applying Word values and recalculating
+    Appendix A.  Keeping the caller-owned transaction guarantees that report
+    facts, scores, derived blocks, audit metadata and the single project
+    revision either commit together or all roll back.
+    """
     rules = _rules(project_uuid)
-    with database.connect() as db:
-        db.execute("BEGIN IMMEDIATE")
-        project = require_report_project(project_uuid, db)
-        project_id = int(project["id"])
-        state = _state(db, project_id)
-        _expect_revision(state, payload.expected_project_revision, project_uuid)
-        facts, fact_issues = read_report_facts(db, project_id)
-        projection: dict[str, Any] | None = None
-        issues: list[dict[str, Any]] = []
-        try:
-            projection = build_projection(db, project_id, rule_set=rules)
-        except ProjectionInputError as exc:
-            issues.extend(exc.issues)
-        issues.extend(fact_issues)
-        run_uuid = str(uuid.uuid4())
-        next_revision = int(state["project_revision"]) + 1
+    project = require_report_project(project_uuid, db)
+    project_id = int(project["id"])
+    state = _state(db, project_id)
+    _expect_revision(state, expected_project_revision, project_uuid)
+    facts, fact_issues = read_report_facts(db, project_id)
+    projection: dict[str, Any] | None = None
+    issues: list[dict[str, Any]] = []
+    try:
+        projection = build_projection(db, project_id, rule_set=rules)
+    except ProjectionInputError as exc:
+        issues.extend(exc.issues)
+    issues.extend(fact_issues)
+    run_uuid = str(uuid.uuid4())
+    next_revision = int(state["project_revision"]) + 1
 
-        if projection is not None:
-            finding_baselines = build_finding_baselines(projection["final_projection"], rules)
-            _upsert_findings(db, project_id, project_uuid, finding_baselines)
-            risk_rows = _load_risk_rows(db, project_id)
-            invalid_threats = sorted(
-                {threat for risk in risk_rows for threat in risk["threat_ids"] if threat not in rules.threat_ids}
-            )
-            if invalid_threats:
-                issues.append(
-                    {
-                        "code": "RISK_THREAT_REFERENCE_INVALID",
-                        "message": "风险关联了母版威胁目录以外的编号。",
-                        "field": "threat_ids",
-                        "details": {"threat_ids": invalid_threats},
-                    }
-                )
-            risk_snapshot, risk_issues = risk_snapshot_from_rows(
-                risk_rows, projection["final_projection"]["statistics"]
-            )
-            issues.extend(risk_issues)
-        else:
-            finding_baselines = []
-            risk_snapshot = None
-            risk_rows = _load_risk_rows(db, project_id)
-
-        source_groups = _source_group_hashes(db, project_id, facts)
-        input_hash = stable_hash(source_groups)
-        if issues or projection is None or risk_snapshot is None:
-            _stale_current_blocks(db, project_id)
-            partial = None if projection is None else {
-                **projection,
-                "findings": finding_baselines,
-                "risk_inputs": risk_rows,
-            }
-            run = _insert_run(
-                db,
-                run_uuid=run_uuid,
-                project_id=project_id,
-                status="needs_input",
-                rule_set=rules,
-                input_hash=input_hash,
-                projection=partial,
-                issues=issues,
-                state_revision=next_revision,
-            )
-            updated_state = _advance_state(
-                db,
-                state,
-                project_uuid,
+    if projection is not None:
+        finding_baselines = build_finding_baselines(projection["final_projection"], rules)
+        _upsert_findings(db, project_id, project_uuid, finding_baselines)
+        risk_rows = _load_risk_rows(db, project_id)
+        invalid_threats = sorted(
+            {threat for risk in risk_rows for threat in risk["threat_ids"] if threat not in rules.threat_ids}
+        )
+        if invalid_threats:
+            issues.append(
                 {
-                    "current_run_uuid": run_uuid,
-                    "current_input_hash": input_hash,
-                    "source_groups_json": _json(source_groups),
-                },
+                    "code": "RISK_THREAT_REFERENCE_INVALID",
+                    "message": "风险关联了母版威胁目录以外的编号。",
+                    "field": "threat_ids",
+                    "details": {"threat_ids": invalid_threats},
+                }
             )
-            return _run_result(run, int(updated_state["project_revision"]))
+        risk_snapshot, risk_issues = risk_snapshot_from_rows(
+            risk_rows, projection["final_projection"]["statistics"]
+        )
+        issues.extend(risk_issues)
+    else:
+        finding_baselines = []
+        risk_snapshot = None
+        risk_rows = _load_risk_rows(db, project_id)
 
-        conclusion = assessment_conclusion(projection["final_projection"]["score"], risk_snapshot)
-        block_specs = generate_narrative_blocks(
-            facts=facts,
-            projection=projection,
-            findings=finding_baselines,
-            risk_snapshot=risk_snapshot,
-            conclusion=conclusion,
-            rule_set=rules,
-        )
-        blocks = _persist_blocks(
-            db, project_id, project_uuid, block_specs, source_groups, rules, next_revision
-        )
-        context_base = {
-            "schema_version": R3_CONTEXT_SCHEMA_VERSION,
-            "generation_run_uuid": run_uuid,
-            "generation_state_revision": next_revision,
-            "rule_set_id": rules.rule_set_id,
-            "rule_set_hash": rules.content_sha256,
-            "input_hash": input_hash,
-            "source_hashes": source_groups,
+    source_groups = _source_group_hashes(db, project_id, facts)
+    input_hash = stable_hash(source_groups)
+    if issues or projection is None or risk_snapshot is None:
+        if fail_on_issues:
+            raise ReportDomainError(
+                "ROUNDTRIP_REGENERATION_FAILED",
+                "Word 修改会导致评分或派生正文无法完整重算，项目数据未写入。",
+                status_code=422,
+                project_uuid=project_uuid,
+                details={"issues": issues},
+            )
+        _stale_current_blocks(db, project_id)
+        partial = None if projection is None else {
             **projection,
             "findings": finding_baselines,
-            "risk_snapshot": risk_snapshot,
-            "assessment_conclusion": conclusion,
+            "risk_inputs": risk_rows,
         }
-        _assert_no_private_factors(context_base, project_uuid)
-        run_projection = {**context_base, "blocks": blocks}
         run = _insert_run(
             db,
             run_uuid=run_uuid,
             project_id=project_id,
-            status="current",
+            status="needs_input",
             rule_set=rules,
             input_hash=input_hash,
-            projection=run_projection,
-            issues=[],
+            projection=partial,
+            issues=issues,
             state_revision=next_revision,
         )
         updated_state = _advance_state(
@@ -822,12 +791,85 @@ def create_generation_run(project_uuid: str, payload: GenerationRunWrite) -> dic
             {
                 "current_run_uuid": run_uuid,
                 "current_input_hash": input_hash,
-                "current_context_json": _json(context_base),
-                "current_context_hash": None,
                 "source_groups_json": _json(source_groups),
             },
         )
         return _run_result(run, int(updated_state["project_revision"]))
+
+    conclusion = assessment_conclusion(projection["final_projection"]["score"], risk_snapshot)
+    block_specs = generate_narrative_blocks(
+        facts=facts,
+        projection=projection,
+        findings=finding_baselines,
+        risk_snapshot=risk_snapshot,
+        conclusion=conclusion,
+        rule_set=rules,
+    )
+    blocks = _persist_blocks(
+        db, project_id, project_uuid, block_specs, source_groups, rules, next_revision
+    )
+    context_base = {
+        "schema_version": R3_CONTEXT_SCHEMA_VERSION,
+        "generation_run_uuid": run_uuid,
+        "generation_state_revision": next_revision,
+        "rule_set_id": rules.rule_set_id,
+        "rule_set_hash": rules.content_sha256,
+        "input_hash": input_hash,
+        "source_hashes": source_groups,
+        **projection,
+        "findings": finding_baselines,
+        "risk_snapshot": risk_snapshot,
+        "assessment_conclusion": conclusion,
+    }
+    _assert_no_private_factors(context_base, project_uuid)
+    run_projection = {**context_base, "blocks": blocks}
+    run = _insert_run(
+        db,
+        run_uuid=run_uuid,
+        project_id=project_id,
+        status="current",
+        rule_set=rules,
+        input_hash=input_hash,
+        projection=run_projection,
+        issues=[],
+        state_revision=next_revision,
+    )
+    updated_state = _advance_state(
+        db,
+        state,
+        project_uuid,
+        {
+            "current_run_uuid": run_uuid,
+            "current_input_hash": input_hash,
+            "current_context_json": _json(context_base),
+            "current_context_hash": None,
+            "source_groups_json": _json(source_groups),
+        },
+    )
+    return _run_result(run, int(updated_state["project_revision"]))
+
+
+def regenerate_after_roundtrip_locked(
+    db: sqlite3.Connection,
+    project_uuid: str,
+    expected_project_revision: int,
+) -> dict[str, Any]:
+    return _create_generation_run_locked(
+        db,
+        project_uuid,
+        expected_project_revision,
+        fail_on_issues=True,
+    )
+
+
+def create_generation_run(project_uuid: str, payload: GenerationRunWrite) -> dict[str, Any]:
+    with database.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        return _create_generation_run_locked(
+            db,
+            project_uuid,
+            payload.expected_project_revision,
+        )
 
 
 def get_generation_run(project_uuid: str, run_uuid: str) -> dict[str, Any]:

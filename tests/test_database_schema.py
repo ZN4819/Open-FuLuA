@@ -93,7 +93,10 @@ class DatabaseSchemaTests(unittest.TestCase):
 
             connection = sqlite3.connect(path)
             try:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 9)
+                self.assertEqual(
+                    connection.execute("PRAGMA user_version").fetchone()[0],
+                    int(SCHEMA_VERSION),
+                )
                 for table_name, required in expected_columns.items():
                     actual = {
                         row[1]
@@ -161,7 +164,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                 connection.close()
 
         self.assertEqual(migrated["name"], "Schema 8 保留项目")
-        self.assertEqual(version, 9)
+        self.assertEqual(version, int(SCHEMA_VERSION))
         self.assertTrue(
             {
                 "report_import_jobs",
