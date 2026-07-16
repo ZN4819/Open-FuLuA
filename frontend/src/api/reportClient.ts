@@ -1,5 +1,6 @@
 import { downloadFile, request, requestFormData } from "./client.ts";
 import type { WorkflowStatus } from "../projectContracts.ts";
+import type { ReportImportJob } from "./reportImportClient.ts";
 
 export type ReportSectionType = "form" | "blocks" | "generated" | "appendix_a" | "appendix_b";
 export type ReportEditPolicy = "editable" | "overrideable" | "readonly";
@@ -1462,5 +1463,11 @@ export function downloadReportExportDocx(jobUuid: string): Promise<string> {
   return downloadFile(
     `/api/report-export-jobs/${encodeURIComponent(jobUuid)}/docx`,
     `完整报告-${jobUuid}.docx`
+  );
+}
+
+export function getProjectReportMigrationReview(projectUuid: string): Promise<ReportImportJob> {
+  return request<ReportImportJob>(
+    `/api/projects/${encodeURIComponent(projectUuid)}/report/migration-review`
   );
 }

@@ -5350,3 +5350,433 @@ textarea:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* R6 既有完整报告一次性迁移与迁移审阅 */
+.report-migration-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.report-migration-heading {
+  display: flex;
+  gap: 18px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.report-migration-heading h3,
+.report-migration-heading p {
+  margin: 0;
+}
+
+.report-migration-heading p:last-child {
+  max-width: 780px;
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  line-height: 1.65;
+}
+
+.report-migration-upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+}
+
+.report-migration-upload label,
+.report-migration-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.report-migration-upload label > span,
+.report-migration-field > span {
+  color: var(--color-text-muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.report-migration-upload input,
+.report-migration-field input,
+.report-migration-field select {
+  width: 100%;
+  min-height: 40px;
+}
+
+.report-migration-upload button,
+.report-migration-zone-actions button,
+.report-migration-confirm button {
+  min-height: 40px;
+  padding: 0 16px;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.report-migration-preview,
+.report-migration-review,
+.report-migration-issue-list {
+  display: grid;
+  gap: 14px;
+}
+
+.report-migration-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--color-primary-soft);
+  border-left: 4px solid var(--color-primary);
+  border-radius: 10px;
+}
+
+.report-migration-status > span {
+  padding: 4px 8px;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  background: #fff;
+  border-radius: 999px;
+}
+
+.report-migration-status > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-migration-status > small {
+  color: var(--color-text-muted);
+}
+
+.report-migration-status > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-danger);
+}
+
+.report-migration-status.failed {
+  background: var(--color-danger-soft);
+  border-left-color: var(--color-danger);
+}
+
+.report-migration-status.succeeded {
+  background: var(--color-success-soft);
+  border-left-color: var(--color-success);
+}
+
+.report-migration-zone {
+  min-width: 0;
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.report-migration-zone-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.report-migration-zone-heading > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--color-primary);
+  border-radius: 8px;
+}
+
+.report-migration-zone-heading h4 {
+  margin: 0;
+}
+
+.report-migration-zone-heading > strong {
+  color: var(--color-primary);
+  font-size: 13px;
+}
+
+.report-migration-fingerprint {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.report-migration-fingerprint div,
+.report-migration-summary-list div {
+  min-width: 0;
+  padding: 10px;
+  background: var(--color-surface-muted);
+  border-radius: 9px;
+}
+
+.report-migration-fingerprint dt,
+.report-migration-summary-list dt,
+.report-migration-issue dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-migration-fingerprint dd,
+.report-migration-summary-list dd,
+.report-migration-issue dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.report-migration-summary-list,
+.report-migration-issue dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.report-migration-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.report-migration-summary-cards pre,
+.report-migration-values pre {
+  min-width: 0;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.report-migration-issue {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  background: var(--color-surface-muted);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 9px;
+}
+
+.report-migration-issue.warning {
+  border-left-color: var(--color-warning);
+}
+
+.report-migration-issue.error {
+  border-left-color: var(--color-danger);
+}
+
+.report-migration-issue-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.report-migration-issue-heading > span,
+.report-migration-issue-heading > em {
+  padding: 3px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  border-radius: 999px;
+}
+
+.report-migration-issue-heading > span {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.report-migration-issue-heading > em {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.report-migration-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-migration-values > div {
+  min-width: 0;
+  padding: 10px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.report-migration-values span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-migration-values p {
+  max-height: 9em;
+  margin: 5px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.report-migration-resolution-options,
+.report-migration-source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.report-migration-resolution-options legend,
+.report-migration-source-options legend {
+  padding: 0 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.report-migration-resolution-options label,
+.report-migration-source-options label {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+}
+
+.report-migration-source-options label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.report-migration-source-options small,
+.report-migration-field small {
+  color: var(--color-text-muted);
+}
+
+.report-migration-zone-actions,
+.report-migration-confirm {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.report-migration-confirm {
+  justify-content: space-between;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.report-migration-confirm p,
+.report-migration-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.report-migration-resolution-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-migration-appendix-candidates {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-migration-appendix-candidates li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--color-surface-muted);
+  border-radius: 8px;
+}
+
+.report-migration-appendix-candidates span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.report-migration-appendix-candidates em {
+  padding: 3px 7px;
+  color: var(--color-success);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  background: var(--color-success-soft);
+  border-radius: 999px;
+}
+
+.report-migration-appendix-candidates .incomplete em {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.report-migration-resolution-list li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px;
+  background: var(--color-surface-muted);
+  border-radius: 8px;
+}
+
+.report-migration-resolution-list span {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 800px) {
+  .report-migration-heading,
+  .report-migration-confirm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-migration-upload,
+  .report-migration-fingerprint,
+  .report-migration-summary-list,
+  .report-migration-issue dl,
+  .report-migration-values {
+    grid-template-columns: 1fr;
+  }
+
+  .report-migration-status,
+  .report-migration-issue-heading,
+  .report-migration-appendix-candidates li {
+    grid-template-columns: 1fr;
+  }
+
+  .report-migration-panel {
+    padding: 16px;
+  }
+}
