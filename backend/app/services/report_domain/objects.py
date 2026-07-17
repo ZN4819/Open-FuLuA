@@ -7,6 +7,7 @@ from typing import Any
 
 from ... import database
 from ...report_schemas import (
+    AppendixTransmissionRelationWrite,
     AssessmentObjectUpdate,
     AssessmentObjectWrite,
     BindingConfirmWrite,
@@ -212,6 +213,21 @@ def update_object(project_uuid: str, object_uuid: str, payload: AssessmentObject
         }
         for section_code in bound_sections:
             _validate_section_type(payload.object_type, section_code, project_uuid)
+        if bound_sections and (
+            not payload.active
+            or payload.object_type != row["object_type"]
+            or payload.name_snapshot.strip() != str(row["name_snapshot"] or "").strip()
+            or payload.source_section_code != row["source_section_code"]
+            or payload.source_row_id != row["source_row_id"]
+        ):
+            raise ReportDomainError(
+                "APPENDIX_OBJECT_BACKEND_MANAGED",
+                "附录 A 已绑定对象的身份、来源和启用状态由后台维护，请在附录 A 中修改对象。",
+                status_code=422,
+                project_uuid=project_uuid,
+                entity_type="assessment_object",
+                entity_uuid=object_uuid,
+            )
         if payload.source_section_code and bound_sections and payload.source_section_code not in bound_sections:
             raise ReportDomainError(
                 "ASSESSMENT_OBJECT_SOURCE_SECTION_MISMATCH",
@@ -441,18 +457,70 @@ def _application_catalog(db: sqlite3.Connection, project_id: int) -> list[str]:
     return [str(value).strip() for value in values if str(value).strip()]
 
 
+def _ensure_correction_subsystem_compatible(
+    db: sqlite3.Connection,
+    *,
+    project_id: int,
+    project_uuid: str,
+    object_uuid: str,
+    subsystem_name: str,
+) -> None:
+    desired = _normalized_subsystem(subsystem_name)
+    relations = db.execute(
+        """
+        SELECT a2_object_uuid,a4_object_uuid
+        FROM result_correction_relations
+        WHERE project_id=? AND (a2_object_uuid=? OR a4_object_uuid=?)
+        """,
+        (project_id, object_uuid, object_uuid),
+    ).fetchall()
+    for relation in relations:
+        other_uuid = (
+            relation["a4_object_uuid"]
+            if relation["a2_object_uuid"] == object_uuid
+            else relation["a2_object_uuid"]
+        )
+        other = db.execute(
+            """
+            SELECT subsystem_name FROM assessment_object_subsystems
+            WHERE project_id=? AND object_uuid=?
+            """,
+            (project_id, other_uuid),
+        ).fetchone()
+        other_subsystem = _normalized_subsystem(
+            str(other["subsystem_name"] or "") if other is not None else ""
+        )
+        if not desired or desired != other_subsystem:
+            raise ReportDomainError(
+                "CORRECTION_SUBSYSTEM_MISMATCH",
+                "该对象已有 A-2/A-4 传输关系，修改子系统前请先解除或调整关联。",
+                status_code=422,
+                project_uuid=project_uuid,
+                entity_uuid=object_uuid,
+                field="subsystem_name",
+            )
+
+
 def upsert_subsystem(project_uuid: str, payload: ObjectSubsystemWrite) -> dict[str, Any]:
     with database.connect() as db:
         project = require_report_project(project_uuid, db)
         project_id = int(project["id"])
         obj = ensure_uuid_in_project(db, "assessment_objects", "object_uuid", payload.object_uuid, project_id, project_uuid=project_uuid, entity_type="assessment_object")
-        if obj["source_section_code"] != "A-4":
-            raise ReportDomainError("A4_SUBSYSTEM_OBJECT_INVALID", "只有 A-4 测评对象可以绑定应用子系统。", status_code=422, project_uuid=project_uuid, entity_uuid=payload.object_uuid, field="object_uuid")
-        catalog = _application_catalog(db, project_id)
-        if len(catalog) != len(set(catalog)):
-            raise ReportDomainError("APPLICATION_CATALOG_DUPLICATE", "表 2-7 应用名称存在重复，不能建立 A-4 子系统关联。", status_code=422, project_uuid=project_uuid, field="application_catalog")
-        if payload.subsystem_name not in catalog:
-            raise ReportDomainError("A4_SUBSYSTEM_NOT_IN_APPLICATION_CATALOG", "A-4 子系统必须选自表 2-7 应用名称。", status_code=422, project_uuid=project_uuid, field="subsystem_name", details={"allowed": catalog})
+        if obj["source_section_code"] not in {"A-2", "A-4"}:
+            raise ReportDomainError("APPENDIX_SUBSYSTEM_OBJECT_INVALID", "只有 A-2/A-4 测评对象可以绑定所属子系统。", status_code=422, project_uuid=project_uuid, entity_uuid=payload.object_uuid, field="object_uuid")
+        if obj["source_section_code"] == "A-4":
+            catalog = _application_catalog(db, project_id)
+            if len(catalog) != len(set(catalog)):
+                raise ReportDomainError("APPLICATION_CATALOG_DUPLICATE", "表 2-7 应用名称存在重复，不能建立 A-4 子系统关联。", status_code=422, project_uuid=project_uuid, field="application_catalog")
+            if payload.subsystem_name not in catalog:
+                raise ReportDomainError("A4_SUBSYSTEM_NOT_IN_APPLICATION_CATALOG", "A-4 子系统必须选自表 2-7 应用名称。", status_code=422, project_uuid=project_uuid, field="subsystem_name", details={"allowed": catalog})
+        _ensure_correction_subsystem_compatible(
+            db,
+            project_id=project_id,
+            project_uuid=project_uuid,
+            object_uuid=payload.object_uuid,
+            subsystem_name=payload.subsystem_name,
+        )
         existing = db.execute("SELECT * FROM assessment_object_subsystems WHERE project_id=? AND object_uuid=?", (project_id,payload.object_uuid)).fetchone()
         timestamp=database.utc_now()
         if existing:
@@ -553,6 +621,394 @@ CORRECTION_METRICS = {
 def _normalize_metric(value:str)->str: return "".join(value.split()).replace("指标","")
 
 
+def _project_revision(db: sqlite3.Connection, project_id: int) -> int:
+    row = db.execute(
+        "SELECT project_revision FROM report_generation_state WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    return int(row["project_revision"]) if row is not None else 0
+
+
+def _appendix_transmission_relations_result(
+    db: sqlite3.Connection,
+    project: sqlite3.Row,
+) -> dict[str, Any]:
+    project_id = int(project["id"])
+    source_rows = db.execute(
+        """
+        SELECT o.object_uuid,o.name_snapshot,s.code AS section_code,
+               r.object_name,r.unit,r.sort_order,
+               b.subsystem_name
+        FROM assessment_objects o
+        JOIN assessment_rows r ON r.assessment_object_uuid=o.object_uuid
+        JOIN appendix_sections s ON s.id=r.section_id AND s.project_id=o.project_id
+        LEFT JOIN assessment_object_subsystems b
+          ON b.project_id=o.project_id AND b.object_uuid=o.object_uuid
+        WHERE o.project_id=? AND o.active=1 AND s.code IN ('A-2','A-4')
+        ORDER BY s.sort_order,r.sort_order,r.id
+        """,
+        (project_id,),
+    ).fetchall()
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in source_rows:
+        key = (str(row["section_code"]), str(row["object_uuid"]))
+        item = grouped.setdefault(
+            key,
+            {
+                "object_uuid": str(row["object_uuid"]),
+                "object_name": str(row["object_name"] or row["name_snapshot"] or ""),
+                "subsystem": str(row["subsystem_name"] or "").strip(),
+                "available_kinds": [],
+                "relations": [],
+            },
+        )
+        for kind, metric_pair in CORRECTION_METRICS.items():
+            expected = metric_pair[0] if key[0] == "A-2" else metric_pair[1]
+            if (
+                _normalize_metric(str(row["unit"] or "")) == _normalize_metric(expected)
+                and kind not in item["available_kinds"]
+            ):
+                item["available_kinds"].append(kind)
+
+    relations = []
+    for row in db.execute(
+        """
+        SELECT correction_uuid,a2_object_uuid,a4_object_uuid,correction_kind,revision
+        FROM result_correction_relations
+        WHERE project_id=?
+        ORDER BY correction_kind,a2_object_uuid,a4_object_uuid
+        """,
+        (project_id,),
+    ).fetchall():
+        relation = {
+            "correction_uuid": str(row["correction_uuid"]),
+            "kind": str(row["correction_kind"]),
+            "a2_object_uuid": str(row["a2_object_uuid"]),
+            "a4_object_uuid": str(row["a4_object_uuid"]),
+            "revision": int(row["revision"]),
+        }
+        relations.append(relation)
+        for key in (("A-2", relation["a2_object_uuid"]), ("A-4", relation["a4_object_uuid"])):
+            if key in grouped:
+                grouped[key]["relations"].append(dict(relation))
+
+    a2_objects = [item for (section, _), item in grouped.items() if section == "A-2"]
+    a4_objects = [item for (section, _), item in grouped.items() if section == "A-4"]
+    for items in (a2_objects, a4_objects):
+        items.sort(key=lambda item: (item["subsystem"], item["object_name"], item["object_uuid"]))
+        for item in items:
+            item["available_kinds"].sort()
+            item["relations"].sort(
+                key=lambda relation: (relation["kind"], relation["a4_object_uuid"], relation["a2_object_uuid"])
+            )
+    subsystem_labels: dict[str, str] = {}
+    for item in [*a2_objects, *a4_objects]:
+        label = str(item["subsystem"] or "").strip()
+        if label:
+            subsystem_labels.setdefault(_normalized_subsystem(label), label)
+    return {
+        "project_revision": _project_revision(db, project_id),
+        "shared_subsystems": sorted(subsystem_labels.values()),
+        "a2_objects": a2_objects,
+        "a4_objects": a4_objects,
+    }
+
+
+def get_appendix_transmission_relations(project_uuid: str) -> dict[str, Any]:
+    with database.connect() as db:
+        project = require_report_project(project_uuid, db)
+        return _appendix_transmission_relations_result(db, project)
+
+
+def _bound_correction_object(
+    db: sqlite3.Connection,
+    project_id: int,
+    project_uuid: str,
+    object_uuid: str,
+    section_code: str,
+) -> sqlite3.Row:
+    obj = ensure_uuid_in_project(
+        db,
+        "assessment_objects",
+        "object_uuid",
+        object_uuid,
+        project_id,
+        project_uuid=project_uuid,
+        entity_type="assessment_object",
+    )
+    bound = db.execute(
+        """
+        SELECT 1 FROM assessment_rows r
+        JOIN appendix_sections s ON s.id=r.section_id
+        WHERE s.project_id=? AND s.code=? AND r.assessment_object_uuid=?
+        LIMIT 1
+        """,
+        (project_id, section_code, object_uuid),
+    ).fetchone()
+    if not bool(obj["active"]) or bound is None:
+        raise ReportDomainError(
+            "CORRECTION_RELATION_ENDPOINT_INVALID",
+            "修正关系端点必须是已绑定的 A-2/A-4 测评对象。",
+            status_code=422,
+            project_uuid=project_uuid,
+            entity_uuid=object_uuid,
+        )
+    return obj
+
+
+def _bound_metric_row(
+    db: sqlite3.Connection,
+    project_id: int,
+    project_uuid: str,
+    object_uuid: str,
+    section_code: str,
+    metric_code: str,
+) -> sqlite3.Row:
+    matched = [
+        row
+        for row in db.execute(
+            """
+            SELECT r.id,r.unit FROM assessment_rows r
+            JOIN appendix_sections s ON s.id=r.section_id
+            WHERE s.project_id=? AND s.code=? AND r.assessment_object_uuid=?
+            ORDER BY r.sort_order,r.id
+            """,
+            (project_id, section_code, object_uuid),
+        ).fetchall()
+        if _normalize_metric(str(row["unit"] or "")) == _normalize_metric(metric_code)
+    ]
+    if len(matched) != 1:
+        raise ReportDomainError(
+            "CORRECTION_METRIC_ROW_INVALID",
+            "修正关系要求每个对象在对应传输指标下恰好存在一条原始测评记录。",
+            status_code=422,
+            project_uuid=project_uuid,
+            entity_uuid=object_uuid,
+            details={
+                "section_code": section_code,
+                "metric_code": metric_code,
+                "matched_row_ids": [int(row["id"]) for row in matched],
+            },
+        )
+    return matched[0]
+
+
+def _bound_subsystem(
+    db: sqlite3.Connection,
+    project_id: int,
+    project_uuid: str,
+    object_uuid: str,
+) -> str:
+    row = db.execute(
+        "SELECT subsystem_name FROM assessment_object_subsystems WHERE project_id=? AND object_uuid=?",
+        (project_id, object_uuid),
+    ).fetchone()
+    value = str(row["subsystem_name"] or "").strip() if row is not None else ""
+    if not value:
+        raise ReportDomainError(
+            "CORRECTION_SUBSYSTEM_REQUIRED",
+            "建立传输修正关系前，A-2 和 A-4 对象都必须填写所属子系统。",
+            status_code=422,
+            project_uuid=project_uuid,
+            entity_uuid=object_uuid,
+            field="subsystem",
+        )
+    return value
+
+
+def _normalized_subsystem(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def _revision_conflict(
+    project_uuid: str,
+    expected_revision: int | None,
+    current_revision: int | None,
+    *,
+    expected_correction_uuid: str | None = None,
+    current_correction_uuid: str | None = None,
+) -> ReportDomainError:
+    return ReportDomainError(
+        "REVISION_CONFLICT",
+        "修正关系已在其他页面更新，请刷新后重试。",
+        status_code=409,
+        project_uuid=project_uuid,
+        entity_type="result_correction_relation",
+        details={
+            "expected_revision": expected_revision,
+            "current_revision": current_revision,
+            "expected_correction_uuid": expected_correction_uuid,
+            "current_correction_uuid": current_correction_uuid,
+        },
+    )
+
+
+def put_appendix_transmission_relation(
+    project_uuid: str,
+    payload: AppendixTransmissionRelationWrite,
+) -> dict[str, Any]:
+    with database.connect() as db:
+        project = require_report_project(project_uuid, db)
+        project_id = int(project["id"])
+        _bound_correction_object(db, project_id, project_uuid, payload.a4_object_uuid, "A-4")
+        existing = db.execute(
+            """
+            SELECT * FROM result_correction_relations
+            WHERE project_id=? AND a4_object_uuid=? AND correction_kind=?
+            """,
+            (project_id, payload.a4_object_uuid, payload.kind),
+        ).fetchone()
+
+        if (
+            existing is not None
+            and payload.expected_correction_uuid is not None
+            and payload.expected_correction_uuid != existing["correction_uuid"]
+        ):
+            raise _revision_conflict(
+                project_uuid,
+                payload.expected_revision,
+                int(existing["revision"]),
+                expected_correction_uuid=payload.expected_correction_uuid,
+                current_correction_uuid=str(existing["correction_uuid"]),
+            )
+
+        if payload.a2_object_uuid is None:
+            if existing is None:
+                return _appendix_transmission_relations_result(db, project)
+            if payload.expected_revision is None or payload.expected_correction_uuid is None:
+                raise ReportDomainError(
+                    "REVISION_REQUIRED",
+                    "删除现有修正关系时必须提供 relation UUID 和 revision。",
+                    status_code=422,
+                    project_uuid=project_uuid,
+                    field="expected_revision",
+                )
+            cursor = db.execute(
+                """
+                DELETE FROM result_correction_relations
+                WHERE project_id=? AND correction_uuid=? AND revision=?
+                """,
+                (project_id, existing["correction_uuid"], payload.expected_revision),
+            )
+            require_cas_updated(
+                db,
+                cursor,
+                table="result_correction_relations",
+                project_id=project_id,
+                expected_revision=payload.expected_revision,
+                project_uuid=project_uuid,
+                entity_type="result_correction_relation",
+                entity_uuid=str(existing["correction_uuid"]),
+            )
+            touch_project(db, project_id)
+            return _appendix_transmission_relations_result(db, project)
+
+        _bound_correction_object(db, project_id, project_uuid, payload.a2_object_uuid, "A-2")
+        a2_metric_code, a4_metric_code = CORRECTION_METRICS[payload.kind]
+        a2_row = _bound_metric_row(
+            db, project_id, project_uuid, payload.a2_object_uuid, "A-2", a2_metric_code
+        )
+        a4_row = _bound_metric_row(
+            db, project_id, project_uuid, payload.a4_object_uuid, "A-4", a4_metric_code
+        )
+        a2_subsystem = _bound_subsystem(db, project_id, project_uuid, payload.a2_object_uuid)
+        a4_subsystem = _bound_subsystem(db, project_id, project_uuid, payload.a4_object_uuid)
+        if _normalized_subsystem(a2_subsystem) != _normalized_subsystem(a4_subsystem):
+            raise ReportDomainError(
+                "CORRECTION_SUBSYSTEM_MISMATCH",
+                "A-2 通道与 A-4 重要数据对象必须属于同一子系统。",
+                status_code=422,
+                project_uuid=project_uuid,
+                field="a2_object_uuid",
+                details={"a2_subsystem": a2_subsystem, "a4_subsystem": a4_subsystem},
+            )
+        references = {"a2_row_id": int(a2_row["id"]), "a4_row_id": int(a4_row["id"])}
+        references_json = dump_json(references)
+        desired_matches = existing is not None and all(
+            (
+                existing["a2_object_uuid"] == payload.a2_object_uuid,
+                existing["a2_metric_code"] == a2_metric_code,
+                existing["a4_metric_code"] == a4_metric_code,
+                existing["original_references_json"] == references_json,
+            )
+        )
+        if desired_matches:
+            return _appendix_transmission_relations_result(db, project)
+
+        timestamp = database.utc_now()
+        if existing is None:
+            if payload.expected_revision is not None or payload.expected_correction_uuid is not None:
+                raise _revision_conflict(
+                    project_uuid,
+                    payload.expected_revision,
+                    None,
+                    expected_correction_uuid=payload.expected_correction_uuid,
+                )
+            try:
+                db.execute(
+                    """
+                    INSERT INTO result_correction_relations (
+                        correction_uuid,project_id,a2_object_uuid,a2_metric_code,
+                        a4_object_uuid,a4_metric_code,correction_kind,
+                        original_references_json,revision,created_at,updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,1,?,?)
+                    """,
+                    (
+                        new_uuid(),
+                        project_id,
+                        payload.a2_object_uuid,
+                        a2_metric_code,
+                        payload.a4_object_uuid,
+                        a4_metric_code,
+                        payload.kind,
+                        references_json,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise _revision_conflict(project_uuid, payload.expected_revision, None) from exc
+        else:
+            if payload.expected_revision is None or payload.expected_correction_uuid is None:
+                raise ReportDomainError(
+                    "REVISION_REQUIRED",
+                    "更新现有修正关系时必须提供 relation UUID 和 revision。",
+                    status_code=422,
+                    project_uuid=project_uuid,
+                    field="expected_revision",
+                )
+            cursor = db.execute(
+                """
+                UPDATE result_correction_relations
+                SET a2_object_uuid=?,a2_metric_code=?,a4_metric_code=?,
+                    original_references_json=?,revision=revision+1,updated_at=?
+                WHERE project_id=? AND correction_uuid=? AND revision=?
+                """,
+                (
+                    payload.a2_object_uuid,
+                    a2_metric_code,
+                    a4_metric_code,
+                    references_json,
+                    timestamp,
+                    project_id,
+                    existing["correction_uuid"],
+                    payload.expected_revision,
+                ),
+            )
+            require_cas_updated(
+                db,
+                cursor,
+                table="result_correction_relations",
+                project_id=project_id,
+                expected_revision=payload.expected_revision,
+                project_uuid=project_uuid,
+                entity_type="result_correction_relation",
+                entity_uuid=str(existing["correction_uuid"]),
+            )
+        touch_project(db, project_id)
+        return _appendix_transmission_relations_result(db, project)
+
+
 def _validate_correction_original_references(
     db: sqlite3.Connection,
     project_id: int,
@@ -611,13 +1067,76 @@ def _validate_correction_original_references(
     return normalized
 
 
-def _correction_values(db:sqlite3.Connection,project_id:int,project_uuid:str,payload:CorrectionRelationWrite)->tuple[Any,...]:
-    a2=ensure_uuid_in_project(db,"assessment_objects","object_uuid",payload.a2_object_uuid,project_id,project_uuid=project_uuid,entity_type="assessment_object"); a4=ensure_uuid_in_project(db,"assessment_objects","object_uuid",payload.a4_object_uuid,project_id,project_uuid=project_uuid,entity_type="assessment_object")
-    if a2["source_section_code"]!="A-2" or a4["source_section_code"]!="A-4": raise ReportDomainError("CORRECTION_RELATION_ENDPOINT_INVALID","修正关系必须连接 A-2 通道和 A-4 重要数据对象。",status_code=422,project_uuid=project_uuid)
-    expected=CORRECTION_METRICS[payload.correction_kind]
-    if _normalize_metric(payload.a2_metric_code)!=_normalize_metric(expected[0]) or _normalize_metric(payload.a4_metric_code)!=_normalize_metric(expected[1]): raise ReportDomainError("CORRECTION_METRIC_PAIR_INVALID","修正关系的指标类型不匹配。",status_code=422,project_uuid=project_uuid,field="a2_metric_code",details={"expected":expected})
-    original_references = _validate_correction_original_references(db,project_id,project_uuid,payload)
-    return (payload.a2_object_uuid,payload.a2_metric_code,payload.a4_object_uuid,payload.a4_metric_code,payload.correction_kind,safe_json_size(original_references,maximum=32768,project_uuid=project_uuid,field="original_references"))
+def _correction_values(
+    db: sqlite3.Connection,
+    project_id: int,
+    project_uuid: str,
+    payload: CorrectionRelationWrite,
+) -> tuple[Any, ...]:
+    a2 = ensure_uuid_in_project(
+        db,
+        "assessment_objects",
+        "object_uuid",
+        payload.a2_object_uuid,
+        project_id,
+        project_uuid=project_uuid,
+        entity_type="assessment_object",
+    )
+    a4 = ensure_uuid_in_project(
+        db,
+        "assessment_objects",
+        "object_uuid",
+        payload.a4_object_uuid,
+        project_id,
+        project_uuid=project_uuid,
+        entity_type="assessment_object",
+    )
+    if a2["source_section_code"] != "A-2" or a4["source_section_code"] != "A-4":
+        raise ReportDomainError(
+            "CORRECTION_RELATION_ENDPOINT_INVALID",
+            "修正关系必须连接 A-2 通道和 A-4 重要数据对象。",
+            status_code=422,
+            project_uuid=project_uuid,
+        )
+    expected = CORRECTION_METRICS[payload.correction_kind]
+    if (
+        _normalize_metric(payload.a2_metric_code) != _normalize_metric(expected[0])
+        or _normalize_metric(payload.a4_metric_code) != _normalize_metric(expected[1])
+    ):
+        raise ReportDomainError(
+            "CORRECTION_METRIC_PAIR_INVALID",
+            "修正关系的指标类型不匹配。",
+            status_code=422,
+            project_uuid=project_uuid,
+            field="a2_metric_code",
+            details={"expected": expected},
+        )
+    original_references = _validate_correction_original_references(
+        db, project_id, project_uuid, payload
+    )
+    a2_subsystem = _bound_subsystem(db, project_id, project_uuid, payload.a2_object_uuid)
+    a4_subsystem = _bound_subsystem(db, project_id, project_uuid, payload.a4_object_uuid)
+    if _normalized_subsystem(a2_subsystem) != _normalized_subsystem(a4_subsystem):
+        raise ReportDomainError(
+            "CORRECTION_SUBSYSTEM_MISMATCH",
+            "A-2 通道与 A-4 重要数据对象必须属于同一子系统。",
+            status_code=422,
+            project_uuid=project_uuid,
+            details={"a2_subsystem": a2_subsystem, "a4_subsystem": a4_subsystem},
+        )
+    return (
+        payload.a2_object_uuid,
+        payload.a2_metric_code,
+        payload.a4_object_uuid,
+        payload.a4_metric_code,
+        payload.correction_kind,
+        safe_json_size(
+            original_references,
+            maximum=32768,
+            project_uuid=project_uuid,
+            field="original_references",
+        ),
+    )
 
 
 def list_correction_relations(project_uuid:str)->list[dict[str,Any]]:

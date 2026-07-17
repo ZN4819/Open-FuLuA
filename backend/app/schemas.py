@@ -163,6 +163,7 @@ class AssessmentRowRead(BaseModel):
 
 class AssessmentRowWrite(BaseModel):
     id: int | None = Field(default=None, ge=1)
+    assessment_object_uuid: str | None = Field(default=None, min_length=36, max_length=36)
     unit: str = Field(default="", max_length=500)
     object_name: str = Field(default="", max_length=500)
     subsystem: str = Field(default="", max_length=500)

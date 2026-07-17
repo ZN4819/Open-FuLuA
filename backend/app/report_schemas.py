@@ -250,6 +250,16 @@ class CorrectionRelationUpdate(CorrectionRelationWrite, RevisionWrite):
     pass
 
 
+class AppendixTransmissionRelationWrite(ReportModel):
+    """面向附录 A 编辑器的 A-2/A-4 传输修正关系写入契约。"""
+
+    kind: Literal["confidentiality", "integrity"]
+    a4_object_uuid: str = Field(min_length=36, max_length=36)
+    a2_object_uuid: str | None = Field(default=None, min_length=36, max_length=36)
+    expected_correction_uuid: str | None = Field(default=None, min_length=36, max_length=36)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class BindingChoice(ReportModel):
     source_row_id: int = Field(ge=1)
     object_uuid: str = Field(min_length=36, max_length=36)

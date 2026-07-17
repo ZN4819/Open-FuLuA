@@ -567,6 +567,10 @@ class R2ReportDomainTests(unittest.TestCase):
         channel = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="network", name_snapshot="通道一", source_row_id=a2_row))
         data_one = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="application", name_snapshot="客户数据", source_row_id=a4_row))
         data_two = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="application", name_snapshot="交易数据", source_row_id=a4_row_two))
+        objects.upsert_subsystem(
+            self.project_uuid,
+            ObjectSubsystemWrite(object_uuid=channel["object_uuid"], subsystem_name="核心业务应用"),
+        )
         subsystem = objects.upsert_subsystem(
             self.project_uuid,
             ObjectSubsystemWrite(object_uuid=data_one["object_uuid"], subsystem_name="核心业务应用", methods=["访谈", "配置检查"]),
@@ -664,6 +668,7 @@ class R2ReportDomainTests(unittest.TestCase):
         )
 
     def test_correction_original_references_are_authoritative(self) -> None:
+        self._complete_profile()
         a2_row = self._insert_appendix_row("A-2", "通信过程中重要数据的机密性", "通道一")
         a4_row = self._insert_appendix_row("A-4", "重要数据传输机密性", "客户数据")
         other_a4_row = self._insert_appendix_row("A-4", "重要数据传输机密性", "交易数据")
@@ -671,6 +676,14 @@ class R2ReportDomainTests(unittest.TestCase):
         channel = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="network", name_snapshot="通道一", source_row_id=a2_row))
         data = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="application", name_snapshot="客户数据", source_row_id=a4_row))
         other_data = objects.create_object(self.project_uuid, AssessmentObjectWrite(object_type="application", name_snapshot="交易数据", source_row_id=other_a4_row))
+        objects.upsert_subsystem(
+            self.project_uuid,
+            ObjectSubsystemWrite(object_uuid=channel["object_uuid"], subsystem_name="核心业务应用"),
+        )
+        objects.upsert_subsystem(
+            self.project_uuid,
+            ObjectSubsystemWrite(object_uuid=data["object_uuid"], subsystem_name="核心业务应用"),
+        )
 
         def write(references: dict[str, int] | None = None) -> CorrectionRelationWrite:
             return CorrectionRelationWrite(

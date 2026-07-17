@@ -552,6 +552,39 @@ export type CorrectionRelation = {
 
 export type CorrectionRelationInput = Omit<CorrectionRelation, "correction_uuid" | "revision">;
 
+export type TransmissionRelationKind = "confidentiality" | "integrity";
+
+export type AppendixTransmissionRelation = {
+  correction_uuid: string;
+  kind: TransmissionRelationKind;
+  a2_object_uuid: string;
+  a4_object_uuid: string;
+  revision: number;
+};
+
+export type AppendixTransmissionObject = {
+  object_uuid: string;
+  object_name: string;
+  subsystem: string;
+  available_kinds: TransmissionRelationKind[];
+  relations: AppendixTransmissionRelation[];
+};
+
+export type AppendixTransmissionRelations = {
+  project_revision: number;
+  shared_subsystems: string[];
+  a2_objects: AppendixTransmissionObject[];
+  a4_objects: AppendixTransmissionObject[];
+};
+
+export type AppendixTransmissionRelationWrite = {
+  kind: TransmissionRelationKind;
+  a4_object_uuid: string;
+  a2_object_uuid: string | null;
+  expected_correction_uuid: string | null;
+  expected_revision: number | null;
+};
+
 export type DuplicateObjectGroup = {
   object_type: string;
   normalized_name: string;
@@ -1154,6 +1187,25 @@ export function deleteCorrectionRelation(projectUuid: string, relation: Correcti
   return request<CorrectionRelation>(revisionDeleteUrl(url, relation.revision), {
     method: "DELETE", headers: revisionHeaders(relation.revision)
   });
+}
+
+export function getAppendixTransmissionRelations(projectUuid: string): Promise<AppendixTransmissionRelations> {
+  return request<AppendixTransmissionRelations>(
+    `${reportRoot(projectUuid)}/appendix-transmission-relations`
+  );
+}
+
+export function updateAppendixTransmissionRelation(
+  projectUuid: string,
+  payload: AppendixTransmissionRelationWrite
+): Promise<AppendixTransmissionRelations> {
+  const headers = typeof payload.expected_revision === "number"
+    ? revisionHeaders(payload.expected_revision)
+    : undefined;
+  return request<AppendixTransmissionRelations>(
+    `${reportRoot(projectUuid)}/appendix-transmission-relations`,
+    { method: "PUT", headers, body: JSON.stringify(payload) }
+  );
 }
 
 export function updateReportBlock(
