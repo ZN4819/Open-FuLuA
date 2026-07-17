@@ -236,6 +236,11 @@ class R2ReportDomainTests(unittest.TestCase):
 
     def test_effective_client_metadata_patch_and_role_contract(self) -> None:
         assessed = self._create_assessed_organization()
+        organizations = basic.list_organizations(self.project_uuid)
+        self.assertIn(
+            assessed["organization_uuid"],
+            {item["organization_uuid"] for item in organizations},
+        )
         metadata = basic.get_metadata(self.project_uuid)
         self.assertEqual(metadata["effective_client_organization_uuid"], assessed["organization_uuid"])
         client = basic.create_organization(
