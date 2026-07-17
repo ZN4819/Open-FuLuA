@@ -6,7 +6,6 @@ export type ProjectWorkspaceView = "report_home" | "appendix_a";
 export type ReportWorkspaceRoute =
   | { view: "overview" }
   | { view: "basics" }
-  | { view: "objects" }
   | { view: "derived" }
   | { view: "migration_review" }
   | { view: "section"; sectionKey: string }
@@ -91,9 +90,6 @@ export function projectWorkspacePath(projectUuid: string, route: ReportWorkspace
   if (route.view === "basics") {
     return `${root}/basics`;
   }
-  if (route.view === "objects") {
-    return `${root}/objects`;
-  }
   if (route.view === "derived") {
     return `${root}/derived`;
   }
@@ -131,7 +127,7 @@ export function parseProjectWorkspacePath(pathname: string): {
     return { projectUuid, route: { view: "basics" } };
   }
   if (segments[2] === "objects" && segments.length === 3) {
-    return { projectUuid, route: { view: "objects" } };
+    return { projectUuid, route: { view: "overview" } };
   }
   if (segments[2] === "derived" && segments.length === 3) {
     return { projectUuid, route: { view: "derived" } };

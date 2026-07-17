@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type
 
 import { resolveFileUrl, type AssessmentRowInput, type CrossReferenceInput, type EvidenceImage, type RecordTemplateSlot, type RecordTemplateSlotGroup, type TemplateProfile } from "../api/client";
 import { calculateManagementRows, calculateTechnicalRows, RA_OPTIONS, RK_OPTIONS } from "../scoring";
+import { AppendixTransmissionRelationsPanel } from "./AppendixTransmissionRelationsPanel.tsx";
 
 export type SubsystemUiState = {
   manualSubsystemNames: string[];
@@ -29,6 +30,8 @@ type SubsystemUiStateChangeOptions = {
 };
 
 type AssessmentTableProps = {
+  projectUuid: string;
+  enableTransmissionRelations: boolean;
   sectionCode: string;
   rows: AssessmentRowInput[];
   profile: TemplateProfile;
@@ -142,8 +145,14 @@ function canAddObjectWithinUnit(sectionCode: string, unit: string, technical: bo
   return !technical || isA4UnitScopedObjectUnit(sectionCode, unit);
 }
 
-function createEmptyRow(sortOrder: number, unit: string, subsystem = ""): AssessmentRowInput {
+function createEmptyRow(
+  sortOrder: number,
+  unit: string,
+  subsystem = "",
+  assessmentObjectUuid: string = crypto.randomUUID()
+): AssessmentRowInput {
   return {
+    assessment_object_uuid: assessmentObjectUuid,
     unit,
     object_name: "",
     subsystem,
@@ -742,6 +751,8 @@ function normalizeRows(
 }
 
 export function AssessmentTable({
+  projectUuid,
+  enableTransmissionRelations,
   sectionCode,
   rows,
   profile,
@@ -773,6 +784,7 @@ export function AssessmentTable({
   const [pendingPastedImageUpload, setPendingPastedImageUpload] = useState<PendingPastedImageUpload | null>(null);
   const [showSubsystemList, setShowSubsystemList] = useState(false);
   const [showTechnicalObjectList, setShowTechnicalObjectList] = useState(false);
+  const [sharedSubsystemNames, setSharedSubsystemNames] = useState<string[]>([]);
   useEffect(() => {
     setNewSubsystemName("");
     setTechnicalUnitFilter("");
@@ -781,6 +793,7 @@ export function AssessmentTable({
     setPendingPastedImageUpload(null);
     setShowSubsystemList(false);
     setShowTechnicalObjectList(false);
+    setSharedSubsystemNames([]);
   }, [sectionCode]);
   const tableTitle = technical ? "D / A / K / Ra / Rk 指标录入" : "符合情况录入";
   const unitOrder = fixedUnitsFromSlots(recordTemplateSlots, rows);
@@ -797,6 +810,9 @@ export function AssessmentTable({
   const activeSubsystem = subsystemUiState.activeSubsystem;
   const subsystemNames = sectionSupportsSubsystem
     ? uniqueValues([...manualSubsystemNames, ...normalizedRows.map((row) => row.subsystem ?? "")])
+    : [];
+  const subsystemInputCandidates = sectionSupportsSubsystem
+    ? uniqueValues([...subsystemNames, ...sharedSubsystemNames])
     : [];
   const activeSubsystemName =
     sectionSupportsSubsystem && subsystemNames.includes(activeSubsystem.trim()) ? activeSubsystem.trim() : "";
@@ -1002,24 +1018,33 @@ export function AssessmentTable({
     if (!technical || !objectName || technicalObjectTargetUnits.length === 0 || (sectionSupportsSubsystem && !activeSubsystemName)) {
       return;
     }
-    const existingObjectUnits = new Set(
-      normalizedRows
-        .filter(
-          (row) =>
-            row.object_name.trim() === objectName &&
-            (!sectionSupportsSubsystem || row.subsystem?.trim() === activeSubsystemName)
-        )
-        .map((row) => row.unit.trim())
+    const matchesObject = (row: AssessmentRowInput) =>
+      row.object_name.trim() === objectName &&
+      (!sectionSupportsSubsystem || row.subsystem?.trim() === activeSubsystemName);
+    const existingObjectRows = normalizedRows.filter(matchesObject);
+    const assessmentObjectUuid = existingObjectRows
+      .map((row) => row.assessment_object_uuid?.trim())
+      .find(Boolean) ?? crypto.randomUUID();
+    const rowsWithStableObjectUuid = normalizedRows.map((row) =>
+      matchesObject(row) && !row.assessment_object_uuid?.trim()
+        ? { ...row, assessment_object_uuid: assessmentObjectUuid }
+        : row
     );
+    const existingObjectUnits = new Set(existingObjectRows.map((row) => row.unit.trim()));
     const appendedRows = technicalObjectTargetUnits
       .filter((unit) => !existingObjectUnits.has(unit))
       .map((unit, offset) => ({
-        ...createEmptyRow(normalizedRows.length + offset + 1, unit, sectionSupportsSubsystem ? activeSubsystemName : ""),
+        ...createEmptyRow(
+          normalizedRows.length + offset + 1,
+          unit,
+          sectionSupportsSubsystem ? activeSubsystemName : "",
+          assessmentObjectUuid
+        ),
         object_name: objectName,
         subsystem: activeSubsystemName
       }));
     if (appendedRows.length > 0) {
-      onRowsChange(normalizeRows([...normalizedRows, ...appendedRows], unitOrder, technical));
+      onRowsChange(normalizeRows([...rowsWithStableObjectUuid, ...appendedRows], unitOrder, technical));
     }
     setTechnicalObjectName("");
   }
@@ -1358,6 +1383,7 @@ export function AssessmentTable({
                     <label>
                       <span>所属子系统</span>
                       <input
+                        list={`subsystem-candidates-${sectionCode}`}
                         value={newSubsystemName}
                         onChange={(event) => setNewSubsystemName(event.target.value)}
                         onKeyDown={(event) => {
@@ -1368,6 +1394,11 @@ export function AssessmentTable({
                         }}
                         placeholder="例如：核心业务系统"
                       />
+                      <datalist id={`subsystem-candidates-${sectionCode}`}>
+                        {subsystemInputCandidates.map((subsystemName) => (
+                          <option value={subsystemName} key={subsystemName} />
+                        ))}
+                      </datalist>
                     </label>
                     <button type="button" onClick={addSubsystem} disabled={isSaving || !newSubsystemName.trim()}>
                       新增子系统
@@ -1526,6 +1557,15 @@ export function AssessmentTable({
             <p className="technical-object-empty">{technicalObjectEmptyText}</p>
           ) : null}
         </div>
+      ) : null}
+      {enableTransmissionRelations && (sectionCode === "A-2" || sectionCode === "A-4") ? (
+        <AppendixTransmissionRelationsPanel
+          projectUuid={projectUuid}
+          sectionCode={sectionCode}
+          hasUnsavedChanges={isDirty}
+          hasUnsavedObjects={normalizedRows.some((row) => !row.id && Boolean(row.object_name.trim()))}
+          onSharedSubsystemsChange={setSharedSubsystemNames}
+        />
       ) : null}
       {unitOrder.length === 0 ? (
         <div className="empty-table">

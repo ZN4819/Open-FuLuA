@@ -318,6 +318,7 @@ def validate_report(project_uuid: str) -> dict[str, Any]:
                 issues.append(_issue("3.6.2.11", "report_distribution", "REPORT_DISTRIBUTION_TOTAL_REQUIRED", "报告分发总份数必须大于 0。", target="chapter.1.4"))
 
         catalog: list[str] = []
+        catalog: list[str] = []
         if profile:
             def error(rule: str, field: str, message: str) -> None:
                 issues.append(_issue(rule, f"system_profiles.{field}", "SELECTED_BRANCH_VALUE_REQUIRED", message, field=field, target="front.basic_information"))
@@ -397,30 +398,167 @@ def validate_report(project_uuid: str) -> dict[str, Any]:
             if len(catalog) != len(set(catalog)):
                 issues.append(_issue("3.6.4.06", "system_profiles.application_catalog", "APPLICATION_CATALOG_DUPLICATE", "表 2-7 应用名称存在重复。", field="application_catalog", target="chapter.2.4.7"))
 
-        a4_missing = db.execute(
+        subsystem_missing = db.execute(
             """
-            SELECT DISTINCT o.object_uuid,o.name_snapshot FROM assessment_objects o
+            SELECT DISTINCT a.code,o.object_uuid,o.name_snapshot FROM assessment_objects o
             JOIN assessment_rows r ON r.assessment_object_uuid=o.object_uuid
-            JOIN appendix_sections a ON a.id=r.section_id AND a.project_id=o.project_id AND a.code='A-4'
+            JOIN appendix_sections a ON a.id=r.section_id AND a.project_id=o.project_id
             LEFT JOIN assessment_object_subsystems s ON s.project_id=o.project_id AND s.object_uuid=o.object_uuid
-            WHERE o.project_id=? AND o.active=1 AND s.id IS NULL
+            WHERE o.project_id=? AND o.active=1 AND a.code IN ('A-2','A-4')
+              AND (s.id IS NULL OR TRIM(s.subsystem_name)='')
             """,
             (project_id,),
         ).fetchall()
-        for row in a4_missing:
-            issues.append(_issue("3.6.4.05", f"assessment_objects.{row['object_uuid']}", "A4_SUBSYSTEM_REQUIRED", "A-4 测评对象必须且只能关联一个应用子系统。", field="subsystem_name", target="objects", details={"object_name": row["name_snapshot"]}))
+        for row in subsystem_missing:
+            code = str(row["code"])
+            issues.append(
+                _issue(
+                    "3.6.4.05",
+                    f"assessment_objects.{row['object_uuid']}",
+                    f"{code.replace('-', '')}_SUBSYSTEM_REQUIRED",
+                    f"{code} 测评对象必须填写所属子系统。",
+                    field="subsystem_name",
+                    target="appendix-transmission-relations",
+                    details={"object_name": row["name_snapshot"], "section_code": code},
+                )
+            )
         invalid_subsystems = db.execute(
             """
             SELECT s.binding_uuid,s.subsystem_name,o.name_snapshot
             FROM assessment_object_subsystems s
             JOIN assessment_objects o ON o.object_uuid=s.object_uuid AND o.project_id=s.project_id
-            WHERE s.project_id=? AND o.active=1
+            WHERE s.project_id=? AND o.active=1 AND o.source_section_code='A-4'
             """,
             (project_id,),
         ).fetchall()
         for row in invalid_subsystems:
             if row["subsystem_name"] not in catalog:
                 issues.append(_issue("3.6.4.06", f"assessment_object_subsystems.{row['binding_uuid']}", "A4_SUBSYSTEM_NOT_IN_APPLICATION_CATALOG", "A-4 子系统必须选自表 2-7 应用名称。", field="subsystem_name", target="objects", details={"object_name": row["name_snapshot"], "subsystem_name": row["subsystem_name"]}))
+
+        transmission_metrics = {
+            "重要数据传输机密性": "confidentiality",
+            "重要数据传输完整性": "integrity",
+        }
+        a4_rows = db.execute(
+            """
+            SELECT DISTINCT o.object_uuid,o.name_snapshot,r.unit
+            FROM assessment_objects o
+            JOIN assessment_rows r ON r.assessment_object_uuid=o.object_uuid
+            JOIN appendix_sections a ON a.id=r.section_id AND a.project_id=o.project_id
+            WHERE o.project_id=? AND o.active=1 AND a.code='A-4'
+            """,
+            (project_id,),
+        ).fetchall()
+        normalized_metrics = {
+            "".join(name.split()).replace("指标", ""): kind
+            for name, kind in transmission_metrics.items()
+        }
+        for row in a4_rows:
+            normalized_unit = "".join(str(row["unit"] or "").split()).replace("指标", "")
+            kind = normalized_metrics.get(normalized_unit)
+            if not kind:
+                continue
+            relation = db.execute(
+                """
+                SELECT 1 FROM result_correction_relations
+                WHERE project_id=? AND a4_object_uuid=? AND correction_kind=?
+                """,
+                (project_id, row["object_uuid"], kind),
+            ).fetchone()
+            if relation is None:
+                issues.append(
+                    _issue(
+                        "3.6.5.02",
+                        f"assessment_objects.{row['object_uuid']}.{kind}",
+                        "A4_TRANSMISSION_RELATION_REQUIRED",
+                        "A-4 传输机密性/完整性对象必须关联同子系统的 A-2 通道。",
+                        field="a2_object_uuid",
+                        target="appendix-transmission-relations",
+                        details={
+                            "object_name": row["name_snapshot"],
+                            "correction_kind": kind,
+                            "metric": row["unit"],
+                        },
+                    )
+                )
+
+        invalid_relation_endpoints = db.execute(
+            """
+            SELECT c.correction_uuid,c.correction_kind,
+                   a2.active AS a2_active,a4.active AS a4_active
+            FROM result_correction_relations c
+            LEFT JOIN assessment_objects a2
+              ON a2.project_id=c.project_id AND a2.object_uuid=c.a2_object_uuid
+            LEFT JOIN assessment_objects a4
+              ON a4.project_id=c.project_id AND a4.object_uuid=c.a4_object_uuid
+            WHERE c.project_id=? AND (
+                COALESCE(a2.active,0)<>1 OR COALESCE(a4.active,0)<>1
+                OR NOT EXISTS (
+                    SELECT 1 FROM assessment_rows r2
+                    JOIN appendix_sections s2 ON s2.id=r2.section_id
+                    WHERE s2.project_id=c.project_id AND s2.code='A-2'
+                      AND r2.assessment_object_uuid=c.a2_object_uuid
+                )
+                OR NOT EXISTS (
+                    SELECT 1 FROM assessment_rows r4
+                    JOIN appendix_sections s4 ON s4.id=r4.section_id
+                    WHERE s4.project_id=c.project_id AND s4.code='A-4'
+                      AND r4.assessment_object_uuid=c.a4_object_uuid
+                )
+            )
+            """,
+            (project_id,),
+        ).fetchall()
+        for row in invalid_relation_endpoints:
+            issues.append(
+                _issue(
+                    "3.6.5.02",
+                    f"result_correction_relations.{row['correction_uuid']}",
+                    "CORRECTION_RELATION_ENDPOINT_INVALID",
+                    "已有 A-2/A-4 传输关系包含停用或未绑定附录 A 的对象。",
+                    field="object_uuid",
+                    target="appendix-transmission-relations",
+                    details={
+                        "correction_kind": row["correction_kind"],
+                        "a2_active": row["a2_active"],
+                        "a4_active": row["a4_active"],
+                    },
+                )
+            )
+
+        mismatched_relations = db.execute(
+            """
+            SELECT c.correction_uuid,c.correction_kind,
+                   a2s.subsystem_name AS a2_subsystem,a4s.subsystem_name AS a4_subsystem
+            FROM result_correction_relations c
+            LEFT JOIN assessment_object_subsystems a2s
+              ON a2s.project_id=c.project_id AND a2s.object_uuid=c.a2_object_uuid
+            LEFT JOIN assessment_object_subsystems a4s
+              ON a4s.project_id=c.project_id AND a4s.object_uuid=c.a4_object_uuid
+            WHERE c.project_id=?
+            """,
+            (project_id,),
+        ).fetchall()
+        for row in mismatched_relations:
+            a2_subsystem = " ".join(str(row["a2_subsystem"] or "").split()).casefold()
+            a4_subsystem = " ".join(str(row["a4_subsystem"] or "").split()).casefold()
+            if a2_subsystem == a4_subsystem:
+                continue
+            issues.append(
+                _issue(
+                    "3.6.5.02",
+                    f"result_correction_relations.{row['correction_uuid']}",
+                    "CORRECTION_SUBSYSTEM_MISMATCH",
+                    "已有 A-2/A-4 传输修正关系的两端子系统不一致。",
+                    field="subsystem_name",
+                    target="appendix-transmission-relations",
+                    details={
+                        "correction_kind": row["correction_kind"],
+                        "a2_subsystem": row["a2_subsystem"],
+                        "a4_subsystem": row["a4_subsystem"],
+                    },
+                )
+            )
 
         unbound_rows = db.execute(
             """

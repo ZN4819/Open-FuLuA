@@ -50,7 +50,6 @@ test("完整报告工作台深链接可稳定生成并恢复", () => {
   const projectUuid = "c54a4090-d69f-4feb-aeca-760df514b5e8";
   assert.equal(projectWorkspacePath(projectUuid, { view: "overview" }), `/projects/${projectUuid}/overview`);
   assert.equal(projectWorkspacePath(projectUuid, { view: "basics" }), `/projects/${projectUuid}/basics`);
-  assert.equal(projectWorkspacePath(projectUuid, { view: "objects" }), `/projects/${projectUuid}/objects`);
   assert.equal(
     projectWorkspacePath(projectUuid, { view: "section", sectionKey: "chapter/1" }),
     `/projects/${projectUuid}/report/chapter%2F1`
@@ -66,6 +65,10 @@ test("完整报告工作台深链接可稳定生成并恢复", () => {
   assert.deepEqual(parseProjectWorkspacePath(`/projects/${projectUuid}/basics`), {
     projectUuid,
     route: { view: "basics" }
+  });
+  assert.deepEqual(parseProjectWorkspacePath(`/projects/${projectUuid}/objects`), {
+    projectUuid,
+    route: { view: "overview" }
   });
   assert.equal(parseProjectWorkspacePath("/projects/bad/report"), null);
 });

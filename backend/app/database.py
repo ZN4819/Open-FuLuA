@@ -2138,6 +2138,307 @@ def _touch_full_report_project(
     )
 
 
+_ASSESSMENT_OBJECT_TYPES = {
+    "A-1": "physical",
+    "A-2": "network",
+    "A-3": "device",
+    "A-4": "application",
+    "A-5": "management",
+    "A-6": "management",
+    "A-7": "management",
+    "A-8": "management",
+}
+
+
+def _normalized_object_identity(value: Any) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _canonical_assessment_object_uuid(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return str(uuid.UUID(text))
+    except ValueError as exc:
+        raise ValueError("测评对象 UUID 格式无效。") from exc
+
+
+def _resolve_section_object_uuids(
+    code: str,
+    rows: list[dict[str, Any]],
+    existing_by_id: dict[int, sqlite3.Row],
+) -> list[str | None]:
+    """为一次整章保存确定稳定对象身份；不在这里写数据库。"""
+
+    candidates_by_group: dict[tuple[str, str, str], set[str]] = {}
+    row_candidates: list[tuple[tuple[str, str, str] | None, str | None]] = []
+    for row in rows:
+        submitted_id = row.get("id")
+        existing = existing_by_id.get(int(submitted_id)) if submitted_id is not None else None
+        existing_uuid = _canonical_assessment_object_uuid(
+            existing["assessment_object_uuid"] if existing is not None else None
+        )
+        submitted_uuid = _canonical_assessment_object_uuid(row.get("assessment_object_uuid"))
+        if existing_uuid and submitted_uuid and existing_uuid != submitted_uuid:
+            raise ValueError("现有测评对象绑定不能通过章节保存改绑。")
+        object_name = _normalized_object_identity(row.get("object_name"))
+        # 前端新增空行会预生成临时 UUID；对象名尚未填写时不能据此创建
+        # 空中央对象。数据库中已有的绑定仍必须保留。
+        candidate = existing_uuid or (submitted_uuid if object_name else None)
+        group = None
+        if object_name:
+            group = (
+                code,
+                _normalized_object_identity(row.get("subsystem")),
+                object_name,
+            )
+            if candidate:
+                candidates_by_group.setdefault(group, set()).add(candidate)
+        row_candidates.append((group, candidate))
+
+    resolved_groups: dict[tuple[str, str, str], str] = {}
+    for group, candidates in candidates_by_group.items():
+        if len(candidates) > 1:
+            raise ValueError("同章节、同子系统、同名对象存在多个既有 UUID，不能自动合并。")
+        resolved_groups[group] = next(iter(candidates))
+
+    result: list[str | None] = []
+    for group, candidate in row_candidates:
+        if group is None:
+            result.append(candidate)
+            continue
+        if candidate:
+            resolved_groups.setdefault(group, candidate)
+        result.append(resolved_groups.setdefault(group, str(uuid.uuid4())))
+    return result
+
+
+def _sync_assessment_object(
+    db: sqlite3.Connection,
+    *,
+    project_id: int,
+    section_code: str,
+    object_uuid: str,
+    timestamp: str,
+) -> None:
+    expected_type = _ASSESSMENT_OBJECT_TYPES[section_code]
+    bound_rows = db.execute(
+        """
+        SELECT r.id,r.object_name,r.subsystem,r.sort_order,s.code AS section_code
+        FROM assessment_rows r
+        JOIN appendix_sections s ON s.id=r.section_id
+        WHERE s.project_id=? AND r.assessment_object_uuid=?
+        ORDER BY s.sort_order,r.sort_order,r.id
+        """,
+        (project_id, object_uuid),
+    ).fetchall()
+    if not bound_rows:
+        return
+    sections = {str(row["section_code"]) for row in bound_rows}
+    names = {
+        _normalized_object_identity(row["object_name"])
+        for row in bound_rows
+        if _normalized_object_identity(row["object_name"])
+    }
+    if sections != {section_code}:
+        raise ValueError("同一测评对象 UUID 不能跨附录 A 章节复用。")
+    if len(names) > 1:
+        raise ValueError("同一测评对象 UUID 绑定了不同名称，不能保存。")
+    if section_code in {"A-2", "A-4"}:
+        subsystem_values = {
+            _normalized_object_identity(row["subsystem"]): str(row["subsystem"] or "").strip()
+            for row in bound_rows
+            if _normalized_object_identity(row["subsystem"])
+        }
+        if len(subsystem_values) > 1:
+            raise ValueError("同一 A-2/A-4 测评对象只能属于一个子系统。")
+    else:
+        subsystem_values = {}
+
+    representative = bound_rows[0]
+    name_snapshot = str(representative["object_name"] or "").strip()
+    row_ids = {int(row["id"]) for row in bound_rows}
+    existing = db.execute(
+        "SELECT * FROM assessment_objects WHERE object_uuid=?",
+        (object_uuid,),
+    ).fetchone()
+    if existing is not None and int(existing["project_id"]) != project_id:
+        raise ValueError("测评对象 UUID 已属于其他项目。")
+    if existing is None:
+        db.execute(
+            """
+            INSERT INTO assessment_objects (
+                object_uuid,project_id,object_type,name_snapshot,source_section_code,
+                source_row_id,properties_json,active,revision,created_at,updated_at
+            ) VALUES (?,?,?,?,?,?,?,1,1,?,?)
+            """,
+            (
+                object_uuid,
+                project_id,
+                expected_type,
+                name_snapshot,
+                section_code,
+                int(representative["id"]),
+                "{}",
+                timestamp,
+                timestamp,
+            ),
+        )
+    else:
+        if existing["object_type"] != expected_type or existing["source_section_code"] not in (
+            None,
+            section_code,
+        ):
+            raise ValueError("测评对象 UUID 的类型或来源章节不匹配。")
+        source_row_id = (
+            int(existing["source_row_id"])
+            if existing["source_row_id"] is not None
+            and int(existing["source_row_id"]) in row_ids
+            else int(representative["id"])
+        )
+        if (
+            existing["name_snapshot"] != name_snapshot
+            or existing["source_section_code"] != section_code
+            or existing["source_row_id"] != source_row_id
+            or not bool(existing["active"])
+        ):
+            db.execute(
+                """
+                UPDATE assessment_objects
+                SET name_snapshot=?,source_section_code=?,source_row_id=?,active=1,
+                    revision=revision+1,updated_at=?
+                WHERE project_id=? AND object_uuid=?
+                """,
+                (name_snapshot, section_code, source_row_id, timestamp, project_id, object_uuid),
+            )
+
+    if section_code not in {"A-2", "A-4"}:
+        return
+    subsystem_name = next(iter(subsystem_values.values()), "")
+    desired_subsystem = _normalized_object_identity(subsystem_name)
+    correction_relations = db.execute(
+        """
+        SELECT a2_object_uuid,a4_object_uuid,correction_kind
+        FROM result_correction_relations
+        WHERE project_id=? AND (a2_object_uuid=? OR a4_object_uuid=?)
+        """,
+        (project_id, object_uuid, object_uuid),
+    ).fetchall()
+    for relation in correction_relations:
+        other_uuid = (
+            relation["a4_object_uuid"]
+            if relation["a2_object_uuid"] == object_uuid
+            else relation["a2_object_uuid"]
+        )
+        other = db.execute(
+            """
+            SELECT subsystem_name FROM assessment_object_subsystems
+            WHERE project_id=? AND object_uuid=?
+            """,
+            (project_id, other_uuid),
+        ).fetchone()
+        other_subsystem = _normalized_object_identity(
+            other["subsystem_name"] if other is not None else ""
+        )
+        if not desired_subsystem or desired_subsystem != other_subsystem:
+            raise ValueError(
+                "该对象已有 A-2/A-4 传输修正关系，修改子系统前请先解除或调整关联。"
+            )
+    binding = db.execute(
+        "SELECT * FROM assessment_object_subsystems WHERE project_id=? AND object_uuid=?",
+        (project_id, object_uuid),
+    ).fetchone()
+    if not subsystem_name:
+        if binding is not None:
+            db.execute(
+                "DELETE FROM assessment_object_subsystems WHERE project_id=? AND object_uuid=?",
+                (project_id, object_uuid),
+            )
+        return
+    if binding is None:
+        db.execute(
+            """
+            INSERT INTO assessment_object_subsystems (
+                binding_uuid,project_id,object_uuid,subsystem_name,
+                assessment_methods_json,remark,revision,created_at,updated_at
+            ) VALUES (?,?,?,?,?,'',1,?,?)
+            """,
+            (str(uuid.uuid4()), project_id, object_uuid, subsystem_name, "[]", timestamp, timestamp),
+        )
+    elif binding["subsystem_name"] != subsystem_name:
+        db.execute(
+            """
+            UPDATE assessment_object_subsystems
+            SET subsystem_name=?,revision=revision+1,updated_at=?
+            WHERE project_id=? AND object_uuid=?
+            """,
+            (subsystem_name, timestamp, project_id, object_uuid),
+        )
+
+
+def _cleanup_removed_assessment_objects(
+    db: sqlite3.Connection,
+    project_id: int,
+    stale_row_ids: set[int],
+    candidate_object_uuids: set[str],
+) -> None:
+    if stale_row_ids:
+        for relation in db.execute(
+            "SELECT correction_uuid,original_references_json FROM result_correction_relations WHERE project_id=?",
+            (project_id,),
+        ).fetchall():
+            try:
+                references = json.loads(relation["original_references_json"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                references = {}
+            if any(references.get(key) in stale_row_ids for key in ("a2_row_id", "a4_row_id")):
+                db.execute(
+                    "DELETE FROM result_correction_relations WHERE project_id=? AND correction_uuid=?",
+                    (project_id, relation["correction_uuid"]),
+                )
+
+    for object_uuid in candidate_object_uuids:
+        referenced = db.execute(
+            "SELECT 1 FROM assessment_rows r JOIN appendix_sections s ON s.id=r.section_id "
+            "WHERE s.project_id=? AND r.assessment_object_uuid=? LIMIT 1",
+            (project_id, object_uuid),
+        ).fetchone()
+        if referenced is not None:
+            continue
+        db.execute(
+            "DELETE FROM result_correction_relations WHERE project_id=? AND (a2_object_uuid=? OR a4_object_uuid=?)",
+            (project_id, object_uuid, object_uuid),
+        )
+        relation_count = int(
+            db.execute(
+                "SELECT COUNT(*) FROM object_relations WHERE project_id=? "
+                "AND (source_object_uuid=? OR target_object_uuid=?)",
+                (project_id, object_uuid, object_uuid),
+            ).fetchone()[0]
+        )
+        block_count = int(
+            db.execute(
+                "SELECT COUNT(*) FROM report_blocks WHERE project_id=? AND instr(payload_json,?)>0",
+                (project_id, object_uuid),
+            ).fetchone()[0]
+        )
+        if relation_count or block_count:
+            db.execute(
+                """
+                UPDATE assessment_objects
+                SET active=0,source_row_id=NULL,revision=revision+1,updated_at=?
+                WHERE project_id=? AND object_uuid=?
+                """,
+                (utc_now(), project_id, object_uuid),
+            )
+        else:
+            db.execute(
+                "DELETE FROM assessment_objects WHERE project_id=? AND object_uuid=?",
+                (project_id, object_uuid),
+            )
+
+
 def replace_section_rows(
     project_id: int,
     code: str,
@@ -2155,6 +2456,11 @@ def replace_section_rows(
         section = get_section(project_id, code, db)
         if section is None:
             return None
+        project = db.execute(
+            "SELECT project_type FROM projects WHERE id=?",
+            (project_id,),
+        ).fetchone()
+        auto_bind_objects = project is not None and project["project_type"] == "full_report"
 
         if title is not None or table_title is not None:
             db.execute(
@@ -2172,7 +2478,13 @@ def replace_section_rows(
             (section["id"],),
         ).fetchall()
         existing_by_id = {int(row["id"]): row for row in existing_rows}
+        resolved_object_uuids = (
+            _resolve_section_object_uuids(code, rows, existing_by_id)
+            if auto_bind_objects
+            else [None] * len(rows)
+        )
         submitted_ids: set[int] = set()
+        bound_object_uuids: set[str] = set()
         db.execute(
             "DELETE FROM section_subsystems WHERE project_id = ? AND section_code = ?",
             (project_id, code),
@@ -2188,7 +2500,9 @@ def replace_section_rows(
                 (project_id, code, subsystem_name, index, timestamp, timestamp),
             )
 
-        for index, row in enumerate(rows, start=1):
+        for index, (row, resolved_object_uuid) in enumerate(
+            zip(rows, resolved_object_uuids, strict=True), start=1
+        ):
             sort_order = int(row.get("sort_order") or index)
             record_text = "" if row.get("record_text") is None else str(row.get("record_text"))
             submitted_id = row.get("id")
@@ -2235,31 +2549,14 @@ def replace_section_rows(
                         section["id"],
                     ),
                 )
-                object_uuid = str(existing["assessment_object_uuid"] or "").strip()
-                if object_uuid:
-                    db.execute(
-                        """
-                        UPDATE assessment_objects
-                        SET name_snapshot=?, source_section_code=?, source_row_id=?,
-                            revision=revision+1, updated_at=?
-                        WHERE project_id=? AND object_uuid=?
-                          AND (
-                              name_snapshot<>? OR source_section_code IS NOT ? OR source_row_id IS NOT ?
-                          )
-                        """,
-                        (
-                            row.get("object_name", ""),
-                            code,
-                            row_id,
-                            timestamp,
-                            project_id,
-                            object_uuid,
-                            row.get("object_name", ""),
-                            code,
-                            row_id,
-                        ),
-                    )
             submitted_ids.add(row_id)
+            if auto_bind_objects:
+                db.execute(
+                    "UPDATE assessment_rows SET assessment_object_uuid=? WHERE id=? AND section_id=?",
+                    (resolved_object_uuid, row_id, section["id"]),
+                )
+                if resolved_object_uuid:
+                    bound_object_uuids.add(resolved_object_uuid)
             metric = row.get("metric_result") or {}
             db.execute(
                 """
@@ -2311,8 +2608,29 @@ def replace_section_rows(
                 )
 
         stale_row_ids = set(existing_by_id) - submitted_ids
+        stale_object_uuids = {
+            str(existing_by_id[row_id]["assessment_object_uuid"] or "").strip()
+            for row_id in stale_row_ids
+            if str(existing_by_id[row_id]["assessment_object_uuid"] or "").strip()
+        }
         for stale_row_id in stale_row_ids:
             db.execute("DELETE FROM assessment_rows WHERE id=? AND section_id=?", (stale_row_id, section["id"]))
+
+        if auto_bind_objects:
+            for object_uuid in sorted(bound_object_uuids):
+                _sync_assessment_object(
+                    db,
+                    project_id=project_id,
+                    section_code=code,
+                    object_uuid=object_uuid,
+                    timestamp=timestamp,
+                )
+            _cleanup_removed_assessment_objects(
+                db,
+                project_id,
+                stale_row_ids,
+                stale_object_uuids,
+            )
 
         _touch_full_report_project(db, project_id, timestamp)
 

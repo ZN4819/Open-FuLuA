@@ -49,7 +49,8 @@ test("DOCX 导入边界和响应式双项目样式可见", async () => {
   assert.match(mobileStyles, /\.full-report-placeholder \.placeholder-grid,/);
 });
 
-test("附录 A 保存回传稳定行标识以保留中央对象绑定", async () => {
+test("附录 A 保存同时保留数据库行标识和稳定对象标识", async () => {
   const source = await readFile(pagePath, "utf8");
   assert.match(source, /id: row\.id,/);
+  assert.match(source, /assessment_object_uuid: row\.assessment_object_uuid,/);
 });

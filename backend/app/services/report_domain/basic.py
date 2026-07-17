@@ -237,7 +237,7 @@ def list_organizations(project_uuid: str) -> list[dict[str, Any]]:
     with database.connect() as db:
         project = require_report_project(project_uuid, db)
         return rows_dict(
-            cursor = db.execute(
+            db.execute(
                 "SELECT * FROM report_organizations WHERE project_id = ? ORDER BY sort_order, id",
                 (project["id"],),
             ).fetchall()

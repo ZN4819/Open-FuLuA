@@ -147,6 +147,66 @@ class R4ReportExportTests(unittest.TestCase):
                 "UPDATE assessment_rows SET record_text = record_text || ' 使用SM4算法。' WHERE id = ?",
                 (self.r3.rows["A-1.01"],),
             )
+            a2_object_uuid = str(
+                db.execute(
+                    "SELECT assessment_object_uuid FROM assessment_rows WHERE id = ?",
+                    (self.r3.rows["A-2.01"],),
+                ).fetchone()["assessment_object_uuid"]
+            )
+            a4_object_uuid = str(
+                db.execute(
+                    "SELECT assessment_object_uuid FROM assessment_rows WHERE id = ?",
+                    (self.r3.rows["A-4.01"],),
+                ).fetchone()["assessment_object_uuid"]
+            )
+            db.execute(
+                """
+                INSERT INTO assessment_object_subsystems (
+                    binding_uuid, project_id, object_uuid, subsystem_name,
+                    assessment_methods_json, remark, created_at, updated_at
+                ) VALUES (?, ?, ?, '业务子系统', '[]', '', ?, ?)
+                """,
+                (str(uuid.uuid4()), project["id"], a2_object_uuid, timestamp, timestamp),
+            )
+            correction_metrics = (
+                (
+                    "confidentiality",
+                    "通信过程中重要数据的机密性",
+                    "重要数据传输机密性",
+                ),
+                ("integrity", "通信数据完整性", "重要数据传输完整性"),
+            )
+            indicator_codes = {
+                (indicator.section_code, indicator.name): indicator.code
+                for indicator in self.r3.rules.indicators
+            }
+            for correction_kind, a2_metric, a4_metric in correction_metrics:
+                a2_row_id = self.r3.rows[indicator_codes[("A-2", a2_metric)]]
+                a4_row_id = self.r3.rows[indicator_codes[("A-4", a4_metric)]]
+                db.execute(
+                    """
+                    INSERT INTO result_correction_relations (
+                        correction_uuid, project_id, a2_object_uuid, a2_metric_code,
+                        a4_object_uuid, a4_metric_code, correction_kind,
+                        original_references_json, revision, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        project["id"],
+                        a2_object_uuid,
+                        a2_metric,
+                        a4_object_uuid,
+                        a4_metric,
+                        correction_kind,
+                        json.dumps(
+                            {"a2_row_id": a2_row_id, "a4_row_id": a4_row_id},
+                            ensure_ascii=False,
+                        ),
+                        timestamp,
+                        timestamp,
+                    ),
+                )
             db.execute(
                 """
                 INSERT INTO assessment_objects (

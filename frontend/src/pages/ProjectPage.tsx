@@ -169,6 +169,7 @@ function subsystemUiStateFromDetail(detail: SectionDetail, current?: SubsystemUi
 function rowsFromDetail(detail: SectionDetail): AssessmentRowInput[] {
   return detail.rows.map((row) => ({
     id: row.id,
+    assessment_object_uuid: row.assessment_object_uuid,
     unit: row.unit,
     object_name: row.object_name,
     subsystem: row.subsystem ?? "",
@@ -1721,6 +1722,8 @@ export function ProjectPage() {
 
           {profile && activeCode && activeDetail && !isTemplateManagerOpen ? (
             <AssessmentTable
+              projectUuid={project.project_uuid}
+              enableTransmissionRelations={project.project_type === "full_report"}
               sectionCode={activeCode}
               rows={activeRows}
               profile={profile}

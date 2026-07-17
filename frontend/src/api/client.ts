@@ -64,6 +64,7 @@ export type AssessmentRow = {
 
 export type AssessmentRowInput = {
   id?: number | null;
+  assessment_object_uuid?: string | null;
   unit: string;
   object_name: string;
   subsystem?: string;

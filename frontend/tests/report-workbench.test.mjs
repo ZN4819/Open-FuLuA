@@ -54,7 +54,7 @@ const basicDataPath = new URL("../src/components/ReportBasicDataWorkspace.tsx", 
 const reportClientPath = new URL("../src/api/reportClient.ts", import.meta.url);
 const stylesPath = new URL("../src/styles.css", import.meta.url);
 
-test("报告工作台覆盖章节树、对象库、结构化块、未保存与冲突交互", async () => {
+test("报告工作台覆盖章节树、附录 A 对象入口、结构化块、未保存与冲突交互", async () => {
   const [workbench, basicData, reportClient, styles] = await Promise.all([
     readFile(workbenchPath, "utf8"),
     readFile(basicDataPath, "utf8"),
@@ -65,7 +65,10 @@ test("报告工作台覆盖章节树、对象库、结构化块、未保存与�
   assert.match(workbench, /getReportSections\(project\.project_uuid\)/);
   assert.match(workbench, /flattenSectionTree\(sections\)/);
   assert.match(workbench, /完整报告章节树/);
-  assert.match(workbench, /测评对象与引用/);
+  const treeSource = workbench.slice(workbench.indexOf("function ReportSectionTree"), workbench.indexOf("type ReportOverviewPanelProps"));
+  assert.doesNotMatch(treeSource, /测评对象库/);
+  assert.doesNotMatch(workbench, /<ReportObjectLibrary/);
+  assert.match(workbench, /onClick=\{\(\) => onOpenAppendix\(\)\}>进入附录 A 维护测评对象/);
   assert.match(workbench, /ReportBasicDataWorkspace/);
   assert.match(workbench, /提交复核/);
   assert.match(workbench, /ReportBlockEditor/);

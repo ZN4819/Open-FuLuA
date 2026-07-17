@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Header, Query
 
 from ..report_schemas import (
+    AppendixTransmissionRelationWrite,
     AssessmentObjectUpdate,
     AssessmentObjectWrite,
     BindingConfirmWrite,
@@ -322,6 +323,30 @@ def delete_object_relation(project_uuid: str, relation_uuid: str, expected_revis
 @router.get("/result-correction-relations")
 def list_correction_relations(project_uuid: str) -> list[dict[str, Any]]:
     return objects.list_correction_relations(project_uuid)
+
+
+@router.get("/appendix-transmission-relations")
+def get_appendix_transmission_relations(project_uuid: str) -> dict[str, Any]:
+    return objects.get_appendix_transmission_relations(project_uuid)
+
+
+@router.put("/appendix-transmission-relations")
+def put_appendix_transmission_relation(
+    project_uuid: str,
+    payload: AppendixTransmissionRelationWrite,
+    if_match: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if payload.expected_revision is not None:
+        _match_revision(payload.expected_revision, if_match, project_uuid)
+    elif if_match is not None:
+        raise ReportDomainError(
+            "REVISION_HEADER_MISMATCH",
+            "新建关系时 expected_revision 必须为 null，且不应提供 If-Match。",
+            status_code=422,
+            project_uuid=project_uuid,
+            field="expected_revision",
+        )
+    return objects.put_appendix_transmission_relation(project_uuid, payload)
 
 
 @router.post("/result-correction-relations", status_code=201)
